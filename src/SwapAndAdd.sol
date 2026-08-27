@@ -33,15 +33,12 @@ import {IUniversalRouter} from "./interfaces/external/IUniversalRouter.sol";
 
 /// @title SwapAndAdd
 /// @notice Implementation of the route-first liquidity zap for Uniswap v4.
-/// @dev Entrypoints funnel into a single PoolManager unlock callback:
-///      route -> size -> flash-take deficit -> deploy -> reconcile & trim -> floor check -> sweep dust.
-///      Rebalance first burns the old position in POSM's own unlock so the main flow starts from resolved budgets.
+/// @dev All entrypoints funnel into one PoolManager unlock:
+///      route -> size -> flash-take deficit -> deploy -> reconcile and trim -> floor check -> sweep.
+///      Rebalance burns the old position in POSM's own unlock first.
 ///
-///      Invariant: All pulled tokens, collected fees, and declared route funding are either deployed into
-///      the position or swept to the recipient within the transaction. Only direct donations or unlisted route
-///      outputs can remain at rest (which join subsequent pool budgets or can be claimed via zero-amount route
-///      funding entries). Standing Permit2 allowances to POSM and Universal Router are safe because spenders only
-///      pull during active calls initiated by this contract.
+///      Invariant: all pulled and collected funds are deployed or swept within the transaction.
+///      Only donations or undeclared route outputs can remain at rest.
 contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarder, Multicall_v4, ReentrancyLock {
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
@@ -51,8 +48,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     using SafeCast for uint256;
     using Hooks for IHooks;
 
-    /// @dev Hook permissions that let a hook alter this contract's settlement deltas, breaking the
-    ///      conservation accounting the reconcile relies on. Pools carrying any of them are rejected.
+    /// @dev Permissions that let a hook alter settlement deltas, which breaks the reconcile
+    ///      accounting. Pools with any of them are rejected.
     uint160 private constant UNSUPPORTED_HOOK_FLAGS = Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
         | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG | Hooks.AFTER_ADD_LIQUIDITY_RETURNS_DELTA_FLAG
         | Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG;
@@ -61,8 +58,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     /// @dev Universal Router command to sweep unspent native ETH.
     uint8 private constant UR_SWEEP_COMMAND = 0x04;
 
-    /// @dev Internal bundle of inputs passed to the shared unlock and execution core.
-    ///      `deployTokenId`: 0 mints a new position, non-zero increases that position in place.
+    /// @dev Inputs for the shared unlock and execution core. A `deployTokenId` of 0 mints a new
+    ///      position. A non-zero value increases that position in place.
     struct CoreParams {
         uint256 deployTokenId;
         PoolKey key;
@@ -107,8 +104,6 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         ) revert InvalidEthSender();
     }
 
-    // ───────────────────────────────────────────── external entrypoints ─────────────────────────────────────────────
-
     /// @inheritdoc ISwapAndAdd
     function add(AddParams calldata params)
         external
@@ -135,7 +130,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         (tokenId, liquidity, amount0, amount1) = _run(cp);
         emit Added(params.recipient, tokenId, msg.sender, liquidity, amount0, amount1);
 
-        // Position was minted to this contract so it could be trimmed; transfer it to recipient now.
+        // the position was minted to this contract so the trim step could burn from it
         ERC721(address(positionManager)).transferFrom(address(this), params.recipient, tokenId);
         _sweepFunding(params.routeFunding, params.recipient);
     }
@@ -152,7 +147,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         address recipient = _authAndResolveRecipient(params.tokenId, params.recipient);
         _validateRecipient(recipient);
 
-        // Pull positive additional deltas from caller; negative deltas (cash-out) pull nothing here.
+        // positive deltas are pulled, negative deltas (cash-out) pull nothing
         _pull(
             key,
             params.additional0 > 0 ? uint256(uint128(params.additional0)) : 0,
@@ -161,8 +156,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             params.route
         );
 
-        // Burn the old position in POSM's own unlock, pay out any cash-out share up front,
-        // and compute net redeploy budgets before opening the main unlock.
+        // burn in POSM's own unlock and resolve the net budgets before the main unlock opens
         _burnAndWithdraw(key, params.tokenId, params.hookData);
         CoreParams memory cp = CoreParams({
             deployTokenId: 0, // Mints a new position in the new range
@@ -179,7 +173,6 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         (newTokenId, liquidity, amount0, amount1) = _run(cp);
         emit Rebalanced(recipient, params.tokenId, newTokenId, msg.sender, liquidity, amount0, amount1);
 
-        // Transfer newly minted position NFT and unconsumed route funding to recipient.
         ERC721(address(positionManager)).transferFrom(address(this), recipient, newTokenId);
         _sweepFunding(params.routeFunding, recipient);
     }
@@ -197,12 +190,11 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         CoreParams memory cp =
             _growCore(params.tokenId, params.route, params.minLiquidityAdded, recipient, params.hookData);
 
-        // Pull caller's declared budget; accrued fees are collected inside the unlock callback.
+        // accrued fees are collected inside the unlock callback
         _pull(cp.key, params.amount0In, params.amount1In, params.routeFunding, params.route);
         (, liquidityAdded, amount0, amount1) = _run(cp);
         emit Increased(recipient, params.tokenId, msg.sender, liquidityAdded, amount0, amount1);
 
-        // Position NFT stays in place; sweep unconsumed route funding to resolved recipient.
         _sweepFunding(params.routeFunding, recipient);
     }
 
@@ -216,15 +208,15 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         address recipient = _authAndResolveRecipient(params.tokenId, params.recipient);
         _validateRecipient(recipient);
 
-        // Compound is an increase with 0 pulled budget: collected fees constitute the entire budget.
+        // compound is an increase where the collected fees are the entire budget
         CoreParams memory cp =
             _growCore(params.tokenId, params.route, params.minLiquidityAdded, recipient, params.hookData);
         (, liquidityAdded, amount0, amount1) = _run(cp);
         emit Compounded(recipient, params.tokenId, msg.sender, liquidityAdded, amount0, amount1);
     }
 
-    /// @dev Shared CoreParams for grow-in-place operations (increase, compound).
-    ///      Budgets are left zero and populated in the callback after collecting accrued fees.
+    /// @dev Shared CoreParams for grow-in-place operations. Budgets are set in the callback after
+    ///      fee collection.
     function _growCore(
         uint256 tokenId,
         bytes calldata route,
@@ -256,22 +248,19 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         return abi.decode(result, (uint256, uint128, uint256, uint256));
     }
 
-    // ───────────────────────────────────────────── unlock callback ─────────────────────────────────────────────
-
-    /// @dev Unlock callback from PoolManager: collects fees for grow ops, then executes the shared core flow.
+    /// @dev Collects fees for grow operations, then executes the shared core flow.
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
         CoreParams memory cp = abi.decode(data, (CoreParams));
 
-        // For grow ops (increase, compound): collect accrued fees via a 0-liquidity decrease first.
-        // The held balance (collected fees + any pulled budget) becomes the redeploy budget.
+        // for grow operations, fees collected via a 0-liquidity decrease become the budget
         if (cp.deployTokenId != 0) {
-            // Skip collect for emptied positions with zero liquidity
+            // POSM reverts on a decrease of an empty position
             if (positionManager.getPositionLiquidity(cp.deployTokenId) != 0) {
                 _decrease(cp.key, cp.deployTokenId, 0, cp.hookData);
             }
             cp.budget0 = cp.key.currency0.balanceOfSelf();
             cp.budget1 = cp.key.currency1.balanceOfSelf();
-            // Revert if there are neither held fees nor a route to source tokens.
+            // a route can still source tokens, so only revert when there is also no route
             if (cp.budget0 == 0 && cp.budget1 == 0 && cp.route.length == 0) revert NoFeesToCompound();
         }
 
@@ -279,69 +268,66 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         return abi.encode(tokenId, liquidity, a0, a1);
     }
 
-    /// @dev Resolves redeploy budget from signed delta: positive deltas add to budget, negative deltas return cash-out to recipient.
+    /// @dev Resolves the redeploy budget from the signed delta. Negative deltas pay out cash-out
+    ///      to the recipient.
     function _resolveBudget(Currency currency, int128 delta, address recipient) internal returns (uint256 budget) {
         uint256 held = currency.balanceOfSelf();
-        if (delta >= 0) return held; // Withdrawn tokens + pre-pulled additional budget
+        if (delta >= 0) return held; // withdrawn tokens plus the pre-pulled additional budget
 
-        // Widen to int256 before negating to prevent overflow on type(int128).min
+        // widen to int256 before negating to prevent overflow on type(int128).min
         uint256 toReturn = uint256(-int256(delta));
         if (toReturn > held) revert ReturnExceedsWithdrawn(toReturn, held);
         currency.transfer(recipient, toReturn);
         return held - toReturn;
     }
 
-    // ───────────────────────────────────────────── core flow ─────────────────────────────────────────────
-
-    /// @dev Shared execution core: route -> size -> flash-take deficit -> deploy -> reconcile & trim -> floor check -> sweep.
+    /// @dev Shared execution core.
     function _swapAndAdd(CoreParams memory cp)
         internal
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
-        // Pure bitmask on the hook address; a benignly-behaving hook with the permission is still rejected —
-        // the boundary is the capability, not observed behavior.
+        // pure bitmask check, the capability is rejected regardless of observed behavior
         if (cp.key.hooks.hasPermission(UNSUPPORTED_HOOK_FLAGS)) revert UnsupportedHookPermissions(cp.key.hooks);
 
         _ensureApproved(cp.key.currency0);
         _ensureApproved(cp.key.currency1);
 
-        // 1. ROUTE FIRST: Execute off-chain route (if provided) and update held token budgets from live balances.
+        // 1. Execute the optional route and re-read the held budgets.
         if (cp.route.length != 0) {
             _executeRoute(cp);
             cp.budget0 = cp.key.currency0.balanceOfSelf();
             cp.budget1 = cp.key.currency1.balanceOfSelf();
         }
 
-        // 2. Sizing: Compute optimistic liquidity, flash-take any deficit, and deploy via POSM.
-        // Range bounds are constant for the whole operation and threaded; the live price is re-read at
-        // each use instead (the reconcile swap and hook callbacks can move it).
+        // 2. Size the liquidity, flash-take any deficit, and deploy via POSM. The bounds are
+        // constant, the price is re-read at each use because swaps and hooks move it.
         uint160 sqrtLower = TickMath.getSqrtPriceAtTick(cp.tickLower);
         uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(cp.tickUpper);
         (uint128 liquidityOptimistic, uint256 amount0optimistic, uint256 amount1optimistic) =
             _planLiquidity(cp, sqrtLower, sqrtUpper);
-        // Surface contract's own floor error rather than POSM's opaque CannotUpdateEmptyPosition on 0-sized mint.
+        // revert with the floor error instead of POSM's opaque CannotUpdateEmptyPosition
         if (liquidityOptimistic == 0 && cp.deployTokenId == 0) {
             revert InsufficientLiquidity(cp.minLiquidity, 0);
         }
         _flashTakeDeficit(cp, amount0optimistic, amount1optimistic);
         tokenId = _deployLiquidity(cp, liquidityOptimistic, amount0optimistic);
 
-        // 3. Reconcile & Trim: Reconcile deficit via same-pool swap and trim newly added liquidity for any remaining debt.
+        // 3. Settle the flash-take debt, trimming the new liquidity if a debt remains.
         uint128 trimmed =
             _reconcile(cp, tokenId, liquidityOptimistic, amount0optimistic, amount1optimistic, sqrtLower, sqrtUpper);
         liquidity = liquidityOptimistic - trimmed;
 
-        // 4. Slippage Floor: Enforce minimum liquidity threshold on final post-trim position.
+        // 4. Enforce the slippage floor.
         if (liquidity < cp.minLiquidity) revert InsufficientLiquidity(cp.minLiquidity, liquidity);
 
-        // 5. Sweep: Calculate final position token amounts at live price and sweep leftover dust to recipient.
+        // 5. Compute the final position amounts and sweep dust.
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(cp.key.toId());
         (amount0, amount1) = SwapAndAddMath.getAmountsForLiquidity(sqrtPriceX96, sqrtLower, sqrtUpper, liquidity);
         _sweep(cp.key.currency0, cp.recipient);
         _sweep(cp.key.currency1, cp.recipient);
     }
 
-    /// @dev Computes fee-aware optimistic liquidity and required token amounts based on held budgets and pool price.
+    /// @dev Computes the fee-aware liquidity and required amounts from the budgets and pool price.
     function _planLiquidity(CoreParams memory cp, uint160 sqrtLower, uint160 sqrtUpper)
         internal
         view
@@ -355,18 +341,15 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         (amount0, amount1) = SwapAndAddMath.getAmountsForLiquidity(sqrtPriceX96, sqrtLower, sqrtUpper, liquidity);
     }
 
-    /// @dev Flash-takes deficit tokens from PoolManager so the subsequent POSM deploy is fully funded.
-    ///      `SwapAndAddMath.getAmountsForLiquidity` rounds up with the pool's own math on pool inputs, making funding wei-exact
-    ///      with no rounding buffer needed. Requires PoolManager to hold sufficient aggregate reserves of that
-    ///      token across all pools. `_reconcile` settles what the take owes afterwards.
+    /// @dev Flash-takes deficit tokens so the POSM deploy is fully funded. The rounded-up amounts
+    ///      are wei-exact against POSM's pull. `_reconcile` settles the debt.
     function _flashTakeDeficit(CoreParams memory cp, uint256 amount0, uint256 amount1) internal {
         if (amount0 > cp.budget0) _take(cp.key.currency0, address(this), amount0 - cp.budget0);
         if (amount1 > cp.budget1) _take(cp.key.currency1, address(this), amount1 - cp.budget1);
     }
 
-    /// @dev Settles flash-take debt using held tokens, same-pool swaps, and partial liquidity trimming.
-    ///      Bidirectional: handles both under-conversion (selling surplus token) and over-conversion.
-    /// @return trimmed The amount of liquidity removed by trimming (0 if budget covered deploy).
+    /// @dev Settles the flash-take debt with held tokens, a same-pool swap, then a trim.
+    /// @return trimmed The liquidity removed by the trim.
     function _reconcile(
         CoreParams memory cp,
         uint256 tokenId,
@@ -377,18 +360,18 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         uint160 sqrtUpper
     ) internal returns (uint128 trimmed) {
         bool deficitIsCurrency1;
-        if (a0opt > cp.budget0) deficitIsCurrency1 = false; // Short token0
-        else if (a1opt > cp.budget1) deficitIsCurrency1 = true; // Short token1
-        else return 0; // Holdings already covered deploy; no swap or trim needed.
+        if (a0opt > cp.budget0) deficitIsCurrency1 = false; // short token0
+        else if (a1opt > cp.budget1) deficitIsCurrency1 = true; // short token1
+        else return 0; // the budget covered the deploy, no swap or trim needed
 
         Currency deficit = deficitIsCurrency1 ? cp.key.currency1 : cp.key.currency0;
         Currency surplus = deficitIsCurrency1 ? cp.key.currency0 : cp.key.currency1;
-        bool zeroForOne = deficitIsCurrency1; // Sell surplus to buy deficit
+        bool zeroForOne = deficitIsCurrency1; // sell the surplus to buy the deficit
 
-        // 1. Settle debt using any deficit tokens already held (e.g. fee credits or sweep returns).
+        // 1. Settle with deficit tokens already held.
         _settleToward(deficit);
 
-        // 2. If debt remains, convert remaining surplus to deficit in the pool (exact-input).
+        // 2. If a debt remains, sell the surplus for the deficit token (exact input).
         int256 owed = poolManager.currencyDelta(address(this), deficit);
         if (owed < 0) {
             uint256 surplusBal = surplus.balanceOfSelf();
@@ -399,24 +382,21 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             }
         }
 
-        // 3. If residual deficit remains (due to price impact or fees), trim the position to free tokens.
+        // 3. If price impact or fees left a residual deficit, trim the position to free tokens.
         if (owed < 0) {
             trimmed = _trim(cp, tokenId, lopt, deficitIsCurrency1, uint256(-owed), sqrtLower, sqrtUpper);
             _settleToward(deficit);
         }
 
-        // 4. Take positive delta credits into balance and close deltas.
-        // Leftovers are swept as-is (trimming in-range frees both tokens, so two-token dust is normal).
+        // 4. Take credits and defensively close both deltas.
         _takeCredit(deficit);
-        // Defensive closure: ensure both currency deltas are zero past this line (surplus debt was cleared in step 2).
         _takeCredit(surplus);
         _settleToward(surplus);
     }
 
-    /// @dev Decreases newly added liquidity to free enough deficit tokens to settle outstanding debt.
-    ///      Caps removal at `lopt` so that on increase/compound, existing position principal is never touched.
-    ///      Invariant: Price cannot be past the range's far side (reconcile swap's exact-input sell repays debt
-    ///      before or at exhausting the range because v4 fees charge input; untaxed output covers debt).
+    /// @dev Frees deficit tokens by decreasing the new liquidity, capped at `lopt` so existing
+    ///      principal is never touched. The price cannot be past the range's far side because the
+    ///      reconcile swap's untaxed output repays the debt within the range.
     function _trim(
         CoreParams memory cp,
         uint256 tokenId,
@@ -426,21 +406,18 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         uint160 sqrtLower,
         uint160 sqrtUpper
     ) internal returns (uint128 dl) {
-        // Fresh price read: the reconcile swap (or a hook) moved the price since sizing.
+        // re-read the price, the reconcile swap or a hook moved it since sizing
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(cp.key.toId());
         uint256 liquidityToFree =
             SwapAndAddMath.getLiquidityToFree(sqrtPriceX96, sqrtLower, sqrtUpper, deficitIsCurrency1, amountOut);
-        // Cap trim at the liquidity added in this transaction.
+        // cap the trim at the liquidity added in this transaction
         dl = liquidityToFree >= lopt ? lopt : uint128(liquidityToFree);
         _decrease(cp.key, tokenId, dl, cp.hookData);
     }
 
-    // ───────────────────────────────────────────── POSM / pool actions ─────────────────────────────────────────────
-
-    /// @dev Deploys liquidity via POSM (MINT for new position, INCREASE for existing).
-    ///      Uses CLOSE_CURRENCY on both tokens so positive deltas (e.g. fee credits from hooks or routes
-    ///      trading this pool) are credited to balance rather than reverting SETTLE_PAIR.
-    ///      POSM per-amount slippage limits are maxed because `minLiquidity` on the final post-trim position is the single slippage gate.
+    /// @dev Deploys via POSM MINT_POSITION or INCREASE_LIQUIDITY, with CLOSE_CURRENCY on both
+    ///      tokens so positive deltas credit instead of reverting SETTLE_PAIR. Per-amount slippage
+    ///      limits are maxed, `minLiquidity` is the single slippage gate.
     function _deployLiquidity(CoreParams memory cp, uint128 liquidity, uint256 amount0)
         internal
         returns (uint256 tokenId)
@@ -462,7 +439,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             )
             : abi.encode(tokenId, uint256(liquidity), type(uint128).max, type(uint128).max, cp.hookData);
 
-        // Native pools carry a trailing SWEEP to return unconsumed wei of the forwarded ETH.
+        // native pools carry a trailing SWEEP to return unconsumed wei of the forwarded ETH
         Currency c0 = cp.key.currency0;
         bool isNative = c0.isAddressZero();
         bytes memory actions = isNative
@@ -480,15 +457,15 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         positionManager.modifyLiquiditiesWithoutUnlock{value: isNative ? amount0 : 0}(actions, params);
     }
 
-    /// @dev Executes the Universal Router payload and reclaims any unspent native ETH from the router.
+    /// @dev Executes the Universal Router payload and reclaims unspent native ETH from the router.
     function _executeRoute(CoreParams memory cp) internal {
         (bytes memory commands, bytes[] memory inputs) = abi.decode(cp.route, (bytes, bytes[]));
-        // Forward entire native balance (holds only this operation's native budget / funding).
+        // the contract holds only this operation's native budget
         uint256 value = address(this).balance;
 
         universalRouter.execute{value: value}(commands, inputs);
 
-        // Reclaim any unspent native ETH left in Universal Router (UR balances are permissionlessly sweepable).
+        // router balances are permissionlessly sweepable, reclaim before anyone else can
         if (address(universalRouter).balance > 0) {
             bytes[] memory sweepInputs = new bytes[](1);
             sweepInputs[0] = abi.encode(address(0), ActionConstants.MSG_SENDER, 0);
@@ -496,8 +473,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         }
     }
 
-    /// @dev Burns an existing position and takes both tokens to this contract.
-    ///      POSM `modifyLiquidities` is passed `type(uint256).max` deadline because staleness is already checked by entrypoint modifier.
+    /// @dev Burns a position and takes both tokens. The max POSM deadline is inert, the entrypoint
+    ///      already checked staleness.
     function _burnAndWithdraw(PoolKey memory key, uint256 tokenId, bytes calldata hookData) internal {
         bytes memory actions = abi.encodePacked(uint8(Actions.BURN_POSITION), uint8(Actions.TAKE_PAIR));
         bytes[] memory params = new bytes[](2);
@@ -506,7 +483,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         positionManager.modifyLiquidities(abi.encode(actions, params), type(uint256).max);
     }
 
-    /// @dev Decreases position liquidity (or collects fees when dl == 0) and takes tokens to this contract.
+    /// @dev Decreases liquidity and takes the tokens. A `dl` of 0 only collects fees.
     function _decrease(PoolKey memory key, uint256 tokenId, uint128 dl, bytes memory hookData) internal {
         bytes memory actions = abi.encodePacked(uint8(Actions.DECREASE_LIQUIDITY), uint8(Actions.TAKE_PAIR));
         bytes[] memory params = new bytes[](2);
@@ -515,8 +492,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         positionManager.modifyLiquiditiesWithoutUnlock(actions, params);
     }
 
-    /// @dev Executes a same-pool swap to convert surplus tokens to deficit without price limits.
-    ///      Unbounded because `minLiquidity` is the slippage gate and input amount is strictly bounded by held holdings.
+    /// @dev Swaps without a price limit. Max slippage is fine because callers enforce
+    ///      `minLiquidity` on the final position. Callers MUST check minimum amounts.
     function _swap(PoolKey memory key, bool zeroForOne, int256 amountSpecified, bytes memory hookData) internal {
         poolManager.swap(
             key,
@@ -529,9 +506,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         );
     }
 
-    // ───────────────────────────────────────────── delta / token helpers ─────────────────────────────────────────────
-
-    /// @dev Settles outstanding debt for a currency using held balance.
+    /// @dev Pays min(held, debt) toward the currency's outstanding debt, possibly partially.
     function _settleToward(Currency currency) internal {
         int256 d = poolManager.currencyDelta(address(this), currency);
         if (d >= 0) return;
@@ -541,13 +516,13 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         if (pay > 0) _settle(currency, address(this), pay);
     }
 
-    /// @dev Takes positive currency delta credits from PoolManager into this contract's balance.
+    /// @dev Takes any positive currency delta into this contract's balance.
     function _takeCredit(Currency currency) internal {
         int256 d = poolManager.currencyDelta(address(this), currency);
         if (d > 0) _take(currency, address(this), uint256(d));
     }
 
-    /// @dev Pulls caller budgets and route funding via Permit2/msg.value, validating single native ETH accounting.
+    /// @dev Pulls the caller's budgets and route funding via Permit2 or msg.value.
     function _pull(
         PoolKey memory key,
         uint256 amount0In,
@@ -557,7 +532,6 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     ) internal {
         uint256 expectedValue;
 
-        // Pull route funding tokens (non-pool tokens dedicated to the off-chain route).
         if (funding.length != 0) {
             if (route.length == 0) revert RouteFundingRequiresRoute();
             for (uint256 i = 0; i < funding.length; i++) {
@@ -576,7 +550,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             }
         }
 
-        // Pull pool-token budget: currency0 can be native or ERC-20; currency1 is always ERC-20.
+        // currency0 can be native or ERC-20, currency1 is always ERC-20
         Currency c0 = key.currency0;
         if (c0.isAddressZero()) {
             expectedValue += amount0In;
@@ -587,33 +561,31 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             permit2.transferFrom(msg.sender, address(this), amount1In.toUint160(), Currency.unwrap(key.currency1));
         }
 
-        // Validate msg.value: exactly one native contribution (pool budget OR route funding) is allowed.
         if (msg.value != expectedValue) revert InvalidEthValue();
-        // In multicall batches, verify balance was not already spent by an earlier subcall.
+        // in a multicall batch, an earlier subcall may have already spent the balance
         if (address(this).balance < expectedValue) revert InvalidEthValue();
     }
 
-    /// @dev Sweeps unconsumed route funding tokens to the resolved recipient.
+    /// @dev Sweeps unconsumed route funding tokens to the recipient.
     function _sweepFunding(TokenAmount[] calldata funding, address to) internal {
         for (uint256 i = 0; i < funding.length; i++) {
             _sweep(funding[i].token, to);
         }
     }
 
-    /// @dev Grants standing max Permit2 allowances to POSM and Universal Router if not already configured.
-    ///      Safe because the contract holds no funds at rest and spenders only pull during active calls from `this`.
+    /// @dev Grants standing max Permit2 allowances to POSM and the Universal Router. Safe because
+    ///      the contract holds no funds at rest.
     function _ensureApproved(Currency currency) internal {
         if (currency.isAddressZero()) return;
 
         address token = Currency.unwrap(currency);
-        // Permit2 never decrements a uint160.max allowance, so `permitted` doubles as the init marker; the
-        // uint160.max headroom check on the token allowance heals tokens that decrement infinite approvals.
+        // Permit2 never decrements a uint160.max allowance, so `permitted` doubles as the init marker
         (uint160 permitted,,) = permit2.allowance(address(this), token, address(positionManager));
         uint256 tokenAllowance = ERC20(token).allowance(address(this), address(permit2));
         if (permitted == type(uint160).max && tokenAllowance >= type(uint160).max) return;
 
         if (tokenAllowance != type(uint256).max) {
-            // Reset to 0 first for approve-race tokens like USDT.
+            // reset to 0 first for approve-race tokens like USDT
             if (tokenAllowance != 0) SafeTransferLib.safeApprove(ERC20(token), address(permit2), 0);
             SafeTransferLib.safeApprove(ERC20(token), address(permit2), type(uint256).max);
         }
@@ -636,9 +608,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         if (recipient == address(this) || recipient == address(0)) revert InvalidRecipient(recipient);
     }
 
-    /// @dev Verifies caller authorization (owner or approved operator) and resolves recipient.
-    /// @dev For approved operators, all output is forced to the position owner to prevent misdirection;
-    ///      operators remain trusted regardless (see the interface's Operator Trust Model).
+    /// @dev Verifies that the caller is the owner or an approved operator. Operator output is
+    ///      forced to the owner, though operators remain trusted (see the interface notes).
     function _authAndResolveRecipient(uint256 tokenId, address requested) internal view returns (address) {
         ERC721 posm = ERC721(address(positionManager));
         address owner = posm.ownerOf(tokenId);
