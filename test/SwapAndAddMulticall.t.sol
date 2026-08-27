@@ -19,12 +19,8 @@ import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol"
 import {PositionConfig} from "./shared/PositionConfig.sol";
 import {PosmTestSetup} from "./shared/PosmTestSetup.sol";
 
-/// @notice Multicall on the zap (POSM-style `Multicall_v4`): the flagship flow is `[permitBatch, op]` — wire
-///         the caller's Permit2 allowances from a signature and run the op in ONE transaction. The signer
-///         deliberately holds NO standing Permit2 allowance toward the zap in these tests; only the one-time
-///         token->Permit2 approval. Also pins the msg.value discipline under batching: the ops' exact
-///         `msg.value == expected` checks plus balance-funded native spending make the classic multicall
-///         double-spend impossible — a second native op reverts the whole batch.
+/// @notice Multicall on the zap. Covers the `[permitBatch, op]` flow, which sets Permit2 allowances
+///         from a signature and runs the op in one transaction, and msg.value discipline under batching.
 contract SwapAndAddMulticallTest is PosmTestSetup {
     using StateLibrary for IPoolManager;
     using CurrencyLibrary for Currency;
@@ -60,8 +56,7 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
             deployCode("SwapAndAdd.sol:SwapAndAdd", abi.encode(manager, permit2, lpm, IUniversalRouter(makeAddr("ur"))))
         );
 
-        // the signer holds tokens and the one-time token->Permit2 approvals, but NO Permit2 allowance
-        // naming the zap — the batched permit must supply that from the signature.
+        // the signer has the token->Permit2 approvals but no Permit2 allowance for the zap
         (signer, signerPk) = makeAddrAndKey("signer");
         vm.deal(signer, 10 ether);
         MockERC20(Currency.unwrap(currency0)).mint(signer, 1e30);
@@ -72,11 +67,11 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
         vm.stopPrank();
 
-        // the test contract keeps full allowances for POSM-side setup (minting positions to the signer)
+        // the test contract keeps full allowances for POSM-side setup
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
     }
 
-    // ─────────────────────────────── helpers ───────────────────────────────
+    // helpers
 
     function _addParams(PoolKey memory k, uint256 a0, uint256 a1) internal view returns (ISwapAndAdd.AddParams memory) {
         return ISwapAndAdd.AddParams({
@@ -94,7 +89,7 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         });
     }
 
-    /// @dev PermitBatch naming the zap as spender over the given tokens, nonces read live from Permit2.
+    /// @dev PermitBatch naming the zap as spender over the given tokens. Nonces are read live from Permit2.
     function _batch(address[] memory tokens) internal view returns (IAllowanceTransfer.PermitBatch memory b) {
         IAllowanceTransfer.PermitDetails[] memory details = new IAllowanceTransfer.PermitDetails[](tokens.length);
         for (uint256 i = 0; i < tokens.length; i++) {
@@ -132,7 +127,7 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         return bytes.concat(r, s, bytes1(v));
     }
 
-    /// @dev `[permitBatch(tokens), <opCall>]` — the flagship single-tx approve-and-operate batch.
+    /// @dev Builds the `[permitBatch(tokens), <opCall>]` batch.
     function _permitThen(address[] memory tokens, bytes memory opCall) internal view returns (bytes[] memory calls) {
         IAllowanceTransfer.PermitBatch memory b = _batch(tokens);
         calls = new bytes[](2);
@@ -140,13 +135,13 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         calls[1] = opCall;
     }
 
-    /// @dev Mint a plain POSM position owned by the signer (setup runs as the test contract).
+    /// @dev Mints a plain POSM position owned by the signer.
     function _mintToSigner(PoolKey memory k, uint256 liquidity) internal returns (uint256 tokenId) {
         tokenId = lpm.nextTokenId();
         mint(PositionConfig({poolKey: k, tickLower: -600, tickUpper: 600}), liquidity, signer, "");
     }
 
-    // ─────────────────────────────── happy paths ───────────────────────────────
+    // happy paths
 
     function test_multicall_permitThenAdd_withoutPriorAllowance() public {
         ISwapAndAdd.AddParams memory p = _addParams(key, 1e18, 2e18);
@@ -194,7 +189,7 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
 
         ISwapAndAdd.RebalanceParams memory p = ISwapAndAdd.RebalanceParams({
             tokenId: tokenId,
-            additional0: int128(1e18), // pulled via the batched permit — the part that needs the allowance
+            additional0: int128(1e18), // pulled via the batched permit
             additional1: 0,
             newTickLower: -1200,
             newTickUpper: 1200,
@@ -219,7 +214,7 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
 
     function test_multicall_permitThenAddNative_valueBatch() public {
         ISwapAndAdd.AddParams memory p = _addParams(nativeKey, 1e17, 1e17);
-        // only currency1 needs a Permit2 allowance: currency0 is native and arrives as the batch's msg.value
+        // currency0 is native and arrives as msg.value, so only currency1 needs an allowance
         bytes[] memory calls = _permitThen(_oneToken(currency1), abi.encodeCall(ISwapAndAdd.add, (p)));
         uint256 expectedId = lpm.nextTokenId();
 
@@ -232,8 +227,7 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         assertEq(address(zap).balance, 0, "no native at rest");
     }
 
-    /// @dev The operator-friendly composition: a zero-value batch of ERC20 ops over multiple positions. Every
-    ///      op asserts msg.value == 0, so all-ERC20 batches compose freely; each op sweeps before returning.
+    /// @dev A zero-value batch of ERC20 ops over multiple positions composes freely.
     function test_multicall_zeroValueBatch_composesOps() public {
         uint256 id1 = _mintToSigner(key, 1e21);
         uint256 id2 = _mintToSigner(key, 1e21);
@@ -281,14 +275,12 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "no token1 at rest after the batch");
     }
 
-    // ─────────────────────────────── msg.value discipline ───────────────────────────────
+    // msg.value discipline
 
-    /// @dev THE classic multicall danger, pinned impossible: two native ops each asserting the same msg.value.
-    ///      Both equality checks pass (delegatecall preserves msg.value), but native spending is BALANCE-
-    ///      funded — the first op consumes and sweeps the value, the second finds an empty balance and the
-    ///      whole batch reverts atomically. No double-spend, no partial execution.
+    /// @dev Two native ops see the same msg.value, but native spending is balance-funded. The first
+    ///      op consumes and sweeps the value, so the second reverts the whole batch. No double-spend.
     function test_multicall_secondNativeOp_cannotDoubleSpend() public {
-        // signer has standing allowances here to isolate the value mechanics from the permit flow
+        // standing allowances isolate the value mechanics from the permit flow
         vm.startPrank(signer);
         permit2.approve(Currency.unwrap(currency1), address(zap), type(uint160).max, type(uint48).max);
 
@@ -297,14 +289,13 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         calls[0] = abi.encodeCall(ISwapAndAdd.add, (p));
         calls[1] = abi.encodeCall(ISwapAndAdd.add, (p));
 
-        // the second op must fail CLEARLY (the balance guard in _pullBudget), not deep in the deploy
+        // the second op must fail on the balance guard in _pullBudget
         vm.expectRevert(ISwapAndAdd.InvalidEthValue.selector);
         zap.multicall{value: 1e17}(calls);
         vm.stopPrank();
     }
 
-    /// @dev An ERC20-only op asserts msg.value == 0, so it cannot ride in a value-bearing batch at all:
-    ///      msg.value keeps exactly one meaning per batch.
+    /// @dev An ERC20-only op asserts msg.value == 0, so it cannot run in a value-bearing batch.
     function test_multicall_erc20OpInValueBatch_reverts() public {
         vm.startPrank(signer);
         permit2.approve(Currency.unwrap(currency0), address(zap), type(uint160).max, type(uint48).max);
@@ -319,10 +310,10 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         vm.stopPrank();
     }
 
-    // ─────────────────────────────── failure & adversarial paths ───────────────────────────────
+    // failure and adversarial paths
 
-    /// @dev The permit signature is public in the mempool: anyone can submit it first (burning the nonce but
-    ///      SETTING the allowance). The batched permit swallows that inner revert and the op completes.
+    /// @dev A front-run permit burns the nonce but still sets the allowance. The batched permit
+    ///      swallows the inner revert and the op completes.
     function test_multicall_frontRunPermit_stillSucceeds() public {
         ISwapAndAdd.AddParams memory p = _addParams(key, 1e18, 2e18);
         IAllowanceTransfer.PermitBatch memory b = _batch(_bothTokens());
@@ -341,8 +332,7 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         assertGt(liquidity, 0, "op completes although the permit nonce was already burned");
     }
 
-    /// @dev A garbage signature is swallowed by the forwarder; with no standing allowance the op's own Permit2
-    ///      pull then reverts (fresh allowance slot -> expiration 0 -> AllowanceExpired), bubbled by multicall.
+    /// @dev The forwarder swallows a garbage signature, so the op's own Permit2 pull reverts AllowanceExpired.
     function test_multicall_invalidSignature_revertsOnPull() public {
         ISwapAndAdd.AddParams memory p = _addParams(key, 1e18, 2e18);
         IAllowanceTransfer.PermitBatch memory b = _batch(_bothTokens());
@@ -357,11 +347,9 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         zap.multicall(calls);
     }
 
-    // ─────────────────────────────── equivalence ───────────────────────────────
+    // equivalence
 
-    /// @dev A batched `[permit, add]` must be observationally identical to granting the allowance and calling
-    ///      `add` directly — same tokenId, same liquidity, same reported amounts (delegatecall preserves
-    ///      msg.sender, so the pull and auth context are the caller's own either way).
+    /// @dev A batched `[permit, add]` must match a direct `add` exactly: same tokenId, liquidity, and amounts.
     function testFuzz_multicall_permitThenAdd_matchesDirectCall(uint256 a0, uint256 a1) public {
         a0 = bound(a0, 0, 1e22);
         a1 = bound(a1, 0, 1e22);
@@ -370,7 +358,7 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         ISwapAndAdd.AddParams memory p = _addParams(key, a0, a1);
         bytes[] memory calls = _permitThen(_bothTokens(), abi.encodeCall(ISwapAndAdd.add, (p)));
 
-        // direct path: standing allowances + plain entrypoint
+        // direct path
         uint256 snapshot = vm.snapshotState();
         vm.startPrank(signer);
         permit2.approve(Currency.unwrap(currency0), address(zap), type(uint160).max, type(uint48).max);
@@ -379,7 +367,7 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         vm.stopPrank();
         vm.revertToState(snapshot);
 
-        // batched path: same params through [permitBatch, add]
+        // batched path with the same params
         vm.prank(signer);
         bytes[] memory results = zap.multicall(calls);
         (uint256 wId, uint128 wLiq, uint256 wA0, uint256 wA1) =
@@ -391,7 +379,7 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         assertEq(wA1, dA1, "same amount1");
     }
 
-    // ─────────────────────────────── adversarial mixing & matching ───────────────────────────────
+    // adversarial mixing and matching
 
     function _incParams(uint256 tokenId, uint256 a0, uint256 a1)
         internal
@@ -422,26 +410,21 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         });
     }
 
-    /// @dev THE mixing-and-matching theorem, fuzzed: a batch of N calls must be observationally identical to
-    ///      the same N calls as separate transactions — the batch succeeds iff every sequential call succeeds,
-    ///      per-call returndata is byte-identical, and the final state (wallet balances, position liquidity,
-    ///      next tokenId, empty zap) matches. Any state leaking between subcalls, any msg.sender/value
-    ///      confusion, any partial execution would break one of these equalities. Op kinds, order and budgets
-    ///      are all fuzzed; reverting sequences are part of the domain (batch must then revert too).
+    /// @dev A batch of N calls must match the same N calls as separate transactions: same success or
+    ///      revert, byte-identical returndata, and the same final state. Ops and budgets are fuzzed.
     function testFuzz_multicall_batchEquivalentToSequential(
         uint8[3] memory opSeeds,
         uint88[3] memory b0s,
         uint88[3] memory b1s
     ) public {
-        // standing allowances: this fuzz isolates BATCHING mechanics from the permit flow
+        // standing allowances isolate batching mechanics from the permit flow
         vm.startPrank(signer);
         permit2.approve(Currency.unwrap(currency0), address(zap), type(uint160).max, type(uint48).max);
         permit2.approve(Currency.unwrap(currency1), address(zap), type(uint160).max, type(uint48).max);
         vm.stopPrank();
         uint256 posId = _mintToSigner(key, 1e21);
-        // accrue fees so a first compound/zero-budget-increase has something to deploy; a SECOND one in the
-        // same sequence finds the fees gone and reverts NoFeesToCompound — deliberately in-domain: the batch
-        // must reproduce exactly that failure.
+        // accrue fees so a compound has something to deploy. A second compound in the same
+        // sequence reverts NoFeesToCompound, which is deliberately in-domain.
         swap(key, true, -int256(1e20), "");
         swap(key, false, -int256(1e20), "");
 
@@ -457,7 +440,7 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
 
         uint256 snapshot = vm.snapshotState();
 
-        // PATH A: the same calldata as three separate transactions
+        // path A: the same calldata as three separate transactions
         bool seqAllOk = true;
         bytes[] memory seqResults = new bytes[](3);
         for (uint256 i = 0; i < 3; i++) {
@@ -481,7 +464,7 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         }
         vm.revertToState(snapshot);
 
-        // PATH B: the same calldata as one batch
+        // path B: the same calldata as one batch
         vm.prank(signer);
         try zap.multicall(calls) returns (bytes[] memory results) {
             assertTrue(seqAllOk, "batch succeeded although a sequential call failed");
@@ -499,14 +482,13 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         }
     }
 
-    /// @dev Atomicity: a failing later subcall rolls back everything an earlier one did — no minted position,
-    ///      no consumed funds, no partial state.
+    /// @dev A failing later subcall rolls back everything an earlier one did.
     function test_multicall_laterFailureRollsBackEarlierOps() public {
         vm.startPrank(signer);
         permit2.approve(Currency.unwrap(currency0), address(zap), type(uint160).max, type(uint48).max);
         permit2.approve(Currency.unwrap(currency1), address(zap), type(uint160).max, type(uint48).max);
         vm.stopPrank();
-        // a position the signer is NOT authorized for
+        // a position the signer is not authorized for
         uint256 foreignId = lpm.nextTokenId();
         mint(PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600}), 1e21, makeAddr("someoneElse"), "");
 
@@ -525,10 +507,8 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         assertEq(lpm.nextTokenId(), nextBefore, "add's mint was not rolled back");
     }
 
-    /// @dev Mixing OTHER PEOPLE's permits into a batch grants nothing: a victim's (mempool-public) permit
-    ///      signature sets the VICTIM's allowance, while every pull in the batch draws from msg.sender — the
-    ///      attacker. With no allowance of their own the attacker's op reverts; with their own allowance it
-    ///      spends only their own funds. Either way the victim's balances are untouchable through the batch.
+    /// @dev A victim's permit mixed into a batch grants nothing: every pull draws from msg.sender,
+    ///      so the funds of the victim stay untouched.
     function test_multicall_victimPermitInBatch_cannotTouchVictimFunds() public {
         IAllowanceTransfer.PermitBatch memory victimPermit = _batch(_bothTokens());
         bytes memory victimSig = _sign(victimPermit, signerPk); // signer plays the victim
@@ -550,12 +530,12 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         calls[0] = abi.encodeCall(IPermit2Forwarder.permitBatch, (signer, victimPermit, victimSig));
         calls[1] = abi.encodeCall(ISwapAndAdd.add, (p));
 
-        // attacker has no allowance of their own: the victim's permit does not stand in for it
+        // the attacker has no allowance of their own
         vm.prank(attacker);
         vm.expectRevert(abi.encodeWithSelector(IAllowanceTransfer.AllowanceExpired.selector, 0));
         zap.multicall(calls);
 
-        // with their own allowance the batch runs — on the attacker's OWN funds exclusively
+        // with their own allowance the batch runs, funded from the attacker's own wallet
         vm.startPrank(attacker);
         permit2.approve(Currency.unwrap(currency0), address(zap), type(uint160).max, type(uint48).max);
         permit2.approve(Currency.unwrap(currency1), address(zap), type(uint160).max, type(uint48).max);
@@ -568,12 +548,11 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         assertLt(currency0.balanceOf(attacker), attC0, "the add was funded by the attacker");
     }
 
-    /// @dev An approved operator batching over the owner's position gains nothing from the batch: the
-    ///      grow op's output is forced to the OWNER (recipient resolution), and the operator's own op in the
-    ///      same batch is funded solely from the operator's wallet. The operator's balances can only go down.
+    /// @dev An operator gains nothing from batching over the owner's position: grow output resolves
+    ///      to the owner, and the operator's own op is funded from the operator's wallet.
     function test_multicall_operatorBatch_cannotRedirectOwnerValue() public {
         uint256 ownerPos = _mintToSigner(key, 1e21);
-        // accrue owner fees — the value an operator might try to redirect
+        // accrue owner fees
         swap(key, true, -int256(1e20), "");
         swap(key, false, -int256(1e20), "");
 
@@ -589,7 +568,7 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         vm.prank(signer);
         IERC721(address(lpm)).setApprovalForAll(operator, true);
 
-        // the operator asks for itself as recipient everywhere it can
+        // the operator asks for itself as recipient
         ISwapAndAdd.CompoundParams memory comp = _compParams(ownerPos);
         comp.recipient = operator; // ignored: resolved to the owner for an operator caller
         ISwapAndAdd.AddParams memory ownAdd = _addParams(key, 1e18, 1e18);
@@ -613,8 +592,7 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "token1 at rest");
     }
 
-    /// @dev An operator batching ERC-20 operations for multiple owners produces the exact same outcomes
-    ///      as executing them sequentially. (Native ETH batches can only fund one operation).
+    /// @dev An operator batch of ERC-20 ops for two owners matches sequential execution exactly.
     function test_multicall_operatorBatch_twoOwners_attributionMatchesSequential() public {
         address alice = makeAddr("alice");
         address bob = makeAddr("bob");
@@ -622,7 +600,7 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         mint(PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600}), 1e21, alice, "");
         uint256 posB = lpm.nextTokenId();
         mint(PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600}), 1e21, bob, "");
-        // accrue fees to both positions so the compound has substance
+        // accrue fees to both positions
         swap(key, true, -int256(1e20), "");
         swap(key, false, -int256(1e20), "");
 
@@ -659,7 +637,7 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         }
     }
 
-    /// @dev Owner-attribution snapshot: both owners' token balances and position liquidities.
+    /// @dev Snapshot of the token balances and position liquidities of both owners.
     function _ownerState(address alice, address bob, uint256 posA, uint256 posB)
         internal
         view
@@ -691,7 +669,7 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         vm.stopPrank();
     }
 
-    /// @dev Nested multicall composes with the same semantics — no context is gained or lost one level down.
+    /// @dev Nested multicall composes with the same semantics.
     function test_multicall_nestedBatch_behavesLikeFlat() public {
         ISwapAndAdd.AddParams memory p = _addParams(key, 1e18, 2e18);
         bytes[] memory inner = _permitThen(_bothTokens(), abi.encodeCall(ISwapAndAdd.add, (p)));
@@ -704,8 +682,7 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         assertEq(IERC721(address(lpm)).ownerOf(expectedId), signer, "nested batch minted to the signer");
     }
 
-    /// @dev compound is non-payable: it cannot ride in a value-bearing batch at all (delegatecall preserves
-    ///      msg.value, the non-payable dispatch guard sees it and reverts).
+    /// @dev compound is non-payable, so it cannot run in a value-bearing batch.
     function test_multicall_compoundInValueBatch_reverts() public {
         uint256 tokenId = _mintToSigner(key, 1e21);
         bytes[] memory calls = new bytes[](1);
@@ -716,9 +693,8 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         zap.multicall{value: 1}(calls);
     }
 
-    /// @dev Value attached to a batch no op consumes strands as an unsolicited donation (documented in the
-    ///      MULTICALL/ETH NOTES) and becomes part of the next native operation's sweep — never a third party's
-    ///      claim through allowances.
+    /// @dev Batch value that no op consumes strands in the contract as a donation. The sweep of the
+    ///      next native op hands it to the recipient of that op.
     function test_multicall_permitsOnlyValueBatch_strandsAsDonation() public {
         IAllowanceTransfer.PermitBatch memory b = _batch(_oneToken(currency1));
         bytes[] memory calls = new bytes[](1);
@@ -729,7 +705,6 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         zap.multicall{value: donation}(calls);
         assertEq(address(zap).balance, donation, "unconsumed batch value rests in the contract");
 
-        // the next native op's sweep hands it to that op's recipient (donation doctrine)
         uint256 balBefore = signer.balance;
         ISwapAndAdd.AddParams memory p = _addParams(nativeKey, 1e17, 1e17);
         vm.prank(signer);

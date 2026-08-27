@@ -15,22 +15,13 @@ import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
 import {PosmTestSetup} from "./shared/PosmTestSetup.sol";
 
-/// @notice Behavioral fuzzed pins for SwapAndAdd math that need a live pool (the pure-math surface is
-///         covered directly in SwapAndAddMath.t.sol against the extracted library):
-///
-///         1. Fee-aware sizing accuracy: the dust returned by an add must stay price-impact-small across
-///            fee tiers and budget splits. This is the one test that FAILS if the fee discount in
-///            getLiquidityFeeAware is broken or removed — every other suite tolerates the resulting
-///            over-mint because the trim claws it back and conservation still holds; only the dust (fee *
-///            swapped amount, clawed back to the recipient) betrays the regression. Verified discriminating
-///            by neutering the discount in src and watching this fail.
-///
-///         2. Extreme-tick full deployment: single-sided budgets must deploy >= 99.9% of feasible liquidity
-///            end-to-end at any tick, exercising both numeraire branches of the sizing through the contract.
+/// @notice Behavioral fuzz pins that need a live pool (pure-math coverage is in SwapAndAddMath.t.sol):
+///         fee-aware sizing keeps the add dust price-impact-small, and single-sided budgets deploy
+///         >= 99.9% of feasible liquidity at any tick.
 contract SwapAndAddMathFuzzTest is PosmTestSetup {
     using CurrencyLibrary for Currency;
 
-    // ─────────────────────── 1. fee-aware sizing accuracy: dust-tightness fuzz ───────────────────────
+    // fee-aware sizing: dust-tightness fuzz
 
     ISwapAndAdd zap;
     address dustRecipient = makeAddr("dustRecipient");
@@ -46,10 +37,8 @@ contract SwapAndAddMathFuzzTest is PosmTestSetup {
         permit2.approve(Currency.unwrap(currency1), address(zap), type(uint160).max, type(uint48).max);
     }
 
-    /// @dev With the fee discount exact, add's dust is only the reconcile swap's price impact plus rounding —
-    ///      bounded well below 10bps for budgets <= 3e20 against 1e24 pool liquidity. With the discount broken
-    ///      the over-mint is trimmed back and the fee on the swapped amount (up to 10% of ~half the budget)
-    ///      lands in the dust instead, blowing through the bound from ~0.25bps of regression upward.
+    /// @dev With an exact fee discount the dust stays below 10bps for budgets <= 3e20 against 1e24 pool
+    ///      liquidity. A broken discount pushes the swap fee into the dust and breaks the bound.
     function testFuzz_add_feeAware_dustStaysImpactSmall(uint24 feeSeed, uint256 b0Seed, uint256 b1Seed) public {
         uint24 fee = uint24(bound(feeSeed, 5000, 100_000)); // 0.5% .. 10%
         uint256 b0 = bound(b0Seed, 0, 3e20);
@@ -80,23 +69,22 @@ contract SwapAndAddMathFuzzTest is PosmTestSetup {
         );
         assertGt(liq, 0, "position minted");
 
-        // dust = everything the fresh recipient received; valued at the (still ~1) pool price
+        // dust = everything the recipient received, valued at the ~1 pool price
         uint256 dustValue = currency0.balanceOf(dustRecipient) + currency1.balanceOf(dustRecipient);
         uint256 budgetValue = b0 + b1;
         assertLe(dustValue * 10_000, budgetValue * 10, "dust exceeded 10bps: fee-aware sizing is inaccurate");
     }
 
-    // ─────────────────── 2. extreme-tick sizing: token1 mirror of the token0 fuzz ───────────────────
+    // extreme-tick sizing: token1 mirror of the token0 fuzz
 
-    /// @dev single-sided token1 (range fully below spot) must deploy >= 99.9% of the feasible liquidity at any
-    ///      tick — the mirror of testFuzz_add_extremeTick_fullDeployment, exercising the price<1 numeraire
-    ///      branch of getLiquidityForAmountsWeighted with token1 budgets.
+    /// @dev Single-sided token1 (range fully below spot) must deploy >= 99.9% of feasible liquidity at
+    ///      any tick, through the price<1 numeraire branch.
     function testFuzz_add_extremeTick_token1_fullDeployment(int24 tick, uint256 exp) public {
         tick = int24((bound(int256(tick), -799990, 800000) / 10) * 10);
         uint256 b1 = 10 ** bound(exp, 6, 30);
         uint160 spl = TickMath.getSqrtPriceAtTick(tick - 60);
         uint160 spu = TickMath.getSqrtPriceAtTick(tick);
-        // uint256 replica of getLiquidityForAmount1 to pre-filter oversized/degenerate combos
+        // replica of getLiquidityForAmount1 to pre-filter degenerate combos
         uint256 expected = FullMath.mulDiv(b1, FixedPoint96.Q96, spu - spl);
         vm.assume(expected >= 1e6 && expected < 1e33);
 

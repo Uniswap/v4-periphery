@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.24;
 
-/// @notice ERC-20 whose approve returns NOTHING (USDT-style): decoding a declared bool return reverts, so
-///         integrations must use a return-tolerant approve. transfer/transferFrom stay standard so the test
-///         plumbing (liquidity routers, settle paths) is unaffected — SwapAndAdd only calls approve directly.
+/// @notice ERC-20 whose approve returns nothing, which simulates USDT.
 contract MockERC20ApproveNoReturn {
     string public constant name = "ApproveNoReturn";
     string public constant symbol = "ANR";

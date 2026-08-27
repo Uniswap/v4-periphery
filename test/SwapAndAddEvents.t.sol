@@ -14,10 +14,7 @@ import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol"
 import {PositionConfig} from "./shared/PositionConfig.sol";
 import {PosmTestSetup} from "./shared/PosmTestSetup.sol";
 
-/// @notice Every operation emits exactly one op-level event whose fields MIRROR its return values, with the
-///         portfolio-relevant keys indexed (recipient, tokenIds) and the caller as data — callers can always
-///         enumerate their own transactions; recipients cannot. Events are checked against the actual returns
-///         via recorded logs, so the pins hold for any pool state.
+/// @notice Each operation emits exactly one event whose fields mirror its return values.
 contract SwapAndAddEventsTest is PosmTestSetup {
     using StateLibrary for IPoolManager;
     using CurrencyLibrary for Currency;
@@ -45,7 +42,7 @@ contract SwapAndAddEventsTest is PosmTestSetup {
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
     }
 
-    // ─────────────────────────────── helpers ───────────────────────────────
+    // ------------------------------- helpers -------------------------------
 
     function _addParams(uint256 a0, uint256 a1) internal view returns (ISwapAndAdd.AddParams memory) {
         return ISwapAndAdd.AddParams({
@@ -63,7 +60,7 @@ contract SwapAndAddEventsTest is PosmTestSetup {
         });
     }
 
-    /// @dev the single log this contract emitted (all other logs come from other addresses).
+    /// @dev Returns the single log that the zap emitted.
     function _zapLog() internal returns (Vm.Log memory) {
         Vm.Log[] memory logs = vm.getRecordedLogs();
         uint256 found = type(uint256).max;
@@ -84,7 +81,7 @@ contract SwapAndAddEventsTest is PosmTestSetup {
         swap(key, false, -int256(1e20), "");
     }
 
-    // ─────────────────────────────── pins ───────────────────────────────
+    // ------------------------------- pins -------------------------------
 
     function test_add_emitsAdded_mirroringReturns() public {
         vm.recordLogs();
@@ -192,7 +189,7 @@ contract SwapAndAddEventsTest is PosmTestSetup {
         assertEq(e1, a1, "amount1 mirrors return");
     }
 
-    /// @dev an operator's event carries the RESOLVED recipient (the owner), not the operator's request.
+    /// @dev For an operator, the event carries the owner as the recipient.
     function test_increase_byOperator_eventCarriesOwnerAsRecipient() public {
         uint256 tokenId = _mintWithFees(address(this));
         address operator = makeAddr("operator");
@@ -213,7 +210,7 @@ contract SwapAndAddEventsTest is PosmTestSetup {
                 route: "",
                 routeFunding: new ISwapAndAdd.TokenAmount[](0),
                 minLiquidityAdded: 1,
-                recipient: operator, // ignored: resolved to the owner
+                recipient: operator, // ignored, resolved to the owner
                 hookData: "",
                 deadline: block.timestamp + 1
             })

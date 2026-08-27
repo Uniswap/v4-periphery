@@ -15,19 +15,9 @@ import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
 import {PosmTestSetup} from "./shared/PosmTestSetup.sol";
 
-/// @notice FAR-EDGE PROBE — referee for the claimed div-by-zero/underflow in `_trim` when the reconcile sell
-///         lands the price exactly on (or past) the range's far edge with debt still owed.
-///
-///         The counter-argument it tests: the sell's average execution price is the geometric mean of the
-///         traversed sqrt-prices — always worse than spot in the sell direction — while the fee-aware sizing
-///         hands the sell a surplus whose NET value equals the debt at SPOT. Worse-than-spot execution on a
-///         spot-sized budget can never afford the full-range extraction that reaching the far edge requires,
-///         so on hookless pools the post-sell price stays STRICTLY inside the far edge whenever a trim runs.
-///
-///         If that argument is wrong anywhere in the user-reachable input space, this suite goes red with a
-///         raw revert (FullMath's bare require or Panic 0x11) — which is then the regression for the fix.
-///         fee = 0 is included deliberately: no fee cushion, the surplus is exactly spot-sized, the tightest
-///         possible approach to the edge.
+/// @notice The reconcile sell must never land the price on or past the range's far edge with debt still
+///         owed, which raw-reverts in `_trim`. Worse-than-spot execution on a spot-sized surplus keeps
+///         the post-sell price strictly inside the far edge on hookless pools.
 contract SwapAndAddFarEdgeTest is PosmTestSetup {
     using StateLibrary for IPoolManager;
     using CurrencyLibrary for Currency;
@@ -47,9 +37,7 @@ contract SwapAndAddFarEdgeTest is PosmTestSetup {
         MockERC20(Currency.unwrap(currency0)).mint(address(this), 1e40);
         MockERC20(Currency.unwrap(currency1)).mint(address(this), 1e40);
 
-        // deep UNRELATED reserve pool: keeps the flash-take clear of the documented PoolManager-drained
-        // limit (the take needs PM-wide reserves); its fee/spacing never collide with the probe pools and it
-        // is never swapped through, so it cannot affect the probe pool's far-edge dynamics.
+        // deep unrelated reserve pool backs the flash-take. Its key never collides with the probe pools.
         (PoolKey memory rk,) = initPool(currency0, currency1, IHooks(address(0)), 500_000, int24(200), SQRT_PRICE_1_1);
         modifyLiquidityRouter.modifyLiquidity(
             rk,
@@ -58,17 +46,15 @@ contract SwapAndAddFarEdgeTest is PosmTestSetup {
         );
     }
 
-    /// @dev fresh pool at tick 0; the zap's own mint is (near-)all the liquidity — the config where the
-    ///      reconcile sell chews through the position's own range and gets closest to the far edge.
+    /// @dev fresh pool at tick 0. The zap's own mint is (near-)all the liquidity, the config that gets
+    ///      the sell closest to the far edge.
     function _pool(uint24 fee, int24 spacing, uint128 extLiquidity) internal returns (PoolKey memory k) {
         k = PoolKey({
             currency0: currency0, currency1: currency1, fee: fee, tickSpacing: spacing, hooks: IHooks(address(0))
         });
         manager.initialize(k, TickMath.getSqrtPriceAtTick(0));
         if (extLiquidity > 0) {
-            // a dust-thin external band across the whole domain: breaks the scale-invariance between the
-            // surplus and the position (so budget size genuinely varies the landing point) while adding
-            // almost no output to the sell
+            // a dust-thin full-domain band breaks the scale-invariance so budget size varies the landing point
             modifyLiquidityRouter.modifyLiquidity(
                 k,
                 ModifyLiquidityParams({
@@ -99,8 +85,7 @@ contract SwapAndAddFarEdgeTest is PosmTestSetup {
         });
     }
 
-    /// @dev run one add; only clean outcomes are allowed. On success with the price in-range at start, the
-    ///      post-op price must sit STRICTLY inside both edges (the far-edge invariant, observable form).
+    /// @dev run one add. On success the post-op price must sit strictly inside both edges.
     function _probe(PoolKey memory k, int24 tl, int24 tu, uint256 b0, uint256 b1) internal {
         try zap.add(_addP(k, tl, tu, b0, b1)) returns (uint256, uint128 liq, uint256, uint256) {
             assertGt(liq, 0);
@@ -118,10 +103,8 @@ contract SwapAndAddFarEdgeTest is PosmTestSetup {
 
     uint24 private feeNonce;
 
-    /// @dev deterministic grid over the tightest configs: (near-)zero fee = no cushion, thin spacing,
-    ///      single-sided budgets in both directions, with and without the scale-breaking external band.
-    ///      Each cell gets a unique pool via a few pips of fee nonce (immaterial to the tightness argument;
-    ///      the pool key has no salt, so identical fee+spacing would collide).
+    /// @dev grid over the tightest configs (zero fee has no fee cushion). The fee nonce keeps the pool
+    ///      keys unique.
     function test_farEdge_gridSweep_neverRawReverts() public {
         uint24[3] memory fees = [uint24(0), 500, 3000];
         int24[3] memory widths = [int24(60), 600, 6000];
@@ -137,8 +120,7 @@ contract SwapAndAddFarEdgeTest is PosmTestSetup {
             }
         }
 
-        // narrowest legal geometry — tickSpacing 1, ranges 1..5 ticks per side, near-zero fee: the quadratic
-        // impact margin is smallest here, so integer rounding is most of what separates the sell from the edge
+        // narrowest legal geometry (tickSpacing 1, 1..5 ticks per side), where the impact margin is smallest
         int24[3] memory narrow = [int24(1), 2, 5];
         for (uint256 n = 0; n < 3; n++) {
             for (uint256 e = 0; e < 2; e++) {
@@ -150,8 +132,7 @@ contract SwapAndAddFarEdgeTest is PosmTestSetup {
         }
     }
 
-    /// @dev the hunt: fuzzed budgets/widths/fees over the same config family. Any far-edge landing shows up
-    ///      as a raw revert (div-by-zero at equality, Panic 0x11 past it) and fails the outcome-class check.
+    /// @dev fuzzed budgets, widths, and fees. A far-edge landing shows up as a raw revert.
     function testFuzz_farEdge_neverRawReverts(
         uint256 b0,
         uint256 b1,

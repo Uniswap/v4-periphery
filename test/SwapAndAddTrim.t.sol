@@ -15,21 +15,9 @@ import {MockSwapRoute} from "./mocks/MockSwapRoute.sol";
 import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
 
-/// @notice Regression suite for `_trim`'s token->liquidity inverse. The pre-fix code computed the trim with
-///         floor-rounding library math plus "+1 liquidity unit": the token0 inverse floors an intermediate
-///         value whose truncation is scaled by the amount, so the under-trim error is unbounded in the amount
-///         and single-sided token1 budgets reverted CurrencyNotSettled at real sizes (from ~6.4 tokens on a
-///         price-1e-9 pool; pinned here at 4.4e30 on a price-1 pool). The fixed inverse rounds UP on every
-///         division over `amountOut + 1`, so an uncapped trim always frees the debt.
-///
-///         The only remaining failure is the pool's own mint/burn rounding toll (~1 wei/side kept on any
-///         mint->decrease round trip): budgets within a few wei of that toll cannot settle no matter how much
-///         is trimmed. There the trim caps at the full just-added liquidity, the added liquidity is 0, and any
-///         non-zero `minLiquidity` floor surfaces it as InsufficientLiquidity; only a zero floor (the explicit
-///         opt-out) still sees v4's CurrencyNotSettled. Both pinned below.
-///
-///         NOTE the mechanism-hiding price: at price exactly 1 the floored intermediate has zero truncation,
-///         so price-1 tests alone can never catch a trim under-estimate — hence the low-price pins.
+/// @notice Regression suite for the token->liquidity inverse of `_trim`. The inverse must round up so
+///         an uncapped trim always frees the flash debt. At price 1 the floored intermediate has zero
+///         truncation, so the low-price pins are the load-bearing cases.
 contract SwapAndAddTrimTest is PosmTestSetup {
     using CurrencyLibrary for Currency;
 
@@ -111,7 +99,7 @@ contract SwapAndAddTrimTest is PosmTestSetup {
         }
     }
 
-    // ── the SCALE regime: single-sided token1 at real size — the pre-fix High ───────────────────────────
+    // scale regime: single-sided token1 at real size
 
     function test_trim_largeSingleSidedToken1_succeeds() public {
         PoolKey memory k = _pool(100, 60, SQRT_PRICE_1_1, 1e34);
@@ -122,15 +110,13 @@ contract SwapAndAddTrimTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "no funds at rest (1)");
     }
 
-    /// @dev the operational case from the finding: a price-1e-9 pool (high-supply token vs WETH shape) broke
-    ///      single-sided token1 adds from ~6.4 tokens. Price 1 hides the bug (zero intermediate truncation),
-    ///      so this low-price sweep is the load-bearing regression.
+    /// @dev single-sided token1 adds on a price ~1e-9 pool, where intermediate truncation is largest
     function test_trim_lowPricePool_singleSidedSweep() public {
         int24 centre = -207_240; // price ~1e-9, multiple of the spacing
         PoolKey memory k = _pool(3000, 30, TickMath.getSqrtPriceAtTick(centre), 1e27);
 
-        // top tier bounded by the PM's own reserves: at price 1e-9 the token0 flash-take is ~1e9x the token1
-        // budget, and taking more than the PM holds across all pools is the separate, documented PoolManager-drained limit.
+        // the top tier stays under the reserves of the PoolManager: at this price the token0
+        // flash-take is ~1e9x the token1 budget
         uint256[5] memory amounts = [uint256(1e18), 6.4e18, 20e18, 1_000e18, 5_000e18];
         for (uint256 i = 0; i < amounts.length; i++) {
             uint256 snap = vm.snapshotState();
@@ -143,10 +129,9 @@ contract SwapAndAddTrimTest is PosmTestSetup {
         }
     }
 
-    // ── the DUST regime: budgets within the pool's ~1-wei mint/burn rounding toll ───────────────────────
+    // dust regime: budgets within the pool's ~1-wei mint/burn rounding toll
 
-    /// @dev with any non-zero minLiquidity the capped trim (added liquidity fully removed) hits the floor and
-    ///      surfaces as the contract's own InsufficientLiquidity — never v4's CurrencyNotSettled.
+    /// @dev in the dust regime a non-zero floor surfaces the contract's own InsufficientLiquidity
     function test_trim_dustRegime_floorSurfacesInsufficientLiquidity() public {
         PoolKey memory k = _pool(500, 1, SQRT_PRICE_1_1, 1e24);
         (bool r, bytes4 sel,) = _try(k, -10, 6000, 259, 0, 1);
@@ -154,8 +139,7 @@ contract SwapAndAddTrimTest is PosmTestSetup {
         assertEq(sel, ISwapAndAdd.InsufficientLiquidity.selector, "non-zero floor must surface InsufficientLiquidity");
     }
 
-    /// @dev a zero floor is the documented opt-out: the unsettled rounding toll then surfaces as v4's
-    ///      CurrencyNotSettled at the end of the unlock. Pinned so a behavior change is noticed.
+    /// @dev a zero floor is the documented opt-out: the rounding toll surfaces as v4's CurrencyNotSettled
     function test_trim_dustRegime_zeroFloorSurfacesCurrencyNotSettled() public {
         PoolKey memory k = _pool(500, 1, SQRT_PRICE_1_1, 1e24);
         (bool r, bytes4 sel,) = _try(k, -10, 6000, 259, 0, 0);
@@ -163,7 +147,7 @@ contract SwapAndAddTrimTest is PosmTestSetup {
         assertEq(sel, CURRENCY_NOT_SETTLED, "zero floor lets CurrencyNotSettled surface");
     }
 
-    // ── happy-path sweep: the fix must not regress anything that already worked ─────────────────────────
+    // happy-path sweep across ranges and budgets
 
     function test_trim_happyPathSweep() public {
         PoolKey memory k = _pool(500, 10, SQRT_PRICE_1_1, 1e24);
@@ -191,7 +175,7 @@ contract SwapAndAddTrimTest is PosmTestSetup {
         }
     }
 
-    // ── fuzz: with a non-zero floor, CurrencyNotSettled is unreachable from the rounding domain ─────────────
+    // fuzz: with a non-zero floor, CurrencyNotSettled is unreachable from the rounding domain
 
     PoolKey fuzzKeyMid;
     PoolKey fuzzKeyLow;
@@ -213,8 +197,7 @@ contract SwapAndAddTrimTest is PosmTestSetup {
         uint256 x1 = uint256(b1);
         if (x0 == 0 && x1 == 0) return;
         (bool r,,) = _try(k, tl, tu, x0, x1, 1);
-        // the zap may legitimately revert for other reasons (dust floor, sizing overflow, ...) but with a
-        // non-zero floor never with CurrencyNotSettled.
+        // other reverts (dust floor, sizing overflow, and so on) are legitimate, CurrencyNotSettled is not
         if (r) {
             (, bytes4 sel,) = _try(k, tl, tu, x0, x1, 1);
             assertTrue(sel != CURRENCY_NOT_SETTLED, "left a currency unsettled despite floor");

@@ -12,18 +12,17 @@ import {SwapAndAdd} from "../src/SwapAndAdd.sol";
 import {IPositionManager} from "../src/interfaces/IPositionManager.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
 
-/// @notice Deploys the patched Universal Router (feat/v4-swap-within-existing-unlock, submodule @ cf27fb66e5)
-///         and SwapAndAdd wired to it. The CANONICAL UR cannot be used: routed operations execute V4_SWAP
-///         inside SwapAndAdd's already-open PoolManager unlock, which the canonical router rejects
-///         (AlreadyUnlocked). Until that UR feature ships canonically, every SwapAndAdd deployment carries
-///         its own router instance.
+/// @notice Deploys SwapAndAdd with the patched Universal Router
+///         (feat/v4-swap-within-existing-unlock, submodule commit cf27fb66e5). The canonical router
+///         rejects V4_SWAP inside SwapAndAdd's already-open unlock (AlreadyUnlocked), so each
+///         deployment carries its own router.
 ///
-///         Run (simulate):  FOUNDRY_PROFILE=integration forge script script/DeploySwapAndAdd.s.sol \
-///                            --rpc-url sepolia
-///         Run (broadcast): add  --broadcast --private-key $DEPLOYER_KEY   (or --account <keystore>)
+///         Simulate:  FOUNDRY_PROFILE=integration forge script script/DeploySwapAndAdd.s.sol \
+///                      --rpc-url sepolia
+///         Broadcast: add --broadcast --account <keystore>
 ///
-///         Sepolia parameters mirror the official universal-router DeploySepolia.s.sol; PoolManager, POSM and
-///         Permit2 re-verified onchain (cast code) 2026-07-13.
+///         Sepolia parameters mirror universal-router DeploySepolia.s.sol, re-verified onchain
+///         with cast code on 2026-07-13.
 contract DeploySwapAndAdd is Script {
     struct ChainParams {
         address poolManager;
@@ -40,9 +39,8 @@ contract DeploySwapAndAdd is Script {
 
     function run() external {
         ChainParams memory c = _params(block.chainid);
-        // Reuse an already-deployed patched router (built from the SAME universal-router submodule commit)
-        // by passing ROUTER=<address>; the router is the expensive half of the deployment and the zap only
-        // needs its address. Unset -> deploy a fresh router pair as before.
+        // ROUTER=<address> reuses a deployed patched router (same submodule commit). Unset
+        // deploys a fresh one.
         address existingRouter = vm.envOr("ROUTER", address(0));
 
         vm.startBroadcast();
@@ -80,7 +78,7 @@ contract DeploySwapAndAdd is Script {
     }
 
     function _params(uint256 chainid) internal pure returns (ChainParams memory) {
-        // Sepolia — source: universal-router script/deployParameters/DeploySepolia.s.sol (submodule cf27fb66e5)
+        // Sepolia. Source: universal-router script/deployParameters/DeploySepolia.s.sol (submodule cf27fb66e5)
         if (chainid == 11155111) {
             return ChainParams({
                 poolManager: 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543,

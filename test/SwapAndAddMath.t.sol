@@ -10,17 +10,14 @@ import {ProtocolFeeLibrary} from "@uniswap/v4-core/src/libraries/ProtocolFeeLibr
 import {LiquidityAmounts} from "../src/libraries/LiquidityAmounts.sol";
 import {SwapAndAddMath} from "../src/libraries/SwapAndAddMath.sol";
 
-/// @notice Focused tests for the pure SwapAndAddMath library. Everything here runs against the library
-///         directly — no pool, no fixture — so the domains are the full sqrt-price space rather than what a
-///         test pool can reach. Behavioral proofs that need a live pool (fee-aware dust tightness, extreme-tick
-///         deployment) stay in SwapAndAddMathFuzz.t.sol; end-to-end trim behavior stays in SwapAndAddTrim.t.sol.
+/// @notice Unit tests for the pure SwapAndAddMath library over the full sqrt-price domain.
+///         Pool-dependent behavior lives in SwapAndAddMathFuzz.t.sol and SwapAndAddTrim.t.sol.
 contract SwapAndAddMathTest is Test {
     uint256 constant PIPS = 1e6;
 
-    // ─────────────────────────── getAmountsForLiquidity: round-up amounts ───────────────────────────
+    // getAmountsForLiquidity: round-up amounts
 
-    /// @dev Branch selection: below range is token0-only, above is token1-only, in-range is both,
-    ///      and unsorted bounds are normalized.
+    /// @dev Below range is token0 only, above is token1 only, in range is both, unsorted bounds normalize.
     function test_getAmountsForLiquidity_branches() public pure {
         uint160 sl = TickMath.getSqrtPriceAtTick(-600);
         uint160 su = TickMath.getSqrtPriceAtTick(600);
@@ -43,10 +40,8 @@ contract SwapAndAddMathTest is Test {
         assertEq(a1s, a1, "unsorted bounds normalized (amount1)");
     }
 
-    /// @dev The round-up amounts sit within one wei above an independent round-down oracle across the full
-    ///      domain — catches branch-boundary mistakes (<= vs <) as well as rounding-direction slips. The
-    ///      oracle is clamp-formulated (token0 spans [max(sp,sa), sb], token1 spans [sa, min(sp,sb)]) rather
-    ///      than an if/else chain, so it does not mirror the implementation's structure.
+    /// @dev The round-up amounts must sit within one wei above a clamp-formulated round-down oracle:
+    ///      token0 spans [max(sp,sa), sb], token1 spans [sa, min(sp,sb)].
     function testFuzz_getAmountsForLiquidity_withinOneWeiAboveRoundDown(
         uint160 spSeed,
         uint160 aSeed,
@@ -69,10 +64,9 @@ contract SwapAndAddMathTest is Test {
         assertLe(up1, down1 + 1, "amount1 rounding differs by more than one wei");
     }
 
-    // ──────────────────── getLiquidityForAmountsWeighted: value-weighted sizing ────────────────────
+    // getLiquidityForAmountsWeighted: value-weighted sizing
 
-    /// @dev Single-sided token1 budget with the range fully below spot: the weighted sizing must agree with
-    ///      v4's direct getLiquidityForAmount1 (the value detour through the numeraire cancels out).
+    /// @dev Range fully below spot with a token1 budget: weighted sizing must match getLiquidityForAmount1.
     function testFuzz_weighted_singleSidedToken1_matchesDirectFormula(
         int24 tlSeed,
         int24 widthSeed,
@@ -90,13 +84,12 @@ contract SwapAndAddMathTest is Test {
         vm.assume(rawFeasible >= 1e6 && rawFeasible < type(uint128).max);
         uint128 feasible = LiquidityAmounts.getLiquidityForAmount1(sl, su, b1);
 
-        // the numeraire conversion rounds down on both the reference and the budget, so the deviation from
-        // the direct formula is a few wei in either direction, relative-bounded by the reference's magnitude
+        // numeraire rounding allows a few wei of deviation in either direction
         uint128 sized = SwapAndAddMath.getLiquidityForAmountsWeighted(sp, sl, su, 0, b1, PIPS, PIPS);
         assertApproxEqAbs(sized, feasible, feasible / 1e6 + 2, "weighted deviates from direct single-sided token1");
     }
 
-    /// @dev Single-sided token0 mirror: range fully above spot vs v4's direct getLiquidityForAmount0.
+    /// @dev Token0 mirror: range fully above spot must match getLiquidityForAmount0.
     function testFuzz_weighted_singleSidedToken0_matchesDirectFormula(
         int24 tlSeed,
         int24 widthSeed,
@@ -119,9 +112,8 @@ contract SwapAndAddMathTest is Test {
         assertApproxEqAbs(sized, feasible, feasible / 1e6 + 2, "weighted deviates from direct single-sided token0");
     }
 
-    /// @dev In-range mediant property: the value-weighted size lies between the two single-token feasibility
-    ///      ratios (b0-only over [sp,su] and b1-only over [sl,sp]). Fails if either side's valuation is
-    ///      mis-weighted — the pure-level counterpart of the behavioral dust fuzz.
+    /// @dev Mediant property: the weighted size lies between the two single-token ratios
+    ///      (b0 over [sp,su], b1 over [sl,sp]).
     function testFuzz_weighted_inRange_liesBetweenSingleTokenRatios(
         int24 tickSeed,
         int24 widthSeed,
@@ -149,7 +141,7 @@ contract SwapAndAddMathTest is Test {
         assertGe(sized + minL / 1e6 + 2, minL, "weighted below the smaller single-token ratio");
     }
 
-    /// @dev Growing either budget never shrinks the sized liquidity.
+    /// @dev A larger budget never shrinks the sized liquidity.
     function testFuzz_weighted_monotonicInBudgets(
         int24 tickSeed,
         int24 widthSeed,
@@ -181,9 +173,9 @@ contract SwapAndAddMathTest is Test {
         assertEq(SwapAndAddMath.getLiquidityForAmountsWeighted(sp, sl, su, 0, 0, PIPS, PIPS), 0);
     }
 
-    // ─────────────────────────── getLiquidityFeeAware: directional discount ───────────────────────────
+    // getLiquidityFeeAware: directional discount
 
-    /// @dev With zero fees the fee-aware entry collapses to the plain weighted sizing exactly.
+    /// @dev With zero fees the fee-aware sizing equals the weighted sizing exactly.
     function testFuzz_feeAware_zeroFee_equalsWeighted(int24 tickSeed, int24 widthSeed, uint256 b0Seed, uint256 b1Seed)
         public
         pure
@@ -203,10 +195,7 @@ contract SwapAndAddMathTest is Test {
         );
     }
 
-    /// @dev The discount only ever shrinks the size: discounting the surplus side lowers the budget's value
-    ///      by a larger fraction than the reference's (the budget is surplus-heavy by definition). Fails if
-    ///      the discount lands on the deficit side instead — a percent-scale error, far above the wei-scale
-    ///      rounding tolerance. Budgets are kept above dust so value-conversion rounding cannot dominate.
+    /// @dev The fee discount never grows the size. Budgets stay above dust so rounding cannot dominate.
     function testFuzz_feeAware_neverExceedsUndiscounted(
         int24 tickSeed,
         int24 widthSeed,
@@ -232,8 +221,8 @@ contract SwapAndAddMathTest is Test {
         assertLe(feeAware, mid + mid / 1e9 + 2, "fee discount increased the sized liquidity");
     }
 
-    /// @dev The discount uses the swap fee of the direction the reconcile will actually trade: token0 surplus
-    ///      sells token0 (zeroForOne fee), token1 surplus sells token1 (oneForZero fee).
+    /// @dev The discount uses the swap fee of the reconcile direction: token0 surplus uses the zeroForOne
+    ///      fee, token1 surplus uses the oneForZero fee.
     function test_feeAware_usesDirectionalProtocolFee() public pure {
         uint160 sp = TickMath.getSqrtPriceAtTick(0);
         uint160 sl = TickMath.getSqrtPriceAtTick(-600);
@@ -259,9 +248,9 @@ contract SwapAndAddMathTest is Test {
         );
     }
 
-    // ──────────────────────────── getLiquidityToFree: the trim inverse ────────────────────────────
+    // getLiquidityToFree: the trim inverse
 
-    /// @dev what v4 actually frees for `dl` (round DOWN, the pool's favour)
+    /// @dev the token0 amount a burn of `dl` frees (v4 rounds down)
     function freed0(uint160 lo, uint160 su, uint128 dl) internal pure returns (uint256) {
         return SqrtPriceMath.getAmount0Delta(lo, su, dl, false);
     }
@@ -270,26 +259,23 @@ contract SwapAndAddMathTest is Test {
         return SqrtPriceMath.getAmount1Delta(sl, hi, dl, false);
     }
 
-    /// @dev Full-domain fuzz: burning the round-up `dl` must free >= amountOut under v4's round-DOWN burn.
-    ///      Passing sp == sl makes the price clamp pass-through so [lo, su] is fuzzed directly.
+    /// @dev A burn of the round-up `dl` must free >= amountOut. sp == sl makes the clamp a pass-through.
     function testFuzz_toFree_token0_neverUnderFrees(uint160 loSeed, uint160 suSeed, uint256 amountSeed) public pure {
         uint160 lo = uint160(bound(loSeed, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE - 1));
         uint160 su = uint160(bound(suSeed, uint256(lo) + 1, TickMath.MAX_SQRT_PRICE));
-        // the debt is CORRELATED with the geometry in-contract: it can never exceed what a max-liquidity
-        // position holds in token0 over [lo, su]. (Uncorrelated hugeness makes the inverse's mulDiv overflow
-        // and revert — reachable only in an astronomically boundary-pinned state; see the library note.)
+        // the in-contract debt never exceeds what a max-liquidity position holds over [lo, su]
         uint256 maxDebt = SqrtPriceMath.getAmount0Delta(lo, su, type(uint128).max, false);
-        if (maxDebt == 0) return; // no token0 exists in this sliver of geometry — nothing to invert
+        if (maxDebt == 0) return; // no token0 exists in this geometry
         uint256 amountOut = bound(amountSeed, 1, maxDebt);
 
         uint256 dlUp = SwapAndAddMath.getLiquidityToFree(lo, lo, su, false, amountOut);
-        // the cap path (dlUp >= lopt) is the dust regime, pinned separately; here pin the inverse
+        // the dust regime (cap path) is pinned separately
         if (dlUp > type(uint128).max) return;
 
         assertGe(freed0(lo, su, uint128(dlUp)), amountOut, "round-up inverse must never under-free token0");
     }
 
-    /// @dev Token1 mirror; sp == su makes the clamp pass-through so [sl, hi] is fuzzed directly.
+    /// @dev Token1 mirror. sp == su makes the clamp a pass-through.
     function testFuzz_toFree_token1_neverUnderFrees(uint160 slSeed, uint160 hiSeed, uint128 amountSeed) public pure {
         uint160 sl = uint160(bound(slSeed, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE - 1));
         uint160 hi = uint160(bound(hiSeed, uint256(sl) + 1, TickMath.MAX_SQRT_PRICE));
@@ -301,8 +287,7 @@ contract SwapAndAddMathTest is Test {
         assertGe(freed1(sl, hi, uint128(dlUp)), amountOut, "round-up inverse must never under-free token1");
     }
 
-    /// @dev A price outside the range clamps to the boundary: below the range the token0 side spans the full
-    ///      range; above it the token1 side does.
+    /// @dev A price outside the range clamps to the boundary.
     function test_toFree_priceClampsToRangeBoundary() public pure {
         uint160 sl = TickMath.getSqrtPriceAtTick(-600);
         uint160 su = TickMath.getSqrtPriceAtTick(600);
@@ -319,17 +304,14 @@ contract SwapAndAddMathTest is Test {
         );
     }
 
-    /// @dev the PREVIOUS (broken) token0 trim: floor conversion, then +1 liquidity unit. Kept as the
-    ///      historical counter-spec the shipped inverse replaced.
+    /// @dev counter-spec: floor conversion then +1 liquidity unit, which under-frees at scale
     function oldDl0(uint160 lo, uint160 su, uint256 amountOut, uint128 lopt) internal pure returns (uint128 dl) {
         dl = LiquidityAmounts.getLiquidityForAmount0(lo, su, amountOut);
         dl = dl >= lopt ? lopt : dl + 1;
     }
 
-    /// @dev Why the old formula broke at scale: exact replay of a reverting-add trace (post-swap price
-    ///      tick 4, range upper tick 60, ~4.5e26 residual token0 debt). "+1 unit of LIQUIDITY" is not
-    ///      "+1 wei of TOKEN": one liquidity unit is worth `2^96*(su-lo)/(su*lo)` wei of token0, far below
-    ///      one wei for narrow ranges, while the floored conversion's error SCALES with the amount.
+    /// @dev One liquidity unit is worth `2^96*(su-lo)/(su*lo)` wei of token0, far below one wei in a
+    ///      narrow range, so the floor-plus-one inverse under-frees at scale.
     function test_toFree_oldFormula_freesOneWeiTooLittleAtScale() public pure {
         uint160 lo = 79244399350305758162296141626;
         uint160 su = TickMath.getSqrtPriceAtTick(60);
@@ -341,7 +323,6 @@ contract SwapAndAddMathTest is Test {
         uint256 got = freed0(lo, su, dl);
         assertEq(amountOut - got, 1, "the old trim frees EXACTLY one wei less than the debt");
 
-        // one unit of liquidity is worth far less than one wei of token0 here -> "+1" was a no-op economically
         assertEq(freed0(lo, su, 1), 0, "1 unit of liquidity frees 0 wei of token0 in this range");
 
         // the shipped inverse covers it
@@ -350,19 +331,17 @@ contract SwapAndAddMathTest is Test {
         assertGe(freed0(lo, su, uint128(dlNew)), amountOut, "shipped inverse covers the debt");
     }
 
-    /// @dev The dust regime is NOT a formula error: the pool's own mint-up/burn-down rounding keeps the wei,
-    ///      so no inverse — however exact — can free it. (This is what a non-zero minLiquidity floor surfaces
-    ///      as InsufficientLiquidity; see SwapAndAddTrim.t.sol.)
+    /// @dev Dust regime: mint rounds up and burn rounds down, so no inverse can free the toll wei.
+    ///      A non-zero minLiquidity floor surfaces this as InsufficientLiquidity.
     function test_toFree_dustRegime_mintRoundsUpBurnRoundsDownToZero() public pure {
         uint160 sp = TickMath.getSqrtPriceAtTick(0);
         uint160 sl = TickMath.getSqrtPriceAtTick(-10);
         uint128 lopt = 997;
 
-        // the mint pulls 1 wei of token1 (rounded up); burning the SAME liquidity returns 0 (rounded down)
         assertEq(SqrtPriceMath.getAmount1Delta(sl, sp, lopt, true), 1, "MINT requires 1 wei of token1");
         assertEq(SqrtPriceMath.getAmount1Delta(sl, sp, lopt, false), 0, "BURN returns 0 wei of token1");
 
-        // even the exact round-up inverse asks for more liquidity than exists -> the lopt cap must bite
+        // the exact inverse needs more liquidity than exists, so the lopt cap bites
         assertGt(SwapAndAddMath.getLiquidityToFree(sp, sl, sp, true, 1), lopt, "toll wei needs more than was added");
 
         // the same asymmetry on token0: 259 in, 258 out
@@ -370,9 +349,7 @@ contract SwapAndAddMathTest is Test {
         assertEq(SqrtPriceMath.getAmount0Delta(sp, TickMath.getSqrtPriceAtTick(6000), lopt, false), 258);
     }
 
-    /// @dev The shipped inverse never under-frees: widths x amounts x price levels, including the low-price
-    ///      levels where the old formula's error exploded and non-boundary prices where the intermediate
-    ///      truncates. (Price level tick 0 is the blind spot; kept for coverage.)
+    /// @dev Grid sweep: the inverse never under-frees across widths, amounts, and price levels.
     function test_toFree_shippedInverse_neverUnderFrees() public pure {
         int24[5] memory bases = [int24(0), int24(-100_000), int24(-207_240), int24(-400_000), int24(200_000)];
         int24[5] memory widths = [int24(1), int24(2), int24(60), int24(600), int24(6000)];
@@ -383,7 +360,7 @@ contract SwapAndAddMathTest is Test {
                 uint160 lo = TickMath.getSqrtPriceAtTick(bases[b]);
                 uint160 su = TickMath.getSqrtPriceAtTick(bases[b] + widths[w]);
                 uint160 sl = TickMath.getSqrtPriceAtTick(bases[b] - widths[w]);
-                // a non-boundary price inside the range: truncation is maximal off the exact tick prices
+                // a non-boundary price inside the range, where the intermediate truncates
                 uint160 mid = lo + uint160(uint256(keccak256(abi.encode(b, w))) % uint256(su - lo));
                 if (mid <= lo) mid = lo + 1;
 
@@ -414,9 +391,8 @@ contract SwapAndAddMathTest is Test {
         assertGe(freed1(sl, hi, uint128(dl)), a, "token1 inverse under-freed");
     }
 
-    /// @dev Pin for the documented informational limit: with the price within sqrt-units of sqrtUpper and an
-    ///      enormous token0 debt outstanding, the inverse's final mulDiv result exceeds uint256 and reverts —
-    ///      self-inflicted, atomic, transient. Unreachable through the contract without a returns-delta hook.
+    /// @dev Documented limit: a price within sqrt-units of sqrtUpper plus an enormous token0 debt
+    ///      overflows the inverse's final mulDiv and reverts.
     function test_toFree_revertsAtDocumentedFarEdge() public {
         uint160 su = TickMath.MAX_SQRT_PRICE;
         uint160 lo = su - 1;
