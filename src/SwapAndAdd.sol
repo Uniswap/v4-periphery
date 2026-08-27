@@ -637,7 +637,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     }
 
     /// @dev Verifies caller authorization (owner or approved operator) and resolves recipient.
-    ///      For approved operators, all output is forced to the position owner to prevent value redirection.
+    /// @dev For approved operators, all output is forced to the position owner to prevent misdirection;
+    ///      operators remain trusted regardless (see the interface's Operator Trust Model).
     function _authAndResolveRecipient(uint256 tokenId, address requested) internal view returns (address) {
         ERC721 posm = ERC721(address(positionManager));
         address owner = posm.ownerOf(tokenId);

@@ -32,8 +32,9 @@ import {IMulticall_v4} from "./IMulticall_v4.sol";
 ///      - Position Approvals: For `rebalance`, `increase`, and `compound`, caller authorization is checked
 ///        (owner or approved operator) AND this contract must be ERC-721 approved on the position via POSM
 ///        (`approve` or `setApprovalForAll`), as POSM authorizes position modifications against the zap as locker.
-///      - Operator Trust Model: When an approved operator calls `rebalance`, `increase`, or `compound`, all output
-///        (new NFT, cash-out, swept dust) is forced to the position owner to prevent value redirection.
+///      - Operator Trust Model: For operator calls, all outputs (new NFT, cash-out, dust) are forced to the position
+///        owner. This prevents accidental misdirection, though operators remain trusted since they set the `route`
+///        and `minLiquidity` (and already have full custody on POSM).
 ///      - Unsupported Pools: Pools with hooks returning deltas (`BEFORE_SWAP_RETURNS_DELTA`, `AFTER_SWAP_RETURNS_DELTA`,
 ///        `AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA`, `AFTER_ADD_LIQUIDITY_RETURNS_DELTA`) break settlement conservation
 ///        and are rejected upfront with `UnsupportedHookPermissions`. Dynamic fee, gating, and oracle hooks are supported.
@@ -42,8 +43,9 @@ import {IMulticall_v4} from "./IMulticall_v4.sol";
 ///      - HookData Reuse: The same `hookData` payload is passed to all hook callbacks in the operation; single-use
 ///        payload schemes are unsupported.
 ///      - Multicall & Native ETH: Supports multicall with Permit2 forwarding (`permitBatch` + op). Because all subcalls
-///        share `msg.value`, an ETH-bearing batch fails, even if combined with ERC20-only subcalls. Zero-value batches compose 
-///        freely across multiple positions; batch native operations using WETH or separate transactions.
+///        share `msg.value`, an ETH-bearing batch supports only a single operation — adding further ops (ERC20-only
+///        included) reverts. Zero-value batches compose freely across multiple positions; batch native operations
+///        using WETH or separate transactions.
 interface ISwapAndAdd is IMulticall_v4 {
     /// @notice Emitted when a new position is minted via `add`.
     event Added(
