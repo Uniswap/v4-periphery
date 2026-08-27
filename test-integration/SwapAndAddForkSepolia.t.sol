@@ -22,20 +22,18 @@ import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol"
 
 import {Commands} from "universal-router/contracts/libraries/Commands.sol";
 
-/// @notice Sepolia-FORK integration against the LIVE deployment — nothing is deployed here except the test
-///         pool's mock tokens; the zap and its patched Universal Router are the actual onchain bytecode
-///         (broadcast @ block 11521953 (zap; router reused from block 11276910), script/DeploySwapAndAdd.s.sol). Pools are created fresh in the fork
-///         and seeded through the zap itself (first-LP on an empty pool is a supported flow), so the tests
-///         are deterministic and independent of whatever thin liquidity Sepolia happens to have.
+/// @notice Sepolia fork test against the live deployment. The zap (block 11521953) and the patched
+///         Universal Router (block 11276910) are the onchain bytecode from script/DeploySwapAndAdd.s.sol.
+///         The tests create and seed fresh pools, so they do not depend on existing Sepolia liquidity.
 ///         Run: FOUNDRY_PROFILE=integration forge test --match-contract SwapAndAddForkSepoliaTest
 contract SwapAndAddForkSepoliaTest is Test {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
 
-    // ── live Sepolia deployment (chore(SwapAndAdd): deploy zap + patched UR to Sepolia) ──
+    // live Sepolia deployment (chore(SwapAndAdd): deploy zap + patched UR to Sepolia)
     address constant ZAP = 0x6f923892d6A45f7e77DB36f48F055C045F93E979;
     address constant UR = 0x44518461733Fd7f5DC5996facB405CF659108Ea2;
-    // ── canonical Sepolia protocol addresses (verified in script/DeploySwapAndAdd.s.sol) ──
+    // canonical Sepolia protocol addresses, verified in script/DeploySwapAndAdd.s.sol
     address constant POOL_MANAGER = 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543;
     address constant POSM = 0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4;
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
@@ -113,13 +111,13 @@ contract SwapAndAddForkSepoliaTest is Test {
         });
     }
 
-    /// @dev first LP through the live zap itself: two-sided in-ratio on the empty pool.
+    /// @dev First LP through the live zap itself: a two-sided in-ratio add on the empty pool.
     function _seed(PoolKey memory k) internal returns (uint256 tokenId, uint128 liq) {
         uint256 v = Currency.unwrap(k.currency0) == address(0) ? 50e18 : 0;
         (tokenId, liq,,) = zap.add{value: v}(_addParams(k, 50e18, 50e18, ""));
     }
 
-    // ─────────────────────────── live-bytecode behavior, no route ───────────────────────────
+    // live-bytecode behavior, no route
 
     function test_forkSepolia_add_firstLiquidity_emptyPool() public {
         (uint256 tokenId, uint128 liq) = _seed(key);
@@ -149,10 +147,9 @@ contract SwapAndAddForkSepoliaTest is Test {
         assertEq(tokenB.balanceOf(ZAP), 0, "zap token == 0");
     }
 
-    // ─────────────────────────── routed: V4_SWAP inside the zap's unlock, on the LIVE patched UR ───────────────
+    // routed: V4_SWAP inside the zap's unlock, on the live patched UR
 
-    /// @dev The single most important live assertion: the deployed UR accepts V4_SWAP within the zap's
-    ///      already-open unlock (the canonical UR reverts AlreadyUnlocked here).
+    /// @dev The deployed UR accepts V4_SWAP within the zap's open unlock (the canonical UR reverts AlreadyUnlocked).
     function test_forkSepolia_add_viaLiveURRoute() public {
         _seed(key);
         bytes memory route = _v4SwapRoute(key, false, 4e18, key.currency1, key.currency0);
@@ -163,7 +160,7 @@ contract SwapAndAddForkSepoliaTest is Test {
         assertEq(tokenB.balanceOf(ZAP), 0, "zap token1 == 0");
     }
 
-    // ─────────────────────────── rebalance + compound on live bytecode ───────────────────────────
+    // rebalance + compound on live bytecode
 
     function test_forkSepolia_rebalance_full() public {
         (uint256 tokenId,,,) = zap.add(_addParams(key, 50e18, 50e18, ""));
@@ -210,8 +207,7 @@ contract SwapAndAddForkSepoliaTest is Test {
         assertEq(tokenB.balanceOf(ZAP), 0, "zap token1 == 0");
     }
 
-    /// @dev seed, then generate real fees with a round-trip swap executed directly on the LIVE UR (standalone
-    ///      mode: it opens its own unlock) — also covers the deployed router's plain-swap path.
+    /// @dev Seed, then earn real fees with a round-trip swap directly on the live UR.
     function _seedAndEarnFees() internal returns (uint256 tokenId, uint128 liq, uint256 feesSwapped) {
         (tokenId, liq) = _seed(key);
         (bytes memory c1, bytes[] memory i1) =
@@ -249,28 +245,18 @@ contract SwapAndAddForkSepoliaTest is Test {
         return abi.encode(commands, inputs);
     }
 
-    // ── real Trading API route fixture ──
-    // Fetched via /v1/quote + /v1/swap with swapper = the LIVE zap and the public
-    // x-universal-router-version: 2.2.0 header: 50e6 USDC -> WETH. The header matters: the API encodes
-    // actions for the requested router ABI generation, and this deployment's router is built from a
-    // v2.2-line UR revision. Refreshed 2026-08-19 for the redeployed zap (the route embeds the swapper as
-    // recipient, so the fixture is address-bound): TAPI currently serves this pair through a v3 pool only
-    // (no v4 leg offered even with protocols=[V4]) and BEST_PRICE 500s on Sepolia, so this is the FASTEST
-    // route — an OFF-VENUE (v3) leg feeding a v4 deploy; the nested-V4_SWAP-in-unlock property is covered
-    // by SwapAndAddRoute.t.sol. Bytes are the verbatim /v1/swap "data" tail (selector stripped):
-    // abi.encode(commands, inputs, deadline), pinned to the quote's block so the route's own
-    // amountOutMinimum stays satisfiable forever. Refresh via script/fetch-tapi-route.sh.
+    // TAPI route fixture: 50e6 USDC -> WETH through a v3 pool, pinned to the quote's block.
+    // Fetched 2026-08-19 via script/fetch-tapi-route.sh with swapper = the live zap (the route is address-bound).
     address constant USDC = 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238;
     address constant WETH = 0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14;
     uint256 constant TAPI_FIXTURE_BLOCK = 11521987;
     bytes constant TAPI_EXECUTE_TAIL =
         hex"000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000006a85a4c6000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000001400000000000000000000000006f923892d6a45f7e77db36f48f055c045f93e9790000000000000000000000000000000000000000000000000000000002faf080000000000000000000000000000000000000000000000000000778a21c40fea000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000002b1c7d4b196cb0c7b01d743fbc6116a902379c7238000064fff9976782d46cc05630d1f6ebab18b2324d6b140000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000756e69780000d7ff01b6";
 
-    /// @dev The full production flow with verbatim TAPI calldata: real route executed by the live zap on
-    ///      the live UR, deploying into the real v4 pool the route also swaps through.
+    /// @dev Full production flow: the live zap executes verbatim TAPI calldata on the live UR.
     function test_forkSepolia_add_viaRealTapiRoute() public {
         string memory forkUrl = vm.envOr("SEPOLIA_FORK_URL", string(""));
-        vm.skip(bytes(forkUrl).length == 0); // pinned block needs archive state; skip on public RPC
+        vm.skip(bytes(forkUrl).length == 0); // the pinned block needs archive state, so skip on the public RPC
         vm.createSelectFork(forkUrl, TAPI_FIXTURE_BLOCK);
 
         (bytes memory commands, bytes[] memory inputs,) = abi.decode(TAPI_EXECUTE_TAIL, (bytes, bytes[], uint256));

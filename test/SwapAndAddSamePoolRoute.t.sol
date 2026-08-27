@@ -23,9 +23,7 @@ interface IERC20Min {
     function transfer(address to, uint256 amt) external returns (bool);
 }
 
-/// @notice A route that swaps in the TARGET pool (exactly what a real Universal Router v4 leg does when the
-///         off-chain router picks the same pool). Pulls its declared input from the caller via Permit2, swaps,
-///         settles its own input debt and takes its own output straight to the caller.
+/// @notice A route that swaps in the target pool, like a Universal Router v4 leg through the same pool.
 contract MockSamePoolRoute {
     using CurrencyLibrary for Currency;
 
@@ -71,19 +69,9 @@ contract MockSamePoolRoute {
     }
 }
 
-/// @notice Regression: `increase`/`compound` with a route leg through the SAME pool accrues LP fees to the
-///         position between the callback's collect prologue and `_deployLiquidity`'s liquidity action. POSM applies
-///         `liquidityDelta + feesAccrued` to its own delta, so a fee credit exceeding that side's principal
-///         makes the delta POSITIVE — the previous `SETTLE_PAIR` asserted a debt and reverted
-///         `DeltaNotNegative`, bricking a route shape the contract advertises as supported. `_deployLiquidity` now
-///         closes each currency with `CLOSE_CURRENCY`, which settles a debt or takes a credit.
-///
-///         Where the credited fees END UP: taken into this contract's balance AFTER sizing, so they cannot
-///         grow the position beyond the already-fixed optimistic size. The reconcile spends them on the flash
-///         debt first (avoiding a trim), and the remainder is swept to the resolved recipient. So fees accrued
-///         DURING an operation are refunded, not compounded — measured below. Fees accrued BEFORE the
-///         operation are unaffected: the prologue collect puts them in the budget ahead of sizing, so they
-///         are still fully reinvested, which is what `compound` promises.
+/// @notice A route leg through the target pool accrues LP fees to the position mid-operation, which can
+///         turn a POSM delta positive. `_deployLiquidity` closes each currency with `CLOSE_CURRENCY`, so
+///         the credit is taken and refunded after sizing. Fees accrued before the operation still compound.
 contract SwapAndAddSamePoolRouteTest is PosmTestSetup {
     using StateLibrary for IPoolManager;
     using CurrencyLibrary for Currency;
@@ -107,12 +95,12 @@ contract SwapAndAddSamePoolRouteTest is PosmTestSetup {
         MockERC20(Currency.unwrap(currency0)).approve(address(permit2), type(uint256).max);
         MockERC20(Currency.unwrap(currency1)).approve(address(permit2), type(uint256).max);
 
-        // target pool: 10% LP fee, spot ABOVE the position's range (tick 1200 > TU), no other liquidity
+        // target pool: 10% LP fee, spot above the position's range (tick 1200 > TU), no other liquidity
         (targetKey,) = initPool(
             currency0, currency1, IHooks(address(0)), 100_000, int24(60), TickMath.getSqrtPriceAtTick(int24(1200))
         );
 
-        // deep reserve pool in an UNRELATED pool so the flash-take always finds PoolManager-wide reserves
+        // deep reserves in an unrelated pool so the flash-take always finds PoolManager-wide liquidity
         (PoolKey memory rk,) = initPool(currency0, currency1, IHooks(address(0)), 500, int24(10), SQRT_PRICE_1_1);
         modifyLiquidityRouter.modifyLiquidity(
             rk,
@@ -135,26 +123,22 @@ contract SwapAndAddSamePoolRouteTest is PosmTestSetup {
         return abi.encode(bytes(hex"00"), inputs);
     }
 
-    /// @dev A route leg that trades the target pool and drives spot into the position's own range accrues LP
-    ///      fees far exceeding the increase's principal on the deficit side (here 13x). Before the fix this
-    ///      reverted DeltaNotNegative(currency0). Now the deploy takes the credit, the reconcile spends what
-    ///      it needs on the flash debt, and the rest is refunded to the recipient.
+    /// @dev A same-pool route leg drives spot into the range of the position and accrues fees ~13x the
+    ///      deficit-side principal. The deploy takes the credit and the surplus is refunded.
     function test_increase_samePoolRouteLeg_completesAndRefundsFeeCredit() public {
-        // 1. the position, minted straight through POSM (spot is above TU: pure token1)
+        // the position, minted straight through POSM (spot above TU: pure token1)
         PositionConfig memory cfg = PositionConfig({poolKey: targetKey, tickLower: TL, tickUpper: TU});
         uint256 tokenId = lpm.nextTokenId();
         mint(cfg, L_POS, address(this), "");
 
-        // 2. the caller's route: sell token0 into the same pool. Spot free-falls from tick 1200 to TU=600
-        //    (no liquidity in between), then eats ~10 ticks into the position's own range: every wei of LP fee
-        //    on that leg accrues to THIS position — ~13x the increase's token0 principal pull.
+        // the route sells token0 into the same pool. Spot falls from tick 1200 into the range of the
+        // position, so every LP fee on the leg accrues to this position.
         uint256 routeIn = 5.4e20;
         route.config(targetKey, true, routeIn);
 
         uint256 c0Before = currency0.balanceOf(address(this));
         uint256 c1Before = currency1.balanceOf(address(this));
 
-        // same budget, same pool, swap leg runs through the target pool: the pre-fix DeltaNotNegative case.
         (uint128 added,,) = zap.increase(
             ISwapAndAdd.IncreaseParams({
                 tokenId: tokenId,
@@ -174,9 +158,7 @@ contract SwapAndAddSamePoolRouteTest is PosmTestSetup {
         uint256 refunded = routeIn - (c0Before - currency0.balanceOf(address(this)));
 
         assertGt(added, 0, "increase must complete with a same-pool route leg");
-        // the fee credit is refunded to the recipient — not stranded, not burned. It arrives AFTER sizing;
-        // step 1 spends what the flash debt needs (~1/13 here) and the remainder comes straight back — the
-        // reconcile swap is SKIPPED (credit retired the debt), so no swap output pads the refund any more.
+        // the fee credit funds the flash debt first (~1/13 here) and the remainder is refunded, not compounded
         assertLt(refunded, accruedFee, "part of the credit funded the flash debt");
         assertGt(refunded, (accruedFee * 85) / 100, "the bulk of the credit is refunded");
         // no funds at rest, and the position NFT never moved
@@ -186,10 +168,8 @@ contract SwapAndAddSamePoolRouteTest is PosmTestSetup {
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "owner keeps the NFT");
     }
 
-    /// @dev When the route-accrued fee credit alone retires the flash debt in reconcile step 1, step 2's
-    ///      sell-all buys nothing the operation needs: it pays the pool fee converting the token1 surplus into
-    ///      token0 that is immediately refunded, and re-denominates the refund (contradicting the sweep
-    ///      doctrine). With the guard, the swap is skipped and the surplus comes back in its OWN token.
+    /// @dev When the fee credit alone retires the flash debt, the reconcile swap is skipped and the
+    ///      token1 surplus comes back in its own denomination.
     function test_increase_creditRetiresDebt_skipsGratuitousSwap() public {
         PositionConfig memory cfg = PositionConfig({poolKey: targetKey, tickLower: TL, tickUpper: TU});
         uint256 tokenId = lpm.nextTokenId();
@@ -214,8 +194,7 @@ contract SwapAndAddSamePoolRouteTest is PosmTestSetup {
         );
         assertGt(added, 0, "increase completes");
 
-        // the credit (13x the deficit) fully retires the flash debt in step 1, so no reconcile swap may run:
-        // the token1 surplus must be refunded AS token1, not converted through the pool at a 10% fee
+        // the credit retires the flash debt, so no reconcile swap runs and the surplus comes back as token1
         assertGt(currency1.balanceOf(address(this)), c1Before, "surplus refunded in its own denomination");
         assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");

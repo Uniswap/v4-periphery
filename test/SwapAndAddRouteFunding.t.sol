@@ -15,10 +15,8 @@ import {MockSwapRoute} from "./mocks/MockSwapRoute.sol";
 import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
 
-/// @notice `routeFunding` — zap-in from arbitrary (non-pool) tokens. The entries are pulled up front, exist
-///         solely as route input, and whatever the route leaves unconsumed is swept to the RESOLVED recipient
-///         (operator leftovers forced to the owner). The core (sizing, reconcile, trim) never sees the funding
-///         token: only the post-route pool-token balances.
+/// @notice `routeFunding`: zap-in from arbitrary non-pool tokens. Entries feed the route, unconsumed
+///         amounts sweep to the resolved recipient, and the core only sees pool-token balances.
 contract SwapAndAddRouteFundingTest is PosmTestSetup {
     using CurrencyLibrary for Currency;
 
@@ -27,7 +25,7 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
     MockERC20 tokenX;
     address recipient;
 
-    /// @dev abi.encode(bytes commands, bytes[] inputs) — a non-empty route payload the mock ignores.
+    /// @dev abi.encode(bytes commands, bytes[] inputs), a non-empty route payload the mock ignores.
     bytes ROUTE_PAYLOAD = abi.encode(bytes(""), new bytes[](0));
 
     function setUp() public {
@@ -47,17 +45,17 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         permit2.approve(Currency.unwrap(currency0), address(zap), type(uint160).max, type(uint48).max);
         permit2.approve(Currency.unwrap(currency1), address(zap), type(uint160).max, type(uint48).max);
 
-        // the arbitrary input token: not a currency of any pool involved
+        // arbitrary input token, not a pool currency
         tokenX = new MockERC20("Arbitrary", "X", 18);
         tokenX.mint(address(this), 1e30);
         tokenX.approve(address(permit2), type(uint256).max);
         permit2.approve(address(tokenX), address(zap), type(uint160).max, type(uint48).max);
 
-        // route inventory: the mock pays out pool tokens for whatever input it consumes
+        // route inventory: the mock pays out pool tokens for consumed input
         MockERC20(Currency.unwrap(currency0)).mint(address(route), 1e24);
         MockERC20(Currency.unwrap(currency1)).mint(address(route), 1e24);
 
-        // deep reserve pool so the flash-take never hits the (unrelated) PoolManager-drained revert
+        // deep reserve pool backs the flash-take
         (PoolKey memory rk,) = initPool(currency0, currency1, IHooks(address(0)), 10000, int24(200), SQRT_PRICE_1_1);
         modifyLiquidityRouter.modifyLiquidity(
             rk,
@@ -68,7 +66,7 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         recipient = makeAddr("recipient");
     }
 
-    // ── helpers ─────────────────────────────────────────────────────────────────────────────────────────
+    // helpers
 
     function _funding(address token, uint256 amount) internal pure returns (ISwapAndAdd.TokenAmount[] memory f) {
         f = new ISwapAndAdd.TokenAmount[](1);
@@ -100,7 +98,7 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         route.config(address(tokenX), Currency.unwrap(currency1), 1 << 96, 10000, inputAmount, true);
     }
 
-    // ── add: the zap-in-from-X happy paths ──────────────────────────────────────────────────────────────
+    // add: the zap-in-from-X happy paths
 
     function test_add_funding_xOnly_mintsPosition() public {
         _configXRoute(5e18);
@@ -137,7 +135,7 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         assertEq(tokenX.balanceOf(address(zap)), 0, "no X at rest");
     }
 
-    /// @dev a zero-amount entry pulls nothing but wires + sweeps the token: the donation-claim path.
+    /// @dev a zero-amount entry pulls nothing but wires and sweeps the token (donation claim)
     function test_add_funding_zeroAmountEntry_claimsDonation() public {
         tokenX.transfer(address(zap), 5e18); // donation / stuck tokens
         _configXRoute(2e18); // the route consumes part of the donated balance
@@ -147,7 +145,7 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         assertEq(tokenX.balanceOf(address(zap)), 0, "no X at rest");
     }
 
-    // ── add: native funding on a non-native pool ────────────────────────────────────────────────────────
+    // add: native funding on a non-native pool
 
     function test_add_funding_native() public {
         // route: consume 0.6 ETH of the pushed value, pay out currency1 1:1
@@ -168,7 +166,7 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         zap.add{value: 0.5 ether}(p);
     }
 
-    // ── guards ──────────────────────────────────────────────────────────────────────────────────────────
+    // guards
 
     function test_add_funding_revertsWithoutRoute() public {
         ISwapAndAdd.AddParams memory p = _addP(0, 1e18, "", _funding(address(tokenX), 1e18));
@@ -186,8 +184,7 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         zap.add(p);
     }
 
-    /// @dev on a native pool address(0) IS currency0 -> rejected as a pool currency, so msg.value can never
-    ///      mean two things at once.
+    /// @dev on a native pool address(0) is currency0 and is rejected as a pool currency
     function test_add_funding_rejectsNativeEntryOnNativePool() public {
         ISwapAndAdd.AddParams memory p = _addP(0, 1e18, ROUTE_PAYLOAD, _funding(address(0), 1 ether));
         p.poolKey = PoolKey({
@@ -201,7 +198,7 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         zap.add{value: 1 ether}(p);
     }
 
-    // ── increase: funding must satisfy the nothing-to-deploy gate via the route ─────────────────────────
+    // increase: funding must satisfy the nothing-to-deploy gate via the route
 
     function _mintViaZap() internal returns (uint256 tokenId) {
         _configXRoute(0); // no-op
@@ -231,8 +228,7 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         assertEq(tokenX.balanceOf(address(zap)), 0, "no X at rest");
     }
 
-    /// @dev an operator's unconsumed funding is forced to the OWNER — a route can also produce a funding
-    ///      token from position value, so funding leftovers are output like any other.
+    /// @dev an operator's unconsumed funding is forced to the owner, like any other output
     function test_increase_funding_operatorLeftoverForcedToOwner() public {
         uint256 tokenId = _mintViaZap();
         address operator = makeAddr("operator");
@@ -265,7 +261,7 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         assertEq(tokenX.balanceOf(address(zap)), 0, "no X at rest");
     }
 
-    // ── rebalance with funding ──────────────────────────────────────────────────────────────────────────
+    // rebalance with funding
 
     function test_rebalance_funding_topsUpViaRoute() public {
         uint256 tokenId = _mintViaZap();

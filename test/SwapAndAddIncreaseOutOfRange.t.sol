@@ -17,12 +17,8 @@ import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol"
 import {PosmTestSetup} from "./shared/PosmTestSetup.sol";
 import {MockSwapRoute} from "./mocks/MockSwapRoute.sol";
 
-/// @notice Regression suite for `increase` on OUT-OF-RANGE positions across a sweep of realistic-to-extreme
-///         price drifts. Before the collect-fees-first fix, POSM's accrued-fee credit made `increase` revert
-///         `DeltaNotNegative` unconditionally for any out-of-range position with fees on its empty side. The
-///         fee collect removes that; these tests additionally pin that the collected single-sided fees entering
-///         the budget are valued sanely at spot by `SwapAndAddMath.getLiquidityForAmountsWeighted` (no funds at rest, no operator
-///         redirect, stranger rejected).
+/// @notice `increase` on out-of-range positions across a sweep of price drifts. Pins that fees are
+///         collected first (no `DeltaNotNegative` revert) and that the usual invariants hold.
 contract SwapAndAddIncreaseOutOfRangeTest is PosmTestSetup {
     using StateLibrary for IPoolManager;
     using CurrencyLibrary for Currency;
@@ -38,8 +34,7 @@ contract SwapAndAddIncreaseOutOfRangeTest is PosmTestSetup {
         deployMintAndApprove2Currencies();
         deployAndApprovePosm(manager);
         (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1);
-        // DEEP wide exogenous liquidity, so a push moves the price a controlled amount instead of
-        // exhausting the book and slamming into MAX_TICK.
+        // deep wide liquidity so a push moves the price a controlled amount
         modifyLiquidityRouter.modifyLiquidity(
             key,
             ModifyLiquidityParams({tickLower: -60_000, tickUpper: 60_000, liquidityDelta: int256(5e21), salt: 0}),
@@ -76,7 +71,7 @@ contract SwapAndAddIncreaseOutOfRangeTest is PosmTestSetup {
                 deadline: block.timestamp + 1
             })
         );
-        // churn to accrue fees on BOTH sides
+        // churn to accrue fees on both sides
         for (uint256 i; i < 5; i++) {
             swap(key, true, -20e18, "");
             swap(key, false, -20e18, "");
@@ -99,7 +94,7 @@ contract SwapAndAddIncreaseOutOfRangeTest is PosmTestSetup {
         );
     }
 
-    /// @dev Push spot ABOVE tickUpper by a given oneForZero exact-input size, then try the owner's own increase.
+    /// @dev Push spot above tickUpper, then try the owner's increase.
     function _probeAbove(uint256 pushAmount) internal returns (bool ok, int24 tick, bytes memory err) {
         uint256 snap = vm.snapshotState();
         uint256 tokenId = _mintAndAccrue();
@@ -120,7 +115,7 @@ contract SwapAndAddIncreaseOutOfRangeTest is PosmTestSetup {
 
     /// @notice Sweep the out-of-range drift from mild to extreme and report where `increase` starts failing.
     function test_increase_outOfRange_driftSweep() public {
-        // sized against the 5e21 deep range: ~2e20 lands just above tickUpper, growing to a far drift
+        // against the 5e21 deep range, ~2e20 lands just above tickUpper
         uint256[7] memory pushes = [uint256(2e20), 3e20, 5e20, 1e21, 3e21, 1e22, 5e22];
         for (uint256 i; i < pushes.length; i++) {
             (bool ok, int24 tick, bytes memory err) = _probeAbove(pushes[i]);
@@ -137,7 +132,7 @@ contract SwapAndAddIncreaseOutOfRangeTest is PosmTestSetup {
         }
     }
 
-    /// @notice The headline claim to verify: a MILD, entirely realistic out-of-range drift.
+    /// @notice `increase` works after a mild out-of-range drift.
     function test_increase_outOfRange_mildDrift_works() public {
         uint256 tokenId = _mintAndAccrue();
         swap(key, false, -3e20, "");
@@ -149,7 +144,7 @@ contract SwapAndAddIncreaseOutOfRangeTest is PosmTestSetup {
         assertGt(added, 0, "increase must succeed on an out-of-range position after the fix");
     }
 
-    /// @notice Control: the pre-fix in-range DoS (small top-up on a fee-bearing position) is really gone.
+    /// @notice A small in-range top-up on a fee-bearing position works.
     function test_increase_inRange_smallTopUp_works() public {
         uint256 tokenId = _mintAndAccrue();
         uint128 added = _inc(tokenId, 1e12, 1e12);
@@ -157,7 +152,7 @@ contract SwapAndAddIncreaseOutOfRangeTest is PosmTestSetup {
         assertGt(added, 0, "small top-up must succeed after the fix");
     }
 
-    /// @notice The zap must hold nothing afterwards (invariant 1) on the fixed increase path.
+    /// @notice The zap holds nothing after an increase.
     function test_increase_noFundsAtRest() public {
         uint256 tokenId = _mintAndAccrue();
         _inc(tokenId, 1e15, 1e15);
@@ -165,7 +160,7 @@ contract SwapAndAddIncreaseOutOfRangeTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "token1 at rest");
     }
 
-    /// @notice An operator's dust must be forced to the owner (invariant 3 now extended to `increase`).
+    /// @notice The zap forces an operator's dust to the owner.
     function test_increase_operatorCannotRedirect() public {
         uint256 tokenId = _mintAndAccrue();
         address operator = makeAddr("operator");
@@ -188,7 +183,7 @@ contract SwapAndAddIncreaseOutOfRangeTest is PosmTestSetup {
                 route: "",
                 routeFunding: new ISwapAndAdd.TokenAmount[](0),
                 minLiquidityAdded: 0,
-                recipient: operator, // requested self — must be overridden to the owner
+                recipient: operator, // requested self, must be overridden to the owner
                 hookData: "",
                 deadline: block.timestamp + 1
             })
@@ -198,7 +193,7 @@ contract SwapAndAddIncreaseOutOfRangeTest is PosmTestSetup {
         assertLt(currency0.balanceOf(operator), opBefore0, "operator must not be paid dust");
     }
 
-    /// @notice A stranger must no longer be able to touch the position at all.
+    /// @notice A stranger cannot touch the position.
     function test_increase_strangerRejected() public {
         uint256 tokenId = _mintAndAccrue();
         address stranger = makeAddr("stranger");

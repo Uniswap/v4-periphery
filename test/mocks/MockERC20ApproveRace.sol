@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.24;
 
-/// @notice USDT-style approve-race ERC-20: a nonzero allowance cannot be changed to another nonzero value
-///         (it must be zeroed first). Includes a test hook to force an allowance value, simulating a token
-///         whose allowance degrades over time — a re-approve that isn't zero-first reverts here.
+/// @notice ERC-20 that requires a zero allowance before a nonzero approve, which simulates USDT.
 contract MockERC20ApproveRace {
     string public constant name = "ApproveRace";
     string public constant symbol = "RACE";
@@ -23,7 +21,7 @@ contract MockERC20ApproveRace {
         return true;
     }
 
-    /// @dev test hook: force-set an allowance to simulate degradation without moving 2^256 tokens.
+    /// @dev Test hook that force-sets an allowance.
     function setAllowance(address owner, address spender, uint256 amount) external {
         allowance[owner][spender] = amount;
     }

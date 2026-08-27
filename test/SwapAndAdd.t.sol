@@ -32,11 +32,8 @@ import {MockDynamicFeeHook} from "./mocks/MockDynamicFeeHook.sol";
 import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
 
-/// @notice SwapAndAdd tests (route-first + fee-aware). The empty-route cases exercise the same-pool path
-///         (fee-aware sizing, flash-take, mint-to-contract, same-pool reconcile, trim, dust sweep, post-unlock
-///         NFT transfer); the routed cases drive a MockSwapRoute through the route-before-mint path, covering
-///         under/over-conversion (bidirectional reconcile), better-than-mid capture, and cheaper-than-pool-fee
-///         routes. End-to-end integration against the REAL Universal Router lives in test-integration/.
+/// @notice SwapAndAdd tests. Empty-route cases exercise the same-pool path, routed cases drive a
+///         MockSwapRoute. End-to-end tests against the real Universal Router live in test-integration/.
 contract SwapAndAddTest is PosmTestSetup {
     using StateLibrary for IPoolManager;
     using CurrencyLibrary for Currency;
@@ -45,7 +42,7 @@ contract SwapAndAddTest is PosmTestSetup {
     MockSwapRoute route;
     int24 constant TICK_LOWER = -600;
     int24 constant TICK_UPPER = 600;
-    /// @dev abi.encode(bytes commands, bytes[] inputs) — a non-empty route payload the mock ignores.
+    /// @dev A non-empty route payload. The mock ignores its content.
     bytes constant ROUTE_PAYLOAD = abi.encode(bytes(""), new bytes[](0));
 
     function setUp() public {
@@ -57,14 +54,11 @@ contract SwapAndAddTest is PosmTestSetup {
         seedMoreLiquidity(key, 1_000e18, 1_000e18);
 
         route = new MockSwapRoute(permit2);
-        // Deploy SwapAndAdd from its precompiled (via_ir=true/500) artifact rather than `new SwapAndAdd(...)`,
-        // so its source is never pulled into this via_ir=false test unit — mirrors how PosmTestSetup deploys
-        // PositionManager via vm.getCode. This lets SwapAndAdd be pinned to the posm profile for production
-        // (fits the 24576 size limit) without a settings conflict against the test build.
+        // Deploy from the precompiled via_ir artifact, so the via_ir=false test build never compiles the source.
         zap = ISwapAndAdd(
             deployCode("SwapAndAdd.sol:SwapAndAdd", abi.encode(manager, permit2, lpm, IUniversalRouter(address(route))))
         );
-        // fund the mock route's off-venue inventory so it can deliver the deficit token.
+        // The mock route needs off-venue inventory to deliver the deficit token.
         MockERC20(Currency.unwrap(currency0)).mint(address(route), 1_000_000e18);
         MockERC20(Currency.unwrap(currency1)).mint(address(route), 1_000_000e18);
 
@@ -72,7 +66,7 @@ contract SwapAndAddTest is PosmTestSetup {
         _approveZap(currency0);
         _approveZap(currency1);
 
-        // native pool (currency0 == native ETH) with depth for the native add test.
+        // Native pool (currency0 == native ETH) with depth for the native add tests.
         vm.deal(address(this), 1_000 ether);
         (nativeKey,) = initPoolAndAddLiquidityETH(
             CurrencyLibrary.ADDRESS_ZERO, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, 1 ether
@@ -115,9 +109,8 @@ contract SwapAndAddTest is PosmTestSetup {
         assertGt(liq, 0, "liquidity minted");
         assertGt(a0, 0, "token0 deployed");
         assertGt(a1, 0, "token1 deployed");
-        // dust lands in the input token (token1); the swapped-into token0 returns ~nothing.
+        // Dust lands in the input token (token1). The swapped-into token0 returns almost nothing.
         assertApproxEqAbs(currency0.balanceOf(address(this)), c0Before, 5, "no token0 dust to user");
-        // contract holds nothing
         assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
@@ -130,7 +123,7 @@ contract SwapAndAddTest is PosmTestSetup {
 
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "liquidity minted");
-        // dust lands in the input token (token0); the swapped-into token1 returns ~nothing.
+        // Dust lands in the input token (token0). The swapped-into token1 returns almost nothing.
         assertApproxEqAbs(currency1.balanceOf(address(this)), c1Before, 5, "no token1 dust to user");
         assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
@@ -144,7 +137,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
-    /// @dev All output-producing operations reject this contract as recipient, preserving no-funds-at-rest.
+    /// @dev Every entrypoint rejects the zap itself as recipient, which keeps no funds at rest.
     function test_revertsWhenRecipientIsZap() public {
         ISwapAndAdd.AddParams memory addParams = _addParams(0, 10e18);
         addParams.recipient = address(zap);
@@ -169,9 +162,7 @@ contract SwapAndAddTest is PosmTestSetup {
         zap.compound(compoundParams);
     }
 
-    /// @dev The zero address is rejected up front on every entrypoint: for add/rebalance the NFT hand-off
-    ///      would revert late anyway, and for increase/compound a zero recipient would silently BURN swept
-    ///      leftovers (dust, and — with routeFunding — potentially the whole unconsumed funding input).
+    /// @dev Every entrypoint rejects the zero address up front, so no sweep can silently burn leftovers.
     function test_revertsWhenRecipientIsZero() public {
         ISwapAndAdd.AddParams memory addParams = _addParams(0, 10e18);
         addParams.recipient = address(0);
@@ -196,8 +187,7 @@ contract SwapAndAddTest is PosmTestSetup {
         zap.compound(compoundParams);
     }
 
-    /// @dev receive() accepts native only from the PoolManager, POSM and the UR; any other sender is rejected
-    ///      so stray transfers cannot be swept to the next caller.
+    /// @dev receive() accepts native only from known senders, so a stray transfer cannot join a sweep.
     function test_receive_rejectsUnknownSender() public {
         (bool ok,) = address(zap).call{value: 1 ether}("");
         assertFalse(ok, "direct native transfer must revert");
@@ -207,7 +197,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertTrue(okPm, "PoolManager may send native");
     }
 
-    // ─────────────────────────── increase (top up an existing position) ───────────────────────────
+    // increase (grow an existing position)
 
     function _increaseParams(uint256 tokenId, uint256 amount0In, uint256 amount1In)
         internal
@@ -227,8 +217,7 @@ contract SwapAndAddTest is PosmTestSetup {
         });
     }
 
-    /// @dev Increase tops up the SAME tokenId in place: liquidity grows, no new NFT, owner unchanged.
-    ///      POSM gates INCREASE_LIQUIDITY on the locker (zap) being approved, so the owner approves it first.
+    /// @dev Increase grows the same tokenId in place, no new NFT.
     function test_increase_growsSamePosition() public {
         (uint256 tokenId, uint128 liq0,,) = zap.add(_addParams(0, 10e18));
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
@@ -280,8 +269,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(address(zap).balance, 0, "zap eth == 0");
     }
 
-    /// @dev Empties a position via POSM directly (decrease to 0, NFT kept) — the state a keeper uses to
-    ///      preserve the tokenId (and its subscribers) between exits.
+    /// @dev Decreases a position to 0 via POSM and keeps the NFT.
     function _emptyPosition(uint256 tokenId) internal {
         bytes memory actions = abi.encodePacked(uint8(Actions.DECREASE_LIQUIDITY), uint8(Actions.TAKE_PAIR));
         bytes[] memory params = new bytes[](2);
@@ -291,9 +279,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(lpm.getPositionLiquidity(tokenId), 0, "position emptied");
     }
 
-    /// @dev A position decreased to 0 liquidity (NFT alive) is refillable: the fee-collect poke is skipped
-    ///      (v4 rejects 0-liquidity pokes, and an emptied position holds no uncollected fees) and the
-    ///      increase recreates the position — the zap's only path back into an existing tokenId.
+    /// @dev An emptied position (0 liquidity, NFT alive) is refillable through increase.
     function test_increase_worksOnEmptiedPosition() public {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
@@ -305,8 +291,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(lpm.getPositionLiquidity(tokenId), added, "position liquidity equals added");
     }
 
-    /// @dev Compound on an emptied position surfaces the zap's own NoFeesToCompound instead of v4's
-    ///      opaque CannotUpdateEmptyPosition from the fee-collect poke.
+    /// @dev Compound on an emptied position surfaces NoFeesToCompound, not an opaque v4 error.
     function test_compound_emptiedPosition_revertsNoFees() public {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
@@ -320,7 +305,7 @@ contract SwapAndAddTest is PosmTestSetup {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
         ISwapAndAdd.IncreaseParams memory p = _increaseParams(tokenId, 0, 10e18);
-        p.minLiquidityAdded = type(uint128).max; // impossible floor on the liquidity added
+        p.minLiquidityAdded = type(uint128).max; // impossible floor
         vm.expectRevert(); // InsufficientLiquidity
         zap.increase(p);
     }
@@ -342,7 +327,7 @@ contract SwapAndAddTest is PosmTestSetup {
         zap.increase(_increaseParams(tokenId, 0, 1e18));
     }
 
-    /// @dev Compound is an increase with a zero pulled budget — both run the same path and reinvest the fees.
+    /// @dev A zero-budget increase equals a compound.
     function test_increase_zeroBudget_equalsCompound() public {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
@@ -357,8 +342,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(viaIncrease, viaCompound, "increase(0,0) == compound");
     }
 
-    /// @dev The fee collect precedes the deploy: an increase consumes the position's accrued fees entirely
-    ///      (nothing left for a follow-up compound) and the position grows by exactly the returned liquidity.
+    /// @dev An increase collects and reinvests the position's accrued fees.
     function test_increase_collectsAndReinvestsFees() public {
         (uint256 tokenId, uint128 liq0,,) = zap.add(_addParams(0, 10e18));
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
@@ -368,12 +352,12 @@ contract SwapAndAddTest is PosmTestSetup {
 
         assertGt(added, 0, "budget + fees deployed");
         assertEq(lpm.getPositionLiquidity(tokenId), liq0 + added, "position grew by exactly the added liquidity");
-        // the fees were consumed by the increase: an immediate compound finds nothing to reinvest
+        // The increase consumed the fees, so an immediate compound finds nothing to reinvest.
         vm.expectRevert(ISwapAndAdd.NoFeesToCompound.selector);
         zap.compound(_compoundParams(tokenId, 0));
     }
 
-    /// @dev Grow-in-place ops with nothing to deploy (no budget, no fees) revert instead of no-opping.
+    /// @dev An increase with nothing to deploy reverts instead of a silent no-op.
     function test_increase_revertsWhenNothingToDeploy() public {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
@@ -381,7 +365,7 @@ contract SwapAndAddTest is PosmTestSetup {
         zap.increase(_increaseParams(tokenId, 0, 0));
     }
 
-    /// @dev Operator-called increase: all output (swept dust) is forced to the owner, like compound/rebalance.
+    /// @dev An operator-called increase forces all swept dust to the owner.
     function test_increase_operatorCannotRedirectDust() public {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
@@ -394,7 +378,7 @@ contract SwapAndAddTest is PosmTestSetup {
         MockERC20(Currency.unwrap(currency1)).approve(address(permit2), type(uint256).max);
         permit2.approve(Currency.unwrap(currency1), address(zap), type(uint160).max, type(uint48).max);
         ISwapAndAdd.IncreaseParams memory p = _increaseParams(tokenId, 0, 5e18);
-        p.recipient = operator; // attempt to redirect the dust to itself
+        p.recipient = operator; // operator tries to redirect the dust
         zap.increase(p);
         vm.stopPrank();
 
@@ -402,9 +386,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(operator), 0, "operator got no token1 dust");
     }
 
-    /// @notice Option C deploys the *actual* max the budget supports, so returned dust is tiny (the genuine
-    ///         slippage shortfall). Dust is not re-denominated: the dominant share sits in the surplus (here:
-    ///         input) token and the deficit side returns at most a few wei of trim round-up overshoot.
+    /// @notice Returned dust is tiny, only the genuine slippage shortfall in the input token.
     function test_add_lowDust() public {
         uint256 amountIn = 10e18;
         uint256 c0Before = currency0.balanceOf(address(this));
@@ -412,18 +394,16 @@ contract SwapAndAddTest is PosmTestSetup {
 
         zap.add(_addParams(0, amountIn));
 
-        // net token1 spent = pulled budget - swept dust. dust returned should be a small fraction of the budget.
+        // net token1 spent = pulled budget - swept dust
         uint256 dust1 = currency1.balanceOf(address(this)) + amountIn - c1Before;
-        // measured ~15 bps of budget here (0.3% fee pool, ~half the budget swapped) — the genuine slippage shortfall.
+        // Measured near 15 bps of budget here, so the 2% bound has headroom.
         assertLt(dust1, amountIn / 50, "token1 dust < 2% of budget");
         assertApproxEqAbs(currency0.balanceOf(address(this)), c0Before, 5, "no token0 dust");
         assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
-    /// @dev a budget too small to fund even one unit of liquidity in the requested range: a zero-sized MINT
-    ///      can never produce a position (v4 rejects empty-position updates), so the zap surfaces its own
-    ///      floor error instead of the pool's opaque CannotUpdateEmptyPosition — regardless of the floor.
+    /// @dev A budget too small for one unit of liquidity surfaces InsufficientLiquidity, not an opaque v4 error.
     function test_add_zeroSizedMint_revertsInsufficientLiquidity() public {
         ISwapAndAdd.AddParams memory p = _addParams(-887_220, 887_220, 0, 1); // 1 wei into (nearly) full range
         vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InsufficientLiquidity.selector, 0, 0));
@@ -461,7 +441,7 @@ contract SwapAndAddTest is PosmTestSetup {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
 
-        // (0, 0) deltas -> full move: burn the whole position, redeploy everything, add/return nothing.
+        // (0, 0) deltas mean a full move, burn the whole position and redeploy everything
         (uint256 newTokenId, uint128 newLiq,,) = zap.rebalance(_rebalanceParams(tokenId, 0, 0));
 
         assertEq(IERC721(address(lpm)).ownerOf(newTokenId), address(this), "user owns new NFT");
@@ -471,8 +451,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
-    /// @dev Negative delta (cash-out): the old position is burned IN FULL, a chosen amount of token1 is returned
-    ///      to the recipient's wallet, and only the remainder is redeployed -> less liquidity than a full move.
+    /// @dev A negative delta returns token1 to the recipient and redeploys only the remainder.
     function test_rebalance_negativeDelta_cashOut() public {
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
         (uint256 idFull,,,) = zap.add(_addParams(0, 10e18));
@@ -493,8 +472,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
-    /// @dev Positive delta (rebalance + add): pull MORE token1 from the wallet on top of the withdrawn holdings,
-    ///      so the new position is LARGER than a plain full redeploy of the same burned position.
+    /// @dev A positive delta pulls more token1 from the wallet, so the new position is larger.
     function test_rebalance_positiveDelta_addsMore() public {
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
         (uint256 idFull,,,) = zap.add(_addParams(0, 10e18));
@@ -509,7 +487,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
-    /// @dev Mixed signs in one tx: pull more token0 from the wallet while returning some token1 to it.
+    /// @dev Mixed signs pull more token0 and return some token1 in one call.
     function test_rebalance_mixedSigns() public {
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
         (uint256 tokenId,,,) = zap.add(_addParams(3e18, 10e18)); // two-sided position
@@ -529,7 +507,7 @@ contract SwapAndAddTest is PosmTestSetup {
     function test_rebalance_revertsOnOverWithdrawal() public {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
-        // try to return far more token1 than the burned position holds -> clamp revert.
+        // request far more token1 than the burned position holds
         vm.expectPartialRevert(ISwapAndAdd.ReturnExceedsWithdrawn.selector);
         zap.rebalance(_rebalanceParams(tokenId, 0, -100e18));
     }
@@ -556,15 +534,13 @@ contract SwapAndAddTest is PosmTestSetup {
 
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "liquidity minted");
-        // dust lands in the input token (native); the swapped-into currency1 returns ~nothing.
+        // Dust lands in the input token (native). The swapped-into currency1 returns almost nothing.
         assertApproxEqAbs(currency1.balanceOf(address(this)), c1Before, 5, "no token1 dust to user");
-        // contract strands nothing
         assertEq(address(zap).balance, 0, "zap eth == 0");
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
-    /// @dev Regression: a range entirely BELOW spot needs zero token0, so on a native pool the mint must
-    ///      forward zero value — an unheld extra wei (the former rounding buffer) reverted OutOfFunds here.
+    /// @dev Regression: a range below spot needs zero token0, so the native mint must forward zero value.
     function test_add_native_belowRange_singleToken1() public {
         ISwapAndAdd.AddParams memory p = _addParams(0, 5e18);
         p.poolKey = nativeKey;
@@ -579,9 +555,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
-    /// @dev Regression: Slot0's protocolFee packs TWO directional 12-bit fees; treating the packed value as
-    ///      plain pips made `PIPS_DENOMINATOR - feePips` underflow for any nonzero one-for-zero component,
-    ///      bricking every reconcile-needing operation on the pool. Sizing must use the direction's swap fee.
+    /// @dev Regression: Slot0's protocolFee packs two directional fees. Sizing must use the direction's swap fee.
     function test_add_directionalProtocolFeeSet() public {
         vm.prank(feeController);
         manager.setProtocolFee(key, uint24((250 << 12) | 250)); // 0.025% both directions, packed
@@ -590,14 +564,13 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "liquidity minted with directional protocol fee");
 
-        // and the other surplus direction (token1 surplus -> one-for-zero reconcile)
+        // the other surplus direction
         (, uint128 liq1,,) = zap.add(_addParams(0, 10e18));
         assertGt(liq1, 0, "liquidity minted, token1-surplus direction");
     }
 
-    /// @dev A dynamic `beforeSwap` override is not visible in Slot0 sizing. The real fee is nevertheless applied
-    ///      during reconcile, hookData reaches the hook, trim absorbs the difference, and the final liquidity
-    ///      floor remains authoritative.
+    /// @dev A dynamic fee override is invisible to Slot0 sizing. The trim absorbs the difference and the
+    ///      final liquidity floor still holds.
     function test_add_dynamicFeeOverride_forwardsHookDataAndHonorsFinalFloor() public {
         bytes memory hookData = abi.encode("swap-and-add dynamic hook authorization");
         address hookAddress = address(uint160(Hooks.BEFORE_SWAP_FLAG));
@@ -620,7 +593,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertGt(hook.beforeSwapCalls(), 0, "reconcile forwarded hookData to beforeSwap");
         vm.revertToState(baselineSnapshot);
 
-        hook.setFee(100_000); // 10% actual fee; Slot0 remains at its stored 0 fee
+        hook.setFee(100_000); // 10% actual fee. Slot0 keeps its stored 0 fee.
         uint256 highFeeSnapshot = vm.snapshotState();
         (, uint128 highFeeLiquidity,,) = zap.add(p);
         assertLt(highFeeLiquidity, zeroFeeLiquidity, "override fee caused a larger trim");
@@ -634,9 +607,7 @@ contract SwapAndAddTest is PosmTestSetup {
         zap.add(p);
     }
 
-    /// @dev Returns-delta hooks break settlement conservation and are rejected upfront with a typed error —
-    ///      the boundary is enforced in code, not just documented. One case per permission flag, each paired
-    ///      with the base flag v4 requires alongside it.
+    /// @dev Returns-delta hooks break settlement conservation, so the zap rejects them with a typed error.
     function test_add_returnsDeltaHook_revertsUnsupported() public {
         uint160[4] memory flagged = [
             Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG,
@@ -651,8 +622,7 @@ contract SwapAndAddTest is PosmTestSetup {
             zap.add(p);
         }
 
-        // Negative control: a hook WITHOUT returns-delta permissions passes the gate — the same call
-        // proceeds into the flow and fails deeper on the (uninitialized) pool instead.
+        // Negative control: a hook without returns-delta flags passes the gate and fails deeper.
         p.poolKey.hooks = IHooks(address(uint160(Hooks.BEFORE_SWAP_FLAG)));
         vm.expectRevert(IPoolManager.PoolNotInitialized.selector);
         zap.add(p);
@@ -660,23 +630,21 @@ contract SwapAndAddTest is PosmTestSetup {
 
     function test_rebalance_revertsIfNotAuthorized() public {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
-        // do NOT approve the zap; call from a stranger
+        // stranger, zap not approved
         vm.prank(address(0xBEEF));
         vm.expectRevert();
         zap.rebalance(_rebalanceParams(tokenId, 0, 0));
     }
 
-    /// @dev SECURITY: an approved operator may rebalance the owner's position but must NOT be able to redirect its
-    ///      value to itself. Even when the operator sets `recipient = self`, the new NFT and any cash-out are forced
-    ///      to the position owner — so a standing NFT approval can never be used to steal the position.
+    /// @dev SECURITY: an approved operator cannot redirect the new NFT or the cash-out away from the owner.
     function test_rebalance_operatorCannotRedirectToSelf() public {
         address operator = address(0xBEEF);
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
-        IERC721(address(lpm)).setApprovalForAll(address(zap), true); // zap may burn/redeploy
-        IERC721(address(lpm)).setApprovalForAll(operator, true); // owner trusts operator to MANAGE the position
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        IERC721(address(lpm)).setApprovalForAll(operator, true);
 
         ISwapAndAdd.RebalanceParams memory p = _rebalanceParams(tokenId, 0, -1e18); // cash out 1 token1
-        p.recipient = operator; // operator tries to send the output to itself
+        p.recipient = operator; // operator tries to redirect the output
 
         uint256 opC1Before = currency1.balanceOf(operator);
         uint256 ownerC1Before = currency1.balanceOf(address(this));
@@ -688,7 +656,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertGe(currency1.balanceOf(address(this)) - ownerC1Before, 1e18, "owner received the cash-out");
     }
 
-    /// @dev Counterpart to the guard test: the owner themselves CAN still direct the output to any address.
+    /// @dev The owner can still direct the output to any address.
     function test_rebalance_ownerMayChooseRecipient() public {
         address dest = address(0xCAFE);
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
@@ -701,10 +669,10 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(IERC721(address(lpm)).ownerOf(newTokenId), dest, "owner may send the new NFT to a chosen recipient");
     }
 
-    // ─────────────────────────── routed (route-first) cases ───────────────────────────
+    // routed (route-first) cases
 
-    /// @dev Config the mock route for a single-token1 budget: it consumes `inputAmount` of token1 (the surplus)
-    ///      and returns token0 at `rateMultBps` vs the 1:1 mid (10000 = mid, <10000 worse, >10000 beats mid).
+    /// @dev Configure the mock route: consume `inputAmount` of token1 and return token0 at `rateMultBps`
+    ///      against the 1:1 mid (10000 = mid).
     function _configRoute(uint256 rateMultBps, uint256 inputAmount) internal {
         route.config(
             Currency.unwrap(currency1), Currency.unwrap(currency0), FixedPoint96.Q96, rateMultBps, inputAmount, false
@@ -716,18 +684,14 @@ contract SwapAndAddTest is PosmTestSetup {
         p.route = ROUTE_PAYLOAD;
     }
 
-    /// @dev The UR SWEEP reclaim triggers on ANY native balance left in the router — not only when this
-    ///      operation pushed value. A route can strand native even on a value-less operation (an ERC20-in /
-    ///      native-out route leg on a non-native pool), and UR balances are permissionlessly sweepable, so
-    ///      the reclaim must fire whenever the router holds native at all; the all-or-nothing SWEEP folds the
-    ///      whole balance (over-push and any pre-existing donation alike) into the caller's budget.
+    /// @dev UR balances are permissionlessly sweepable, so the SWEEP reclaim must fire whenever the router
+    ///      holds native. The whole balance joins the caller's budget.
     function test_add_route_reclaimsAnyUrNative() public {
-        _configRoute(10000, 0); // no-op route: consumes nothing, the mock just sits on its balance
+        _configRoute(10000, 0); // no-op route, consumes nothing
         ISwapAndAdd.AddParams memory p = _routeAdd(10e18);
         p.poolKey = nativeKey;
 
-        // 1) even with NO value pushed (token1-only budget), a native balance in the UR is reclaimed —
-        //    it joins the caller's budget (native is a pool currency here), boosting the deployed liquidity.
+        // 1) No value pushed: a native balance in the UR is still reclaimed into the budget.
         uint256 snap = vm.snapshotState();
         (, uint128 liqBaseNoPush,,) = zap.add(p); // no donation in the UR
         vm.revertToState(snap);
@@ -738,7 +702,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(address(zap).balance, 0, "zap eth == 0");
         assertGt(liqDonatedNoPush, liqBaseNoPush, "reclaimed UR native joined the caller's budget");
 
-        // 2) with native in the budget -> value pushed -> the unconsumed push AND a donation are reclaimed
+        // 2) Value pushed: the unconsumed push and the donation are both reclaimed.
         p.amount0In = 2 ether;
         snap = vm.snapshotState();
         (, uint128 liqBase,,) = zap.add{value: 2 ether}(p);
@@ -751,10 +715,9 @@ contract SwapAndAddTest is PosmTestSetup {
         assertGt(liqDonated, liqBase, "reclaimed donation joined the caller's budget");
     }
 
-    /// @notice Route under-converts (input below the ideal): the same-pool reconcile tops up the deficit in the
-    ///         normal direction (surplus token1 -> deficit token0). Position lands cleanly, contract strands nothing.
+    /// @notice The route under-converts, so the same-pool reconcile fills the remaining deficit.
     function test_add_route_underConverts() public {
-        _configRoute(9970, 3e18); // ~mid-0.3%, under the ~5e18 ideal for a 10e18 single-tok1 budget
+        _configRoute(9970, 3e18); // ~mid-0.3%, under the ~5e18 ideal for a 10e18 single-token1 budget
         (uint256 tokenId, uint128 liq,,) = zap.add(_routeAdd(10e18));
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "liquidity minted");
@@ -762,10 +725,9 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
-    /// @notice Route over-converts (input above the ideal): the reconcile runs the OTHER direction, selling the
-    ///         over-bought deficit (token0) back to the surplus (token1). Exercises the bidirectional reconcile.
+    /// @notice The route over-converts, so the reconcile sells the excess token0 back to token1.
     function test_add_route_overConverts() public {
-        _configRoute(9970, 7e18); // over the ~5e18 ideal -> ends long token0 -> reconcile sells token0->token1
+        _configRoute(9970, 7e18); // over the ~5e18 ideal, ends long token0
         (uint256 tokenId, uint128 liq,,) = zap.add(_routeAdd(10e18));
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "liquidity minted");
@@ -773,8 +735,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
-    /// @notice Better-than-mid route: route-first sizes from the (richer) post-route holdings and CAPTURES the
-    ///         upside, deploying MORE liquidity than the same-pool (empty-route) path can.
+    /// @notice A better-than-mid route deploys more liquidity than the same-pool path.
     function test_add_route_betterThanMid_capturesUpside() public {
         uint256 snap = vm.snapshotState();
         (, uint128 samePoolLiq,,) = zap.add(_addParams(0, 10e18)); // same-pool baseline
@@ -785,8 +746,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertGt(routedLiq, samePoolLiq, "better-than-mid route deploys MORE than same-pool");
     }
 
-    /// @notice Cheaper-than-pool-fee route (mid-0.05% vs the 0.30% pool): route-first deploys more and returns
-    ///         less than the same-pool path, because it sizes from the actually-cheap holdings.
+    /// @notice A route cheaper than the pool fee deploys more and returns less than the same-pool path.
     function test_add_route_cheaper_deploysMoreThanSamePool() public {
         uint256 snap = vm.snapshotState();
         uint256 c1Before = currency1.balanceOf(address(this));
@@ -805,11 +765,11 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
-    // ─────────────────────────── failure / edge cases ───────────────────────────
+    // failure / edge cases
 
     function test_add_revertsAfterDeadline() public {
         ISwapAndAdd.AddParams memory p = _addParams(0, 10e18);
-        vm.warp(p.deadline + 1); // now past the deadline
+        vm.warp(p.deadline + 1);
         vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.DeadlinePassed.selector, p.deadline));
         zap.add(p);
     }
@@ -837,25 +797,23 @@ contract SwapAndAddTest is PosmTestSetup {
             hookData: "",
             deadline: block.timestamp + 1
         });
-        // msg.value (1e17 - 1) != amount0In (1e17) -> InvalidEthValue
+        // msg.value != amount0In
         vm.expectRevert(ISwapAndAdd.InvalidEthValue.selector);
         zap.add{value: 1e17 - 1}(p);
     }
 
-    /// @notice Reachable-but-violated floor: set minLiquidity one wei above the realized post-trim liquidity, so
-    ///         the trim brings the final position just under the floor -> revert. (Distinct from the impossible
-    ///         type(uint128).max case; this exercises the floor at a realistic boundary.)
+    /// @notice minLiquidity one wei above the realized liquidity makes the floor check revert.
     function test_add_revertsWhenTrimUndercutsFloor() public {
         ISwapAndAdd.AddParams memory p = _addParams(0, 10e18);
         uint256 snap = vm.snapshotState();
         (, uint128 liq,,) = zap.add(p); // measure the realized liquidity
-        vm.revertToState(snap); // restore pre-add state -> the next add is identical
+        vm.revertToState(snap); // identical re-run
         p.minLiquidity = liq + 1;
         vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InsufficientLiquidity.selector, liq + 1, liq));
         zap.add(p);
     }
 
-    // ─────────────────────────── native-ETH rebalance (signed deltas) ───────────────────────────
+    // native-ETH rebalance (signed deltas)
 
     function _nativeAdd(uint256 nativeIn) internal returns (uint256 tokenId) {
         ISwapAndAdd.AddParams memory p = _addParams(nativeIn, 0);
@@ -863,8 +821,7 @@ contract SwapAndAddTest is PosmTestSetup {
         (tokenId,,,) = zap.add{value: nativeIn}(p);
     }
 
-    /// @dev Native positive delta: add more native ETH (via msg.value) during a rebalance of a native position;
-    ///      the new position is larger than a plain full redeploy of the same burned holdings.
+    /// @dev A positive native delta adds more ETH via msg.value during a rebalance.
     function test_rebalance_native_positiveDelta_addsMore() public {
         uint256 tokenId = _nativeAdd(5e17); // 0.5 ETH position
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
@@ -885,12 +842,12 @@ contract SwapAndAddTest is PosmTestSetup {
     function test_rebalance_native_revertsOnWrongEthValue() public {
         uint256 tokenId = _nativeAdd(5e17);
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
-        // msg.value must equal the positive native delta; send one wei short -> revert.
+        // msg.value one wei short of the positive native delta
         vm.expectRevert(ISwapAndAdd.InvalidEthValue.selector);
         zap.rebalance{value: 1e17 - 1}(_rebalanceParams(tokenId, 1e17, 0));
     }
 
-    // ─────────────────────────── compound (reinvest fees) ───────────────────────────
+    // compound (reinvest fees)
 
     function _compoundParams(uint256 tokenId, uint256 minLiquidityAdded)
         internal
@@ -907,8 +864,7 @@ contract SwapAndAddTest is PosmTestSetup {
         });
     }
 
-    /// @dev Accrue fees to in-range liquidity via balanced round-trip swaps (price returns near 1:1, both sides
-    ///      collect fees).
+    /// @dev Accrue fees on both sides via balanced round-trip swaps.
     function _generateFees() internal {
         for (uint256 i = 0; i < 5; i++) {
             swap(key, true, -50e18, "");
@@ -930,8 +886,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertGt(a0 + a1, 0, "amounts reinvested");
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "NFT still owned by user");
         assertEq(lpm.getPositionLiquidity(tokenId), liq0 + added, "position grew by exactly the added liquidity");
-        // the fees were reinvested, not paid out: anything that reached the wallet is only swept dust, far less
-        // than what was compounded into the position.
+        // Only swept dust reaches the wallet, the fees were reinvested.
         assertLt(currency0.balanceOf(address(this)) - c0Before, a0 + 1, "token0 fees compounded, not paid out");
         assertLt(currency1.balanceOf(address(this)) - c1Before, a1 + 1, "token1 fees compounded, not paid out");
         assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
@@ -942,7 +897,7 @@ contract SwapAndAddTest is PosmTestSetup {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
         _generateFees();
-        vm.expectRevert(); // impossible floor on the added liquidity
+        vm.expectRevert(); // impossible floor
         zap.compound(_compoundParams(tokenId, type(uint128).max));
     }
 
@@ -954,7 +909,7 @@ contract SwapAndAddTest is PosmTestSetup {
         zap.compound(_compoundParams(tokenId, 0));
     }
 
-    /// @dev A position with no accrued fees can't compound. Mint directly (no swap) so it genuinely has zero fees.
+    /// @dev Mint directly with no swaps, so the position genuinely has zero fees.
     function test_compound_revertsWhenNoFees() public {
         uint256 tokenId = lpm.nextTokenId();
         PositionConfig memory cfg = PositionConfig({poolKey: key, tickLower: TICK_LOWER, tickUpper: TICK_UPPER});
@@ -964,8 +919,7 @@ contract SwapAndAddTest is PosmTestSetup {
         zap.compound(_compoundParams(tokenId, 0));
     }
 
-    /// @dev SECURITY: an approved operator may compound the owner's fees, but the NFT never moves and any swept
-    ///      dust is forced to the owner — the operator cannot skim even rounding dust by setting recipient = self.
+    /// @dev SECURITY: an approved operator cannot redirect even the swept dust away from the owner.
     function test_compound_operatorCannotRedirectDust() public {
         address operator = address(0xBEEF);
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
@@ -974,7 +928,7 @@ contract SwapAndAddTest is PosmTestSetup {
         _generateFees();
 
         ISwapAndAdd.CompoundParams memory p = _compoundParams(tokenId, 0);
-        p.recipient = operator; // operator tries to grab any dust
+        p.recipient = operator; // operator tries to grab the dust
 
         uint256 opC0Before = currency0.balanceOf(operator);
         uint256 opC1Before = currency1.balanceOf(operator);
@@ -986,9 +940,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(operator), opC1Before, "operator got no token1 dust");
     }
 
-    /// @dev Compound may route the collected fees like every other op; the reconcile absorbs whatever the
-    ///      route leaves. The route input is sized from a dry-run — the onchain stand-in for an integrator
-    ///      quoting the position's unclaimed fees offchain.
+    /// @dev Compound may route the collected fees. A dry-run sizes the route input.
     function test_compound_withRoute() public {
         (uint256 tokenId, uint128 liq0,,) = zap.add(_addParams(0, 10e18));
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
@@ -998,7 +950,7 @@ contract SwapAndAddTest is PosmTestSetup {
         (,, uint256 a1Base) = zap.compound(_compoundParams(tokenId, 0));
         vm.revertToState(snap);
 
-        _configRoute(10100, a1Base / 2); // convert half the token1 fees at mid+1%
+        _configRoute(10100, a1Base / 2); // Convert half the token1 fees at mid+1%.
         ISwapAndAdd.CompoundParams memory p = _compoundParams(tokenId, 0);
         p.route = ROUTE_PAYLOAD;
 
@@ -1012,10 +964,9 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
-    // ─────────────────────────── sizing / reconcile extremes ───────────────────────────
+    // sizing / reconcile extremes
 
-    /// @dev ERC-20 counterpart of the native below-range case: the position needs zero token0, the whole
-    ///      budget-side reconcile happens on token1 alone.
+    /// @dev ERC-20 counterpart of the native below-range case.
     function test_add_belowRange_singleToken1() public {
         ISwapAndAdd.AddParams memory p = _addParams(0, 5e18);
         p.tickLower = -1200;
@@ -1027,9 +978,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
-    /// @dev Range entirely BELOW spot funded with token0 only: the position is 100% token1, so the ENTIRE
-    ///      deficit is flash-taken and the reconcile sell starts from a price above the range — the trim's
-    ///      min(price, sqrtUpper) clamp is what sizes the decrease correctly there.
+    /// @dev Below-spot range funded with token0 only, so the reconcile sell starts from a price above the range.
     function test_add_belowRange_singleToken0() public {
         ISwapAndAdd.AddParams memory p = _addParams(-1200, -660, 10e18, 0);
         (uint256 tokenId, uint128 liq,,) = zap.add(p);
@@ -1039,10 +988,8 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
-    /// @dev Narrow range with a one-sided budget larger than the pool's external depth: the reconcile sell
-    ///      pushes the price BELOW the just-minted range, yet the operation still lands (the surplus input is
-    ///      valued at the pre-swap price, so it exhausts at/before the boundary and the trim can always free
-    ///      the deficit side from the just-added liquidity).
+    /// @dev A one-sided budget larger than the pool's external depth pushes the price below the new range,
+    ///      and the operation still lands.
     function test_add_narrowRange_hugeSingleSided() public {
         (uint256 tokenId, uint128 liq,,) = zap.add(_addParams(-60, 60, 1_500e18, 0));
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
@@ -1051,8 +998,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
-    /// @dev Thin pool (1e15 external liquidity vs a 500e18 one-sided budget), narrow range: the reconcile must
-    ///      traverse far more depth than exists outside the just-minted position and still settle cleanly.
+    /// @dev Thin pool, huge one-sided budget: the reconcile traverses more depth than exists outside the position.
     function test_add_thinPool_hugeSingleSided() public {
         PoolKey memory thin = _thinPool();
         ISwapAndAdd.AddParams memory p = _addParams(-60, 60, 500e18, 0);
@@ -1063,9 +1009,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
-    /// @dev Thin pool with spot exactly AT the range's upper boundary (position = 100% token1) and a token0-only
-    ///      budget: the whole budget is surplus and the whole position is flash-taken deficit — the knife-edge
-    ///      where the reconcile sell must fund the entire mint.
+    /// @dev Spot at the range's upper edge with a token0-only budget: the reconcile sell must fund the whole mint.
     function test_add_thinPool_priceAtUpperEdge_token0Only() public {
         PoolKey memory thin = _thinPool();
         ISwapAndAdd.AddParams memory p = _addParams(-600, 0, 200e18, 0); // tickUpper == current tick
@@ -1076,8 +1020,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
-    /// @dev Any two-sided budget must land: hunts the both-sides-short knife-edge where round-up makes BOTH
-    ///      optimistic amounts exceed the budget by a wei (both sides flash-taken), and every in-between ratio.
+    /// @dev Any two-sided budget must land, including the both-sides-short round-up knife-edge.
     function testFuzz_add_twoSided(uint256 a0, uint256 a1) public {
         a0 = bound(a0, 1e6, 500e18);
         a1 = bound(a1, 1e6, 500e18);
@@ -1098,7 +1041,7 @@ contract SwapAndAddTest is PosmTestSetup {
         p.tickUpper = tickUpper;
     }
 
-    /// @dev Spin up a native-ETH/token pool with depth for the weird-token `_ensureApproved` regressions.
+    /// @dev Initialize a native-ETH/token pool with depth for the weird-token `_ensureApproved` regressions.
     function _initWeirdTokenPool(address token) internal returns (PoolKey memory k) {
         (k,) = initPoolAndAddLiquidityETH(
             CurrencyLibrary.ADDRESS_ZERO, Currency.wrap(token), IHooks(address(0)), 3000, SQRT_PRICE_1_1, 1 ether
@@ -1110,8 +1053,7 @@ contract SwapAndAddTest is PosmTestSetup {
         );
     }
 
-    /// @dev Regression: `_ensureApproved` must tolerate tokens whose approve returns nothing (USDT-style) —
-    ///      a plain IERC20(returns bool) approve reverts on decode and would brick every pool of that token.
+    /// @dev Regression: `_ensureApproved` must tolerate approve() with no return data (USDT-style).
     function test_add_approveNoReturnToken() public {
         MockERC20ApproveNoReturn usdt = new MockERC20ApproveNoReturn();
         usdt.mint(address(this), 1_000e18);
@@ -1130,14 +1072,12 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(usdt.balanceOf(address(zap)), 0, "zap token == 0");
     }
 
-    /// @dev Regression: a Permit2-native token hardcodes an infinite Permit2 allowance (and reverts approve()
-    ///      toward it). `_ensureApproved` must not read that allowance as proof of its own wiring — the
-    ///      Permit2-internal grants to POSM/UR wouldn't exist — and must skip the redundant ERC20 approve,
-    ///      which here would revert and brick every pool of that token.
+    /// @dev Regression: a Permit2-native token reverts approve() toward Permit2, so `_ensureApproved` must
+    ///      skip that call and still grant the Permit2-internal allowances.
     function test_add_permit2NativeToken() public {
         MockERC20Permit2Native token = new MockERC20Permit2Native(address(permit2));
         token.mint(address(this), 1_000e18);
-        // no token.approve(permit2) — hardcoded; the user only grants the Permit2 allowance to the zap
+        // The token hardcodes the Permit2 allowance, so no token.approve(permit2) call.
         permit2.approve(address(token), address(zap), type(uint160).max, type(uint48).max);
         token.approve(address(modifyLiquidityRouter), type(uint256).max);
         PoolKey memory k = _initWeirdTokenPool(address(token));
@@ -1148,22 +1088,19 @@ contract SwapAndAddTest is PosmTestSetup {
 
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "liquidity minted on permit2-native token pool");
-        // the wiring granted the standing Permit2 allowances despite skipping the ERC20 approve
+        // The wiring granted the Permit2 allowances without the ERC20 approve.
         (uint160 posmAmount,,) = permit2.allowance(address(zap), address(token), address(lpm));
         (uint160 urAmount,,) = permit2.allowance(address(zap), address(token), address(route));
         assertEq(posmAmount, type(uint160).max, "POSM permit2 allowance granted");
         assertEq(urAmount, type(uint160).max, "UR permit2 allowance granted");
 
-        // steady state: the wiring is detected from the Permit2 marker, never re-touching the token's approve
+        // Steady state: a second add never touches the token's approve again.
         (, liq,,) = zap.add(p);
         assertGt(liq, 0, "second add on already-wired token");
     }
 
-    /// @dev `_pullBudget` assumes currency1 is never native (native sorts to currency0; PoolManager enforces
-    ///      currency0 < currency1, so no pool with currency1 == 0 can ever be initialized). A key smuggling
-    ///      native into currency1 must revert: the Permit2 pull for "token" address(0) has no allowance
-    ///      (AllowanceExpired) — and even a caller who pre-approves address(0), turning Permit2's pull on the
-    ///      codeless address into a silent no-op, dies at the uninitialized pool, unwinding atomically.
+    /// @dev No pool with native as currency1 can exist. A key that smuggles it in must revert and
+    ///      unwind atomically.
     function test_add_revertsOnNativeAsCurrency1() public {
         ISwapAndAdd.AddParams memory p = _addParams(0, 5e18);
         p.poolKey = PoolKey({
@@ -1182,9 +1119,8 @@ contract SwapAndAddTest is PosmTestSetup {
         zap.add(p);
     }
 
-    /// @dev Regression: `_ensureApproved`'s self-heal — if the ERC20 allowance to Permit2 ever degrades below
-    ///      the uint160.max headroom threshold, the token is re-approved (zero-first, so approve-race tokens
-    ///      don't revert the heal) instead of the operation bricking on the Permit2 pull.
+    /// @dev Regression: a degraded ERC20 allowance to Permit2 is re-approved zero-first, so approve-race
+    ///      tokens do not revert the heal.
     function test_add_reapprovesDegradedAllowance() public {
         MockERC20ApproveRace token = new MockERC20ApproveRace();
         token.mint(address(this), 1_000e18);
@@ -1195,11 +1131,10 @@ contract SwapAndAddTest is PosmTestSetup {
 
         ISwapAndAdd.AddParams memory p = _addParams(0, 5e18);
         p.poolKey = k;
-        zap.add(p); // wires the token: allowance(zap -> permit2) = uint256.max
+        zap.add(p); // wires the token to the max allowance
         assertEq(token.allowance(address(zap), address(permit2)), type(uint256).max, "wired to max");
 
-        // degrade the allowance below any possible Permit2 pull — nonzero, so a heal that isn't
-        // zero-first would trip the approve race and revert
+        // Degrade to a nonzero value, so a heal that is not zero-first trips the approve race.
         token.setAllowance(address(zap), address(permit2), 1e18);
 
         (, uint128 liq,,) = zap.add(p);
@@ -1208,10 +1143,8 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(token.allowance(address(zap), address(permit2)), type(uint256).max, "allowance healed to max");
     }
 
-    /// @dev Extreme-tick sizing regressions: narrow range with the price on its lower edge -> single-sided
-    ///      token0, no swap, no fee — the minted liquidity must be the full budget's worth. Pre-fix, the 1e18
-    ///      reference position's sub-wei amounts rounded up (high ticks, ~1% deployed) and the token1-per-token0
-    ///      rate truncated to zero (ticks <~ -665455, revert / budget ignored).
+    /// @dev Extreme-tick regressions: a single-sided token0 range with no swap must deploy the full
+    ///      budget's worth of liquidity.
     function test_add_extremeHighTick_fullDeployment() public {
         _assertFullDeploymentAtTick(800000, 2e13);
     }
@@ -1220,16 +1153,15 @@ contract SwapAndAddTest is PosmTestSetup {
         _assertFullDeploymentAtTick(-700000, 1e30);
     }
 
-    /// @dev In-range two-sided add at price << 1: exercises the inverse-rate (token0 numeraire) valuation of a
-    ///      token1 budget. Deeper ticks are pinned single-sided above — below ~-665k one wei of token1 outweighs
-    ///      any realistic token0 budget, so two-sided adds there are not physically meaningful.
+    /// @dev In-range two-sided add at price << 1 exercises the inverse-rate valuation of the token1 budget.
+    ///      Below tick ~-665k one wei of token1 outweighs any realistic token0 budget.
     function test_add_lowTick_inRange_valuesToken1ViaInverseRate() public {
         int24 tick = -400000;
         PoolKey memory k = _initTickPool(tick);
         uint160 sp = TickMath.getSqrtPriceAtTick(tick);
         uint160 sl = TickMath.getSqrtPriceAtTick(tick - 600);
         uint160 su = TickMath.getSqrtPriceAtTick(tick + 600);
-        // in-ratio budgets for ~1e18 liquidity; the token1 side carries half the value through the inverse rate
+        // in-ratio budgets for ~1e18 liquidity
         uint256 b0 = SqrtPriceMath.getAmount0Delta(sp, su, 1e18, false);
         uint256 b1 = SqrtPriceMath.getAmount1Delta(sl, sp, 1e18, false);
         MockERC20(Currency.unwrap(currency0)).mint(address(this), b0);
@@ -1247,7 +1179,7 @@ contract SwapAndAddTest is PosmTestSetup {
         uint256 b0 = 10 ** bound(exp, 6, 30);
         uint160 spl = TickMath.getSqrtPriceAtTick(tick);
         uint160 spu = TickMath.getSqrtPriceAtTick(tick + 60);
-        // uint256 replica of getLiquidityForAmount0 — the lib itself would SafeCast-revert on oversized combos
+        // uint256 replica of getLiquidityForAmount0, which SafeCast-reverts on oversized combos
         uint256 expected = FullMath.mulDiv(b0, FullMath.mulDiv(spl, spu, FixedPoint96.Q96), spu - spl);
         // meaningful size, under the per-tick liquidity cap for spacing 10
         vm.assume(expected >= 1e6 && expected < 1e33);
@@ -1267,13 +1199,13 @@ contract SwapAndAddTest is PosmTestSetup {
         );
         ISwapAndAdd.AddParams memory p = _addParams(tick, tick + 60, b0, 0);
         p.poolKey = k;
-        p.minLiquidity = uint256(expected) * 999 / 1000; // contract-enforced floor: >= 99.9% of feasible
+        p.minLiquidity = uint256(expected) * 999 / 1000; // floor at 99.9% of feasible
         (, uint128 liq,,) = zap.add(p);
         assertGe(liq, uint128(p.minLiquidity), "full budget deployed at extreme tick");
     }
 
-    /// @dev Land the pool price EXACTLY on `boundaryTick`'s sqrtPrice via a limit-clamped swap, and return the
-    ///      boundary price. Going down (zeroForOne) the pool stores tick = boundary - 1; going up, tick = boundary.
+    /// @dev Land the price exactly on `boundaryTick` via a limit-clamped swap. A zeroForOne swap stores
+    ///      tick = boundary - 1, a oneForZero swap stores tick = boundary.
     function _swapToExactBoundary(int24 boundaryTick, bool zeroForOne) internal returns (uint160 boundary) {
         boundary = TickMath.getSqrtPriceAtTick(boundaryTick);
         swapRouter.swap(
@@ -1284,14 +1216,10 @@ contract SwapAndAddTest is PosmTestSetup {
         );
     }
 
-    /// @dev The pool selects its amounts branch by TICK while the zap selects by SQRTPRICE. The one state where
-    ///      they disagree: price exactly on an initialized boundary after a zeroForOne swap (pool stores
-    ///      tick = boundary - 1, price = sqrtPriceAtTick(boundary)). Minting a range whose UPPER edge is that
-    ///      boundary: the zap's price-branch computes single-sided token1 (amount0 = 0) while the pool's
-    ///      tick-branch computes in-range — the in-range amount0 must degenerate to exactly 0, else POSM pulls
-    ///      token0 the zap never funded and the unlock reverts (CurrencyNotSettled).
+    /// @dev The zap sizes by sqrtPrice while the pool branches by tick. With the price exactly on the range's
+    ///      upper boundary and the tick below it, the pool's in-range amount0 must degenerate to exactly 0.
     function test_add_priceExactlyOnUpperBoundary_tickBelow() public {
-        zap.add(_addParams(1e18, 1e18)); // initialize ticks ±600 so the swap lands ON an initialized boundary
+        zap.add(_addParams(1e18, 1e18)); // initialize ticks ±600 as swap landing boundaries
         uint160 boundary = _swapToExactBoundary(-600, true);
 
         (uint160 sp, int24 tick,,) = manager.getSlot0(key.toId());
@@ -1306,9 +1234,8 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
-    /// @dev Mirror case at a range's LOWER edge: price exactly on the boundary with tick == boundary (oneForZero
-    ///      landing). The zap's price-branch (<=) computes single-sided token0; the pool's tick-branch computes
-    ///      in-range — its amount1 must degenerate to exactly 0.
+    /// @dev Mirror case at the range's lower edge with tick == boundary. The pool's in-range amount1 must
+    ///      degenerate to exactly 0.
     function test_add_priceExactlyOnLowerBoundary_tickAt() public {
         zap.add(_addParams(1e18, 1e18));
         uint160 boundary = _swapToExactBoundary(600, false);
@@ -1317,8 +1244,7 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(sp, boundary, "engineered state: price exactly on the 600 boundary");
         assertEq(tick, 600, "engineered state: tick at the boundary");
 
-        // the boundary swap bought ALL token0 out of the PoolManager (every seeded position is 100% token1 at
-        // the boundary); the sizing round-up's wei-level flash-take needs PM-wide token0 reserves to exist.
+        // The boundary swap drained the PoolManager's token0, so seed reserves for the wei-level flash-take.
         modifyLiquidityRouter.modifyLiquidity(
             key, ModifyLiquidityParams({tickLower: 600, tickUpper: 1200, liquidityDelta: 100e18, salt: 0}), ""
         );

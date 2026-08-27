@@ -11,18 +11,14 @@ interface IZapWiring {
     function universalRouter() external view returns (address);
 }
 
-/// @notice Constructor wiring: every immutable is zero-checked (a mistyped deploy-script env var must kill the
-///         deployment with `ZeroAddress`, not produce a dead zap), and a valid deploy stores all four args.
-///         Deployed via raw `create` on the compiled artifact — `deployCode` swallows creation revert data, so
-///         the specific error could not be asserted through it (and the test profile cannot compile the
-///         contract directly: via_ir-only).
+/// @notice Constructor wiring tests. The constructor zero-checks and stores all four addresses.
 contract SwapAndAddConstructorTest is Test {
     address pm = makeAddr("poolManager");
     address p2 = makeAddr("permit2");
     address posm = makeAddr("positionManager");
     address ur = makeAddr("universalRouter");
 
-    /// @dev external so vm.expectRevert can observe the bubbled creation revert.
+    /// @dev Raw create bubbles the creation revert, which deployCode swallows. External so that vm.expectRevert observes it.
     function deployZap(address _pm, address _p2, address _posm, address _ur) external returns (address deployed) {
         bytes memory initcode =
             abi.encodePacked(vm.getCode("SwapAndAdd.sol:SwapAndAdd"), abi.encode(_pm, _p2, _posm, _ur));
