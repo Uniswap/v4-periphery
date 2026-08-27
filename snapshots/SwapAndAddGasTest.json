@@ -1,0 +1,11 @@
+{
+  "SwapAndAdd_add_balanced": "552631",
+  "SwapAndAdd_add_mixedRatio": "699952",
+  "SwapAndAdd_add_native": "543142",
+  "SwapAndAdd_add_routed": "578411",
+  "SwapAndAdd_add_singleSided": "690728",
+  "SwapAndAdd_compound": "386460",
+  "SwapAndAdd_increase_noFees": "364992",
+  "SwapAndAdd_increase_withAccruedFees": "397098",
+  "SwapAndAdd_rebalance": "552736"
+}
