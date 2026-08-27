@@ -21,12 +21,15 @@ Production: `npm start` with `DATABASE_URL` pointing at Postgres.
 
 | Source | Address (mainnet) | Purpose |
 |---|---|---|
-| MarginRouter | `0x000000000075e82F7B7DdC5DD1B4984b560eF5D4` | Lifecycle: `AccountCreated`, `PositionIncreased/Decreased`, `CollateralAdded`, `AdapterAllowed`, and `PositionUpdated` (resulting-state snapshot on every mutation, including `execute` plans) |
-| MorphoLendingAdapter | `0x70fD13dF8C827ab71AE300D24b771C19B67d178A` | `MarketSet` market registry (market id, oracle, LLTV) |
-| Aave v3 / v4 adapters | `0x8Eea...3222` / `0x3a9C...469E` | `MarketSet` market registries |
+| MarginRouter | `0x0000000000F57fCd0d5a78a19907240F1169EDEC` | Lifecycle: `AccountCreated`, `PositionIncreased/Decreased`, `CollateralAdded`, `AdapterAllowed`, and `PositionUpdated` (resulting-state snapshot on every mutation, including `execute` plans) |
+| MorphoLendingAdapter | `0x766C34DcFBA565a1b72ce83ECD96712376Ca1f3D` | `MarketSet` market registry (market id, oracle, LLTV) |
+| Aave v3 / v4 adapters | `0x7E1A...098aC` / `0xAb3C...AE2Eb` | `MarketSet` market registries |
+| Compound v3 adapter | `0x7759...95e0d` | `MarketSet` market registry |
 | Morpho Blue | `0xBBBB...FFCb` | Collateral/debt flows + `Liquidate`, attributed by `onBehalf` ∈ margin accounts |
 | Aave v3 Pool | `0x8787...A4E2` | Flows + `LiquidationCall`, attributed by `onBehalfOf`/`user` |
-| v4 PoolManager | `0x0000...8A90` | `Initialize` (pool metadata) + `Swap` filtered to `sender == MarginRouter` — both from the margin deploy block |
+| v4 PoolManager | `0x0000...8A90` | `Initialize` (pool metadata) from the margin deploy block; margin transactions' `Swap` logs are parsed from receipts in the router handlers (any Universal Router the route names) |
+
+The full checksummed registry lives in `addresses.ts`.
 
 ## How the derivation works
 

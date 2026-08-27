@@ -1051,12 +1051,12 @@ on-chain with `cast code`; the external dependencies follow. Other networks are 
 
 | Contract                      | Address                                      | Notes                                                                             |
 | ----------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------- |
-| MarginRouter                  | `0x000000000075e82F7B7DdC5DD1B4984b560eF5D4` | mainnet (mined vanity); UR-per-call API, unlock-free-path PositionUpdated          |
-| MarginAccount implementation  | `0x36e5317CEE9F70c0A41A97A4676899Dfe9a10239` | mainnet; the soulbound clone template                                             |
-| MorphoLendingAdapter          | `0x70fD13dF8C827ab71AE300D24b771C19B67d178A` | mainnet; implements IAmountResolver                                               |
-| AaveLendingAdapter            | `0x79D243C83e2D351aBbe8010a7E95162998475719` | mainnet; implements IAmountResolver                                               |
-| AaveV4LendingAdapter          | `0x917D08052E2994B75cF82bDaF6314b07532f2556` | mainnet; constructed against the Aave v4 Main Spoke; implements IAmountResolver   |
-| CompoundV3LendingAdapter      | `0x3625D6F7ccA2e8F95aF2E6497075D1a3E32dC5C6` | mainnet; bound to the cUSDCv3 Comet; implements IAmountResolver                   |
+| MarginRouter                  | `0x0000000000F57fCd0d5a78a19907240F1169EDEC` | mainnet (mined vanity); the post-audit suite (blocks 25842465-25842483)            |
+| MarginAccount implementation  | `0xdDD0967e90bCBc2D1F026b3977bb4dE39133b109` | mainnet; the soulbound clone template                                             |
+| MorphoLendingAdapter          | `0x766C34DcFBA565a1b72ce83ECD96712376Ca1f3D` | mainnet; implements IAmountResolver                                               |
+| AaveLendingAdapter            | `0x7E1A543Bd8ed2F16D61DA4b6bC2eC5d240D098aC` | mainnet; implements IAmountResolver                                               |
+| AaveV4LendingAdapter          | `0xAb3C2661c810295Db32125942f04b92c61fAE2Eb` | mainnet; constructed against the Aave v4 Main Spoke; implements IAmountResolver   |
+| CompoundV3LendingAdapter      | `0x77598B845d0200fc707bD32A8Ad6DCF85C995e0d` | mainnet; bound to the cUSDCv3 Comet; implements IAmountResolver                   |
 | v4 PoolManager                | `0x000000000004444c5dc75cB358380D2e3dE08A90` | mainnet; the official Uniswap v4 deployment                                       |
 | Permit2                       | `0x000000000022D473030F116dDEE9F6B43aC78BA3` | canonical, same on all chains                                                     |
 | Morpho Blue                   | `0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb` | mainnet                                                                           |
@@ -1071,6 +1071,11 @@ on-chain with `cast code`; the external dependencies follow. Other networks are 
 | USDC                          | `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48` | mainnet                                                                           |
 | UNI                           | `0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984` | mainnet; the Compound long-UNI market collateral                                 |
 
+Superseded margin deployments remain live onchain but should not be integrated against: routers
+`0x000000000075e82F7B7DdC5DD1B4984b560eF5D4` (2026-08-12, pre-audit-fixes),
+`0x00000000000Dc78b00e36d3a7997Bd9c4cd9F1f0`, and `0x0000000007e3176429aDd4F6f0280D5DbD11aEC8`
+(earlier APIs), each with its own adapter set. Positions opened on them stay exitable through their
+own router or the owner escape hatch; retire their adapter allowlists via governance when ready.
 
 Morpho WETH/USDC market (collateral WETH, loan USDC) — the canonical liquid market the deploy scripts
 register: oracle `0x0F948CBa8231Db7898ef36A4212581Ad7b1B4580`,
