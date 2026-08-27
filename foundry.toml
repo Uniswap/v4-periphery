@@ -21,8 +21,9 @@ compilation_restrictions = [
   { paths = "src/hooks/permissionedPools/PermissionedPositionManager.sol", optimizer_runs = 500 },
   { paths = "src/PositionDescriptor.sol", optimizer_runs = 1 },
   { paths = "src/SwapAndAdd.sol", optimizer_runs = 500 },
-  # Harness inherits SwapAndAdd so it needs via_ir. Matching restrictions are AND-ed, so this file
-  # is excluded from the via_ir=false globs below. Tests deploy it with deployCode and must not import it.
+  # Harness inherits SwapAndAdd, which only compiles with via_ir (stack too deep otherwise). Matching
+  # restrictions are AND-ed, so this file is excluded from the via_ir=false globs below. Tests deploy
+  # it with deployCode and must not import it.
   { paths = "test/unit/swapAndAdd/SwapAndAddHarness.sol", via_ir = true, optimizer_runs = 500 },
   { paths = "test/*.t.sol", via_ir = false },
   { paths = "test/base64.sol", via_ir = false },
