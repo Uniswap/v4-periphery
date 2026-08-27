@@ -34,7 +34,7 @@ library SwapAndAddMath {
             sqrtPriceX96, sqrtPriceLowerX96, sqrtPriceUpperX96, budget0, budget1, PIPS_DENOMINATOR, PIPS_DENOMINATOR
         );
         (uint256 mid0, uint256 mid1) =
-            getAmountsForLiquidity(sqrtPriceX96, sqrtPriceLowerX96, sqrtPriceUpperX96, midLiquidity);
+            getAmountsForLiquidityRoundingUp(sqrtPriceX96, sqrtPriceLowerX96, sqrtPriceUpperX96, midLiquidity);
         if (budget0 > mid0) {
             // token0 surplus: the reconcile swap sells token0, so discount token0 by the zeroForOne fee
             uint256 feePips =
@@ -90,13 +90,16 @@ library SwapAndAddMath {
 
         uint256 refValue;
         {
-            (uint256 ref0, uint256 ref1) =
-                getAmountsForLiquidity(sqrtPriceX96, sqrtPriceLowerX96, sqrtPriceUpperX96, REFERENCE_LIQUIDITY);
-            refValue = _weightedValue(ref0, ref1, rateX96, isToken1Cheaper, pipsWeight0, pipsWeight1);
+            (uint256 ref0, uint256 ref1) = getAmountsForLiquidityRoundingUp(
+                sqrtPriceX96, sqrtPriceLowerX96, sqrtPriceUpperX96, REFERENCE_LIQUIDITY
+            );
+            refValue = _tokenValue(ref0, pipsWeight0, rateX96, isToken1Cheaper)
+                + _tokenValue(ref1, pipsWeight1, rateX96, !isToken1Cheaper);
         }
         if (refValue == 0) return 0;
         // L = budgetValue * REFERENCE_LIQUIDITY / refValue, truncation is safe (leftover is swept)
-        uint256 budgetValue = _weightedValue(amount0, amount1, rateX96, isToken1Cheaper, pipsWeight0, pipsWeight1);
+        uint256 budgetValue = _tokenValue(amount0, pipsWeight0, rateX96, isToken1Cheaper)
+            + _tokenValue(amount1, pipsWeight1, rateX96, !isToken1Cheaper);
         return FullMath.mulDiv(budgetValue, REFERENCE_LIQUIDITY, refValue).toUint128();
     }
 
@@ -104,7 +107,7 @@ library SwapAndAddMath {
     /// @dev Rounds UP to mirror POSM's MINT_POSITION, so funding from these amounts is never a wei
     ///      short. Not interchangeable with LiquidityAmounts, which rounds down. The A/B bounds may
     ///      be passed in either order.
-    function getAmountsForLiquidity(
+    function getAmountsForLiquidityRoundingUp(
         uint160 sqrtPriceX96,
         uint160 sqrtPriceAX96,
         uint160 sqrtPriceBX96,
@@ -127,19 +130,19 @@ library SwapAndAddMath {
     ///         `amountToCover` of the deficit token.
     /// @dev Ceiling inverse over `amountToCover + 1`, so the freed amount is always sufficient.
     ///      Assumes the price is not past the range's far side for the deficit token.
-    /// @return liquidityToFree The liquidity to burn, uncapped. Callers must cap it against the
+    /// @return liquidityToTrim The liquidity to burn, uncapped. Callers must cap it against the
     ///         liquidity they added.
-    function getLiquidityToFree(
+    function getLiquidityToTrim(
         uint160 sqrtPriceX96,
         uint160 sqrtPriceLowerX96,
         uint160 sqrtPriceUpperX96,
         bool deficitIsCurrency1,
         uint256 amountToCover
-    ) internal pure returns (uint256 liquidityToFree) {
+    ) internal pure returns (uint256 liquidityToTrim) {
         if (deficitIsCurrency1) {
             // token1 occupies [sqrtLower, min(price, sqrtUpper)]: amount1 = L * (hi - lo) / Q96
             uint160 clampedUpper = sqrtPriceX96 < sqrtPriceUpperX96 ? sqrtPriceX96 : sqrtPriceUpperX96;
-            liquidityToFree =
+            liquidityToTrim =
                 FullMath.mulDivRoundingUp(amountToCover + 1, FixedPoint96.Q96, clampedUpper - sqrtPriceLowerX96);
         } else {
             // token0 occupies [max(price, sqrtLower), sqrtUpper]: amount0 = L * Q96 * (hi - lo) / (hi * lo)
@@ -149,24 +152,19 @@ library SwapAndAddMath {
             uint256 intermediate = FullMath.mulDivRoundingUp(clampedLower, sqrtPriceUpperX96, FixedPoint96.Q96);
             // can overflow and revert when the price is within sqrt units of sqrtUpper with a large
             // deficit (self-inflicted and atomic, a safe known limit)
-            liquidityToFree =
+            liquidityToTrim =
                 FullMath.mulDivRoundingUp(amountToCover + 1, intermediate, sqrtPriceUpperX96 - clampedLower);
         }
     }
 
-    /// @dev Values a token pair in the cheaper-token numeraire and weights each side by its pips factor.
-    function _weightedValue(
-        uint256 amount0,
-        uint256 amount1,
-        uint256 rateX96,
-        bool isToken1Cheaper,
-        uint256 pipsWeight0,
-        uint256 pipsWeight1
-    ) private pure returns (uint256) {
-        return isToken1Cheaper
-            ? FullMath.mulDiv(amount0, rateX96 * pipsWeight0, FixedPoint96.Q96 * PIPS_DENOMINATOR)
-                + FullMath.mulDiv(amount1, pipsWeight1, PIPS_DENOMINATOR)
-            : FullMath.mulDiv(amount0, pipsWeight0, PIPS_DENOMINATOR)
-                + FullMath.mulDiv(amount1, rateX96 * pipsWeight1, FixedPoint96.Q96 * PIPS_DENOMINATOR);
+    /// @dev Values one weighted token amount; `convert` applies the rate for the non-numeraire side.
+    function _tokenValue(uint256 amount, uint256 pipsWeight, uint256 rateX96, bool convert)
+        private
+        pure
+        returns (uint256)
+    {
+        return convert
+            ? FullMath.mulDiv(amount, rateX96 * pipsWeight, FixedPoint96.Q96 * PIPS_DENOMINATOR)
+            : FullMath.mulDiv(amount, pipsWeight, PIPS_DENOMINATOR);
     }
 }

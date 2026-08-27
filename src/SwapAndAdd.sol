@@ -322,7 +322,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
         // 5. Compute the final position amounts and sweep dust.
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(cp.key.toId());
-        (amount0, amount1) = SwapAndAddMath.getAmountsForLiquidity(sqrtPriceX96, sqrtLower, sqrtUpper, liquidity);
+        (amount0, amount1) =
+            SwapAndAddMath.getAmountsForLiquidityRoundingUp(sqrtPriceX96, sqrtLower, sqrtUpper, liquidity);
         _sweep(cp.key.currency0, cp.recipient);
         _sweep(cp.key.currency1, cp.recipient);
     }
@@ -338,7 +339,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         liquidity = SwapAndAddMath.getLiquidityFeeAware(
             sqrtPriceX96, sqrtLower, sqrtUpper, cp.budget0, cp.budget1, protocolFee, lpFee
         );
-        (amount0, amount1) = SwapAndAddMath.getAmountsForLiquidity(sqrtPriceX96, sqrtLower, sqrtUpper, liquidity);
+        (amount0, amount1) =
+            SwapAndAddMath.getAmountsForLiquidityRoundingUp(sqrtPriceX96, sqrtLower, sqrtUpper, liquidity);
     }
 
     /// @dev Flash-takes deficit tokens so the POSM deploy is fully funded. The rounded-up amounts
@@ -370,7 +372,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         bool zeroForOne = deficitIsCurrency1; // sell the surplus to buy the deficit
 
         // 1. Settle with deficit tokens already held.
-        _settleToward(deficit);
+        _settle(deficit);
 
         // 2. If a debt remains, sell the surplus for the deficit token (exact input).
         int256 owed = poolManager.currencyDelta(address(this), deficit);
@@ -378,7 +380,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             uint256 surplusBal = surplus.balanceOfSelf();
             if (surplusBal > 0) {
                 _swap(cp.key, zeroForOne, -surplusBal.toInt256(), cp.hookData);
-                _settleToward(surplus);
+                _settle(surplus);
                 owed = poolManager.currencyDelta(address(this), deficit);
             }
         }
@@ -386,13 +388,13 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // 3. If price impact or fees left a residual deficit, trim the position to free tokens.
         if (owed < 0) {
             trimmed = _trim(cp, tokenId, lopt, deficitIsCurrency1, uint256(-owed), sqrtLower, sqrtUpper);
-            _settleToward(deficit);
+            _settle(deficit);
         }
 
         // 4. Take credits and defensively close both deltas.
         _takeCredit(deficit);
         _takeCredit(surplus);
-        _settleToward(surplus);
+        _settle(surplus);
     }
 
     /// @dev Frees deficit tokens by decreasing the new liquidity, capped at `lopt` so existing
@@ -409,10 +411,10 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     ) internal returns (uint128 dl) {
         // re-read the price, the reconcile swap or a hook moved it since sizing
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(cp.key.toId());
-        uint256 liquidityToFree =
-            SwapAndAddMath.getLiquidityToFree(sqrtPriceX96, sqrtLower, sqrtUpper, deficitIsCurrency1, amountOut);
+        uint256 liquidityToTrim =
+            SwapAndAddMath.getLiquidityToTrim(sqrtPriceX96, sqrtLower, sqrtUpper, deficitIsCurrency1, amountOut);
         // cap the trim at the liquidity added in this transaction
-        dl = liquidityToFree >= lopt ? lopt : uint128(liquidityToFree);
+        dl = liquidityToTrim >= lopt ? lopt : uint128(liquidityToTrim);
         _decrease(cp.key, tokenId, dl, cp.hookData);
     }
 
@@ -508,7 +510,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     }
 
     /// @dev Pays min(held, debt) toward the currency's outstanding debt, possibly partially.
-    function _settleToward(Currency currency) internal {
+    function _settle(Currency currency) internal {
         int256 d = poolManager.currencyDelta(address(this), currency);
         if (d >= 0) return;
         uint256 debt = uint256(-d);

@@ -23,19 +23,20 @@ contract SwapAndAddMathTest is Test {
         uint160 su = TickMath.getSqrtPriceAtTick(600);
         uint128 liq = 1e18;
 
-        (uint256 a0, uint256 a1) = SwapAndAddMath.getAmountsForLiquidity(sl - 1, sl, su, liq);
+        (uint256 a0, uint256 a1) = SwapAndAddMath.getAmountsForLiquidityRoundingUp(sl - 1, sl, su, liq);
         assertGt(a0, 0, "below range: token0 only");
         assertEq(a1, 0, "below range: no token1");
 
-        (a0, a1) = SwapAndAddMath.getAmountsForLiquidity(su, sl, su, liq);
+        (a0, a1) = SwapAndAddMath.getAmountsForLiquidityRoundingUp(su, sl, su, liq);
         assertEq(a0, 0, "above range: no token0");
         assertGt(a1, 0, "above range: token1 only");
 
-        (a0, a1) = SwapAndAddMath.getAmountsForLiquidity(TickMath.getSqrtPriceAtTick(0), sl, su, liq);
+        (a0, a1) = SwapAndAddMath.getAmountsForLiquidityRoundingUp(TickMath.getSqrtPriceAtTick(0), sl, su, liq);
         assertGt(a0, 0, "in range: token0");
         assertGt(a1, 0, "in range: token1");
 
-        (uint256 a0s, uint256 a1s) = SwapAndAddMath.getAmountsForLiquidity(TickMath.getSqrtPriceAtTick(0), su, sl, liq);
+        (uint256 a0s, uint256 a1s) =
+            SwapAndAddMath.getAmountsForLiquidityRoundingUp(TickMath.getSqrtPriceAtTick(0), su, sl, liq);
         assertEq(a0s, a0, "unsorted bounds normalized (amount0)");
         assertEq(a1s, a1, "unsorted bounds normalized (amount1)");
     }
@@ -52,7 +53,7 @@ contract SwapAndAddMathTest is Test {
         uint160 sa = uint160(bound(aSeed, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE - 1));
         uint160 sb = uint160(bound(bSeed, uint256(sa) + 1, TickMath.MAX_SQRT_PRICE));
 
-        (uint256 up0, uint256 up1) = SwapAndAddMath.getAmountsForLiquidity(sp, sa, sb, liq);
+        (uint256 up0, uint256 up1) = SwapAndAddMath.getAmountsForLiquidityRoundingUp(sp, sa, sb, liq);
         uint160 lo0 = sp > sa ? sp : sa;
         uint256 down0 = lo0 < sb ? SqrtPriceMath.getAmount0Delta(lo0, sb, liq, false) : 0;
         uint160 hi1 = sp < sb ? sp : sb;
@@ -248,7 +249,7 @@ contract SwapAndAddMathTest is Test {
         );
     }
 
-    // getLiquidityToFree: the trim inverse
+    // getLiquidityToTrim: the trim inverse
 
     /// @dev the token0 amount a burn of `dl` frees (v4 rounds down)
     function freed0(uint160 lo, uint160 su, uint128 dl) internal pure returns (uint256) {
@@ -268,7 +269,7 @@ contract SwapAndAddMathTest is Test {
         if (maxDebt == 0) return; // no token0 exists in this geometry
         uint256 amountOut = bound(amountSeed, 1, maxDebt);
 
-        uint256 dlUp = SwapAndAddMath.getLiquidityToFree(lo, lo, su, false, amountOut);
+        uint256 dlUp = SwapAndAddMath.getLiquidityToTrim(lo, lo, su, false, amountOut);
         // the dust regime (cap path) is pinned separately
         if (dlUp > type(uint128).max) return;
 
@@ -281,7 +282,7 @@ contract SwapAndAddMathTest is Test {
         uint160 hi = uint160(bound(hiSeed, uint256(sl) + 1, TickMath.MAX_SQRT_PRICE));
         uint128 amountOut = uint128(bound(amountSeed, 1, type(uint128).max));
 
-        uint256 dlUp = SwapAndAddMath.getLiquidityToFree(hi, sl, hi, true, amountOut);
+        uint256 dlUp = SwapAndAddMath.getLiquidityToTrim(hi, sl, hi, true, amountOut);
         if (dlUp > type(uint128).max) return;
 
         assertGe(freed1(sl, hi, uint128(dlUp)), amountOut, "round-up inverse must never under-free token1");
@@ -293,13 +294,13 @@ contract SwapAndAddMathTest is Test {
         uint160 su = TickMath.getSqrtPriceAtTick(600);
 
         assertEq(
-            SwapAndAddMath.getLiquidityToFree(sl - 1000, sl, su, false, 1e18),
-            SwapAndAddMath.getLiquidityToFree(sl, sl, su, false, 1e18),
+            SwapAndAddMath.getLiquidityToTrim(sl - 1000, sl, su, false, 1e18),
+            SwapAndAddMath.getLiquidityToTrim(sl, sl, su, false, 1e18),
             "token0: price below range must clamp to sqrtLower"
         );
         assertEq(
-            SwapAndAddMath.getLiquidityToFree(su + 1000, sl, su, true, 1e18),
-            SwapAndAddMath.getLiquidityToFree(su, sl, su, true, 1e18),
+            SwapAndAddMath.getLiquidityToTrim(su + 1000, sl, su, true, 1e18),
+            SwapAndAddMath.getLiquidityToTrim(su, sl, su, true, 1e18),
             "token1: price above range must clamp to sqrtUpper"
         );
     }
@@ -326,7 +327,7 @@ contract SwapAndAddMathTest is Test {
         assertEq(freed0(lo, su, 1), 0, "1 unit of liquidity frees 0 wei of token0 in this range");
 
         // the shipped inverse covers it
-        uint256 dlNew = SwapAndAddMath.getLiquidityToFree(lo, lo, su, false, amountOut);
+        uint256 dlNew = SwapAndAddMath.getLiquidityToTrim(lo, lo, su, false, amountOut);
         assertLe(dlNew, type(uint128).max);
         assertGe(freed0(lo, su, uint128(dlNew)), amountOut, "shipped inverse covers the debt");
     }
@@ -342,7 +343,7 @@ contract SwapAndAddMathTest is Test {
         assertEq(SqrtPriceMath.getAmount1Delta(sl, sp, lopt, false), 0, "BURN returns 0 wei of token1");
 
         // the exact inverse needs more liquidity than exists, so the lopt cap bites
-        assertGt(SwapAndAddMath.getLiquidityToFree(sp, sl, sp, true, 1), lopt, "toll wei needs more than was added");
+        assertGt(SwapAndAddMath.getLiquidityToTrim(sp, sl, sp, true, 1), lopt, "toll wei needs more than was added");
 
         // the same asymmetry on token0: 259 in, 258 out
         assertEq(SqrtPriceMath.getAmount0Delta(sp, TickMath.getSqrtPriceAtTick(6000), lopt, true), 259);
@@ -379,14 +380,14 @@ contract SwapAndAddMathTest is Test {
 
     function _check0(uint160 lo, uint160 su, uint256 a) internal pure {
         if (su <= lo) return;
-        uint256 dl = SwapAndAddMath.getLiquidityToFree(lo, lo, su, false, a);
+        uint256 dl = SwapAndAddMath.getLiquidityToTrim(lo, lo, su, false, a);
         if (dl > type(uint128).max) return; // would be capped at lopt in the contract
         assertGe(freed0(lo, su, uint128(dl)), a, "token0 inverse under-freed");
     }
 
     function _check1(uint160 sl, uint160 hi, uint256 a) internal pure {
         if (hi <= sl) return;
-        uint256 dl = SwapAndAddMath.getLiquidityToFree(hi, sl, hi, true, a);
+        uint256 dl = SwapAndAddMath.getLiquidityToTrim(hi, sl, hi, true, a);
         if (dl > type(uint128).max) return;
         assertGe(freed1(sl, hi, uint128(dl)), a, "token1 inverse under-freed");
     }
@@ -406,6 +407,6 @@ contract SwapAndAddMathTest is Test {
         pure
         returns (uint256)
     {
-        return SwapAndAddMath.getLiquidityToFree(sp, sl, su, deficitIsCurrency1, amountToCover);
+        return SwapAndAddMath.getLiquidityToTrim(sp, sl, su, deficitIsCurrency1, amountToCover);
     }
 }
