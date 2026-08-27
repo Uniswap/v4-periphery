@@ -1,0 +1,11 @@
+ConstructorTest
+├── when poolManager is address(0)
+│ └── it reverts with {ZeroAddress}
+├── when permit2 is address(0)
+│ └── it reverts with {ZeroAddress}
+├── when positionManager is address(0)
+│ └── it reverts with {ZeroAddress}
+├── when universalRouter is address(0)
+│ └── it reverts with {ZeroAddress}
+└── given every constructor arg is non-zero
+    └── it stores poolManager, permit2, positionManager, and universalRouter

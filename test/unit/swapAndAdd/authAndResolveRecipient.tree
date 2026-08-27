@@ -1,0 +1,9 @@
+AuthAndResolveRecipientTest
+├── when caller is the position owner
+│ └── it returns the requested recipient
+├── when caller is token-approved
+│ └── it returns the owner (operator cannot redirect)
+├── when caller is approved-for-all
+│ └── it returns the owner (operator cannot redirect)
+└── when caller is a stranger
+    └── it reverts with {NotAuthorizedForToken}

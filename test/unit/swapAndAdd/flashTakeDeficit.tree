@@ -1,0 +1,9 @@
+FlashTakeDeficitTest
+├── when amount0 LTE budget0 AND amount1 LTE budget1
+│ └── it takes nothing
+├── when amount0 GT budget0
+│ └── it takes amount0 - budget0 of token0
+├── when amount1 GT budget1
+│ └── it takes amount1 - budget1 of token1
+└── when both amounts exceed budgets
+    └── it takes the shortfall on both tokens

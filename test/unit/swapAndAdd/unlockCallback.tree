@@ -1,0 +1,10 @@
+UnlockCallbackTest
+├── given deployTokenId is 0
+│ └── it does not collect fees and proceeds to swapAndAdd
+└── given deployTokenId is non-zero
+    ├── when position liquidity is 0
+    │ └── it skips the fee-collect decrease
+    ├── when position liquidity is non-zero
+    │ └── it collects fees into the budget
+    └── when budget0 is 0 AND budget1 is 0 AND route is empty
+        └── it reverts with {NoFeesToCompound}

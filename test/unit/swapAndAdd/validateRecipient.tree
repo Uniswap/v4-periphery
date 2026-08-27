@@ -1,0 +1,9 @@
+ValidateRecipientTest
+├── when recipient is address(0)
+│ └── it reverts with {InvalidRecipient}
+├── when recipient is the zap
+│ └── it reverts with {InvalidRecipient}
+├── when recipient is any other address
+│ └── it succeeds
+└── when recipient is invalid
+    └── it reverts with {InvalidRecipient} from add, increase, rebalance, and compound

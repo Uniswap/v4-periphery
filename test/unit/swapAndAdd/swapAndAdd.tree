@@ -1,0 +1,13 @@
+SwapAndAddTest
+├── when the pool hook has a returns-delta permission
+│ └── it reverts with {UnsupportedHookPermissions}
+├── when route is empty
+│ └── it sizes from the pulled budgets
+├── when route is non-empty
+│ └── it overwrites budgets from post-route balances
+├── when liquidityOptimistic is 0 AND deployTokenId is 0
+│ └── it reverts with {InsufficientLiquidity}
+├── when post-trim liquidity LT minLiquidity
+│ └── it reverts with {InsufficientLiquidity}
+└── given the op succeeds
+    └── it leaves the zap idle (no pool tokens, no ETH)

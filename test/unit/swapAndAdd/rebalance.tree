@@ -1,0 +1,27 @@
+RebalanceTest
+├── when caller is not authorized
+│ └── it reverts with {NotAuthorizedForToken}
+├── when deadline has passed
+│ └── it reverts with {DeadlinePassed}
+├── when additional delta exceeds withdrawn
+│ └── it reverts with {ReturnExceedsWithdrawn}
+├── given caller is owner
+│ ├── when additional deltas are zero
+│ │ └── it burns the old NFT, mints a new range, and leaves the zap idle
+│ ├── when additional deltas are negative
+│ │ └── it cashes out to the owner
+│ ├── when additional deltas are positive
+│ │ └── it deploys more liquidity than a full redeploy
+│ ├── when additional deltas have mixed signs
+│ │ └── it pulls more token0 and returns some token1 in one call
+│ └── when the owner names another recipient
+│     └── it sends the new NFT to the chosen recipient
+├── given caller is an operator
+│ └── it forces the new NFT and the cash-out to the owner
+├── given the pool is native
+│ ├── when the additional delta is positive
+│ │ └── it pulls the extra native via msg.value and deploys more
+│ └── when msg.value does not match the additional delta
+│     └── it reverts with {InvalidEthValue}
+└── given the rebalance succeeds
+    └── it emits Rebalanced carrying both the old and the new tokenId

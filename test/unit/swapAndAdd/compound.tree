@@ -1,0 +1,18 @@
+CompoundTest
+├── when caller is not authorized
+│ └── it reverts with {NotAuthorizedForToken}
+├── when deadline has passed
+│ └── it reverts with {DeadlinePassed}
+├── when there are no fees and no route
+│ └── it reverts with {NoFeesToCompound}
+├── when minLiquidityAdded is not met
+│ └── it reverts with {InsufficientLiquidity}
+├── given the position has accrued fees
+│ ├── when route is empty
+│ │ └── it reinvests fees into the same tokenId and leaves the zap idle
+│ └── when route is non-empty
+│     └── it converts part of the fees through the route and reinvests the result
+├── given caller is an operator
+│ └── it forces dust to the owner
+└── given the compound succeeds
+    └── it emits Compounded whose fields match the return values

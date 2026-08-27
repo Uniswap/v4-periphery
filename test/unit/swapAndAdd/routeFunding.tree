@@ -1,0 +1,22 @@
+RouteFundingTest
+├── given an add funded from a non-pool token
+│ ├── when the funding covers the whole budget
+│ │ └── it funds the whole position from the routed X
+│ ├── when the route leaves part of the funding
+│ │ └── it sweeps the unconsumed funding to the resolved recipient
+│ ├── when entries are duplicated
+│ │ └── it pulls every entry
+│ └── when an entry amount is 0
+│     └── it pulls nothing but wires and sweeps the donated balance
+├── given native funding
+│ ├── when the pool is ERC20
+│ │ └── it routes the pushed value and reclaims the remainder from the router
+│ └── when the pool is native
+│     └── it reverts with {InvalidFundingToken}
+├── given an increase
+│ ├── when the budget is 0 AND there are no fees
+│ │ └── it deploys the routed funding instead of reverting with {NoFeesToCompound}
+│ └── when the caller is an operator
+│     └── it forces the unconsumed funding to the owner
+└── given a rebalance
+    └── it adds the routed funding to the redeployed position

@@ -363,4 +363,108 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
     function extSwap(PoolKey memory k, bool zeroForOne, int256 amountIn) external {
         swap(k, zeroForOne, -amountIn, "");
     }
+
+    // far edge: the reconcile sell must never land the price on or past the far edge of the range
+    // with debt still owed, which raw-reverts in `_trim`. Worse-than-spot execution on a spot-sized
+    // surplus keeps the post-sell price strictly inside the far edge on hookless pools.
+
+    /// @dev A fresh pool at tick 0 whose own mint is (near-)all the liquidity, the config that gets the
+    ///      sell closest to the far edge. A dust-thin full-domain band breaks the scale-invariance, so
+    ///      the size of the budget varies the landing point.
+    function _farEdgePool(uint24 fee, int24 spacing, uint128 extLiquidity) internal returns (PoolKey memory k) {
+        k = PoolKey({
+            currency0: currency0, currency1: currency1, fee: fee, tickSpacing: spacing, hooks: IHooks(address(0))
+        });
+        manager.initialize(k, TickMath.getSqrtPriceAtTick(0));
+        if (extLiquidity > 0) {
+            modifyLiquidityRouter.modifyLiquidity(
+                k,
+                ModifyLiquidityParams({
+                    tickLower: -887_200, tickUpper: 887_200, liquidityDelta: int256(uint256(extLiquidity)), salt: 0
+                }),
+                ""
+            );
+        }
+    }
+
+    /// @dev fuzzed budgets, widths, and fees. A far-edge landing shows up as a raw revert.
+    function testFuzz_farEdge_neverRawReverts(uint256 b0, uint256 b1, uint8 widthMul, uint8 feeIdx, bool ext, bool thin)
+        public
+    {
+        uint24[4] memory fees = [uint24(0), 100, 3000, 100_000];
+        int24 spacing = thin ? int24(1) : int24(10);
+        int24 width = spacing * int24(uint24(bound(widthMul, 1, 200))); // down to a single tick each side
+        b0 = bound(b0, 0, 1e22);
+        b1 = bound(b1, 0, 1e22);
+        vm.assume(b0 + b1 >= 1e12);
+
+        PoolKey memory k = _farEdgePool(fees[feeIdx % 4], spacing, ext ? uint128(1e6) : uint128(0));
+        ISwapAndAdd.AddParams memory p = ISwapAndAdd.AddParams({
+            poolKey: k,
+            tickLower: -width,
+            tickUpper: width,
+            amount0In: b0,
+            amount1In: b1,
+            route: "",
+            routeFunding: new ISwapAndAdd.TokenAmount[](0),
+            minLiquidity: 1,
+            recipient: address(this),
+            hookData: "",
+            deadline: block.timestamp + 1
+        });
+
+        try zap.add(p) returns (uint256, uint128 liq, uint256, uint256) {
+            assertGt(liq, 0, "floor honored");
+            (uint160 sp,,,) = manager.getSlot0(k.toId());
+            assertGt(sp, TickMath.getSqrtPriceAtTick(-width), "price reached/passed the LOWER edge");
+            assertLt(sp, TickMath.getSqrtPriceAtTick(width), "price reached/passed the UPPER edge");
+        } catch (bytes memory data) {
+            bytes4 sel = _sel(data);
+            assertTrue(
+                sel == ISwapAndAdd.InsufficientLiquidity.selector || sel == CURRENCY_NOT_SETTLED,
+                "raw revert from the reconcile/trim: far-edge state reached"
+            );
+        }
+        _noFundsAtRest(k);
+    }
+
+    // fee-aware sizing: the dust must stay price-impact-small
+
+    /// @dev With an exact fee discount the dust stays below 10 bps for budgets <= 3e20 against 1e24 pool
+    ///      liquidity. A broken discount pushes the swap fee into the dust and breaks the bound.
+    function testFuzz_add_feeAware_dustStaysImpactSmall(uint24 feeSeed, uint256 b0Seed, uint256 b1Seed) public {
+        address dustRecipient = makeAddr("dustRecipient");
+        uint24 fee = uint24(bound(feeSeed, 5000, 100_000)); // 0.5% .. 10%
+        uint256 b0 = bound(b0Seed, 0, 3e20);
+        uint256 b1 = bound(b1Seed, 0, 3e20);
+        vm.assume(b0 + b1 >= 1e16);
+
+        (PoolKey memory k,) = initPool(currency0, currency1, IHooks(address(0)), fee, int24(60), SQRT_PRICE_1_1);
+        modifyLiquidityRouter.modifyLiquidity(
+            k,
+            ModifyLiquidityParams({tickLower: -600_000, tickUpper: 600_000, liquidityDelta: int256(1e24), salt: 0}),
+            ""
+        );
+
+        (, uint128 liq,,) = zap.add(
+            ISwapAndAdd.AddParams({
+                poolKey: k,
+                tickLower: -600,
+                tickUpper: 600,
+                amount0In: b0,
+                amount1In: b1,
+                route: "",
+                routeFunding: new ISwapAndAdd.TokenAmount[](0),
+                minLiquidity: 1,
+                recipient: dustRecipient,
+                hookData: "",
+                deadline: block.timestamp + 1
+            })
+        );
+        assertGt(liq, 0, "position minted");
+
+        // dust = everything the recipient received, valued at the ~1 pool price
+        uint256 dustValue = currency0.balanceOf(dustRecipient) + currency1.balanceOf(dustRecipient);
+        assertLe(dustValue * 10_000, (b0 + b1) * 10, "dust exceeded 10bps: fee-aware sizing is inaccurate");
+    }
 }

@@ -1,0 +1,11 @@
+EnsureApprovedTest
+├── when the token returns nothing from approve
+│ └── it treats the call as a success and the add completes
+├── when the token reverts on approve toward Permit2
+│ ├── it skips that call and still grants the Permit2 allowances
+│ └── given the token is already wired
+│     └── it never touches approve again
+├── when the ERC20 allowance toward Permit2 has degraded
+│ └── it re-approves zero-first and heals back to max
+└── when the key smuggles native in as currency1
+    └── it reverts and unwinds atomically
