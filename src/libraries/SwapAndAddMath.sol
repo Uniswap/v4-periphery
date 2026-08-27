@@ -144,9 +144,11 @@ library SwapAndAddMath {
         } else {
             // token0 occupies [max(price, sqrtLower), sqrtUpper]: amount0 = L * Q96 * (hi - lo) / (hi * lo)
             uint160 clampedLower = sqrtPriceX96 > sqrtPriceLowerX96 ? sqrtPriceX96 : sqrtPriceLowerX96;
-            // below tick ~-665k this quotient rounds up from below 1 and over-trims, the caller's cap absorbs it
+            // below tick ~-665k this quotient rounds up from below 1 and over-trims by a factor of
+            // up to ~2^32 (potentially the caller's entire cap), safely absorbed without fund loss
             uint256 intermediate = FullMath.mulDivRoundingUp(clampedLower, sqrtPriceUpperX96, FixedPoint96.Q96);
-            // can overflow and revert when the price is within sqrt units of sqrtUpper with a large deficit
+            // can overflow and revert when the price is within sqrt units of sqrtUpper with a large
+            // deficit (self-inflicted and atomic, a safe known limit)
             liquidityToFree =
                 FullMath.mulDivRoundingUp(amountToCover + 1, intermediate, sqrtPriceUpperX96 - clampedLower);
         }

@@ -342,7 +342,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     }
 
     /// @dev Flash-takes deficit tokens so the POSM deploy is fully funded. The rounded-up amounts
-    ///      are wei-exact against POSM's pull. `_reconcile` settles the debt.
+    ///      are wei-exact against POSM's pull. `_reconcile` settles the debt. The take requires the
+    ///      PoolManager to hold enough of the token across all pools, or it reverts.
     function _flashTakeDeficit(CoreParams memory cp, uint256 amount0, uint256 amount1) internal {
         if (amount0 > cp.budget0) _take(cp.key.currency0, address(this), amount0 - cp.budget0);
         if (amount1 > cp.budget1) _take(cp.key.currency1, address(this), amount1 - cp.budget1);
