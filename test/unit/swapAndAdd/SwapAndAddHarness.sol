@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
@@ -11,14 +12,43 @@ import {ISwapAndAdd} from "../../../src/interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "../../../src/interfaces/external/IUniversalRouter.sol";
 import {SwapAndAdd} from "../../../src/SwapAndAdd.sol";
 
+/// @notice Test-only unlocker that owns the PoolManager unlock for harness operations.
+/// @dev The PoolManager calls `unlockCallback` on this contract, not on the harness, so harness
+///      payloads never reach `SwapAndAdd._unlockCallback` and no override or sentinel is needed.
+contract HarnessUnlocker is IUnlockCallback {
+    IPoolManager public immutable poolManager;
+
+    constructor(IPoolManager _poolManager) {
+        poolManager = _poolManager;
+    }
+
+    /// @dev Opens an unlock and forwards `call` back to the caller inside the unlock context.
+    function run(bytes calldata call) external returns (bytes memory) {
+        return poolManager.unlock(abi.encode(msg.sender, call));
+    }
+
+    function unlockCallback(bytes calldata data) external returns (bytes memory) {
+        require(msg.sender == address(poolManager), "HarnessUnlocker: not poolManager");
+        (address target, bytes memory call) = abi.decode(data, (address, bytes));
+        (bool ok, bytes memory ret) = target.call(call);
+        // Bubble raw revert data so tests can match custom errors through the unlock.
+        if (!ok) {
+            assembly ("memory-safe") {
+                revert(add(ret, 32), mload(ret))
+            }
+        }
+        return abi.decode(ret, (bytes));
+    }
+}
+
 /// @notice Test-only wrapper that exposes SwapAndAdd internals.
 /// @dev Compiled with via_ir via `compilation_restrictions` in foundry.toml. Tests must deploy it
 ///      via `deployCode` and must not import this file (or they inherit the IR restriction).
+///      Ops that need an unlock run through `HarnessUnlocker`, which calls back into `harnessOp`.
 contract SwapAndAddHarness is SwapAndAdd {
     using TransientStateLibrary for IPoolManager;
 
-    /// @dev Sentinel so harness unlock payloads cannot collide with `abi.encode(CoreParams)`.
-    bytes32 internal constant HARNESS_TAG = keccak256("SwapAndAddHarness");
+    HarnessUnlocker public immutable unlocker;
 
     enum HarnessOp {
         DeployLiquidity,
@@ -36,21 +66,13 @@ contract SwapAndAddHarness is SwapAndAdd {
         IAllowanceTransfer _permit2,
         IPositionManager _positionManager,
         IUniversalRouter _universalRouter
-    ) SwapAndAdd(_poolManager, _permit2, _positionManager, _universalRouter) {}
-
-    function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
-        if (data.length >= 32) {
-            bytes32 tag;
-            assembly ("memory-safe") {
-                tag := calldataload(data.offset)
-            }
-            if (tag == HARNESS_TAG) return _harnessUnlock(data);
-        }
-        return super._unlockCallback(data);
+    ) SwapAndAdd(_poolManager, _permit2, _positionManager, _universalRouter) {
+        unlocker = new HarnessUnlocker(_poolManager);
     }
 
-    function _harnessUnlock(bytes calldata data) internal returns (bytes memory) {
-        (, HarnessOp op, bytes memory payload) = abi.decode(data, (bytes32, HarnessOp, bytes));
+    /// @dev Dispatch for unlock-scoped ops. Only callable by the unlocker inside its unlock context.
+    function harnessOp(HarnessOp op, bytes calldata payload) external returns (bytes memory) {
+        require(msg.sender == address(unlocker), "SwapAndAddHarness: not unlocker");
 
         if (op == HarnessOp.DeployLiquidity) {
             (CoreParams memory cp, uint128 liquidity, uint256 amount0) =
@@ -150,7 +172,7 @@ contract SwapAndAddHarness is SwapAndAdd {
     }
 
     function _unlock(HarnessOp op, bytes memory payload) internal returns (bytes memory) {
-        return poolManager.unlock(abi.encode(HARNESS_TAG, op, payload));
+        return unlocker.run(abi.encodeCall(this.harnessOp, (op, payload)));
     }
 
     // ───────────────────────────────────────────── exposed internals ─────────────────────────────────────────────
