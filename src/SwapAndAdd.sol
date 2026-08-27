@@ -37,8 +37,8 @@ import {IUniversalRouter} from "./interfaces/external/IUniversalRouter.sol";
 ///      route -> size -> flash-take deficit -> deploy -> reconcile and trim -> floor check -> sweep.
 ///      Rebalance burns the old position in POSM's own unlock first.
 ///
-///      Invariant: all pulled and collected funds are deployed or swept within the transaction.
-///      Only donations or undeclared route outputs can remain at rest.
+///      Invariant: pulled and collected funds are deployed or swept in the same transaction.
+///      Donations and undeclared route outputs remain and can be extracted by the next caller.
 contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarder, Multicall_v4, ReentrancyLock {
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
