@@ -1,0 +1,5 @@
+ExecuteRouteTest
+├── when the router holds no native after execute
+│ └── it does not issue a sweep
+└── when the router holds native after execute
+    └── it sweeps the full native balance back to the zap

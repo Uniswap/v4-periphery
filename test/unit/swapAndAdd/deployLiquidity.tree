@@ -1,0 +1,14 @@
+DeployLiquidityTest
+├── given deployTokenId is 0 (mint)
+│ ├── when the pool is ERC20
+│ │ └── it mints a new POSM NFT to the zap and writes the requested liquidity
+│ └── when the pool is native
+│     ├── when amount0 GT 0
+│     │ └── it forwards amount0 as msg.value and mints the native position
+│     └── when amount0 EQ 0
+│         └── it forwards 0 value and still mints (below-range token1-only)
+└── given deployTokenId is non-zero (increase)
+    ├── when the pool is ERC20
+    │ └── it grows that tokenId in place and does not mint a new NFT
+    └── when the pool is native
+        └── it grows that tokenId in place and leaves no ETH on the zap

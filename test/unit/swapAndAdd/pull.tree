@@ -1,0 +1,27 @@
+PullTest
+├── when funding is non-empty AND route is empty
+│ └── it reverts with {RouteFundingRequiresRoute}
+├── given funding is non-empty AND route is non-empty
+│ ├── when a funding token is currency0
+│ │ └── it reverts with {InvalidFundingToken}
+│ ├── when a funding token is currency1
+│ │ └── it reverts with {InvalidFundingToken}
+│ ├── when a funding token is native
+│ │ └── it adds the amount to expectedValue
+│ ├── when a funding token is ERC20 AND amount GT 0
+│ │ └── it pulls the amount via Permit2 into the zap
+│ └── when a funding token is ERC20 AND amount EQ 0
+│     └── it pulls nothing and still grants the Permit2 allowance
+├── given pool-token budget
+│ ├── when currency0 is native
+│ │ └── it adds amount0In to expectedValue
+│ ├── when currency0 is ERC20 AND amount0In GT 0
+│ │ └── it pulls amount0In via Permit2
+│ ├── when currency0 is ERC20 AND amount0In EQ 0
+│ │ └── it does not pull currency0
+│ └── when amount1In GT 0
+│     └── it pulls amount1In via Permit2
+├── when msg.value != expectedValue
+│ └── it reverts with {InvalidEthValue}
+└── when address(this).balance LT expectedValue
+    └── it reverts with {InvalidEthValue}

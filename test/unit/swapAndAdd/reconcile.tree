@@ -1,0 +1,14 @@
+ReconcileTest
+├── when a0opt LTE budget0 AND a1opt LTE budget1
+│ └── it returns 0 trimmed and leaves position liquidity unchanged
+├── given a deficit on token0
+│ ├── when held deficit covers the flash debt
+│ │ └── it settles without swapping, trimmed is 0, PM deltas close
+│ ├── when surplus remains after settle
+│ │ └── it swaps surplus for deficit, then closes deltas
+│ └── when a residual deficit remains after the swap
+│     └── it trims newly added liquidity, then closes deltas
+├── given a deficit on token1
+│ └── it selects currency1 as the deficit, sells token0, and closes deltas
+└── given a native pool deficit
+    └── it closes native and token1 deltas and leaves the zap idle

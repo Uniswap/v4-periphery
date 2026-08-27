@@ -1,0 +1,16 @@
+RebalanceTest
+├── when caller is not authorized
+│ └── it reverts with {NotAuthorizedForToken}
+├── when deadline has passed
+│ └── it reverts with {DeadlinePassed}
+├── when additional delta exceeds withdrawn
+│ └── it reverts with {ReturnExceedsWithdrawn}
+├── given caller is owner
+│ ├── when additional deltas are zero
+│ │ └── it burns the old NFT, mints a new range, and leaves the zap idle
+│ ├── when additional deltas are negative
+│ │ └── it cashes out to the owner
+│ └── when additional deltas are positive
+│     └── it deploys more liquidity than a full redeploy
+└── given caller is an operator
+    └── it forces the new NFT to the owner

@@ -259,7 +259,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     // ───────────────────────────────────────────── unlock callback ─────────────────────────────────────────────
 
     /// @dev Unlock callback from PoolManager: collects fees for grow ops, then executes the shared core flow.
-    function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
+    function _unlockCallback(bytes calldata data) internal virtual override returns (bytes memory) {
         CoreParams memory cp = abi.decode(data, (CoreParams));
 
         // For grow ops (increase, compound): collect accrued fees via a 0-liquidity decrease first.

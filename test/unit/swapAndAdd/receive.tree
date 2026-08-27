@@ -1,0 +1,9 @@
+ReceiveTest
+├── when sender is not PoolManager, PositionManager, or Universal Router
+│ └── it reverts with {InvalidEthSender}
+├── when sender is PoolManager
+│ └── it accepts native ETH
+├── when sender is PositionManager
+│ └── it accepts native ETH
+└── when sender is Universal Router
+    └── it accepts native ETH

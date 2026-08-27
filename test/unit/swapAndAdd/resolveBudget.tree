@@ -1,0 +1,9 @@
+ResolveBudgetTest
+├── when delta GTE 0
+│ └── it returns the full held balance
+├── when delta LT 0 AND toReturn LTE held
+│ └── it transfers toReturn to recipient and returns held - toReturn
+├── when delta LT 0 AND toReturn GT held
+│ └── it reverts with {ReturnExceedsWithdrawn}
+└── when delta is type(int128).min
+    └── it does not overflow the negation

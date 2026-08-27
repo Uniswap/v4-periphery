@@ -1,0 +1,16 @@
+IncreaseTest
+├── when caller is not authorized
+│ └── it reverts with {NotAuthorizedForToken}
+├── when deadline has passed
+│ └── it reverts with {DeadlinePassed}
+├── when minLiquidityAdded is not met
+│ └── it reverts with {InsufficientLiquidity}
+├── given caller is owner
+│ ├── when the position has liquidity
+│ │ └── it grows the same tokenId and leaves the zap idle
+│ ├── when the position is emptied
+│ │ └── it refills the same tokenId
+│ └── when the pool is native
+│     └── it grows the same tokenId and leaves the zap idle
+└── given caller is an operator
+    └── it forces dust to the owner

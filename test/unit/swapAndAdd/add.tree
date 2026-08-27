@@ -1,0 +1,17 @@
+AddTest
+├── when recipient is address(0)
+│ └── it reverts with {InvalidRecipient}
+├── when recipient is the zap
+│ └── it reverts with {InvalidRecipient}
+├── when deadline has passed
+│ └── it reverts with {DeadlinePassed}
+├── when amount1-only
+│ └── it mints a position NFT to recipient and leaves the zap idle
+├── when amount0-only
+│ └── it mints a position NFT to recipient and leaves the zap idle
+├── when both amounts are non-zero
+│ └── it mints a position NFT to recipient and leaves the zap idle
+├── when the pool is native
+│ └── it mints a native position and leaves the zap idle
+└── given the add succeeds
+    └── it emits Added whose fields match the return values
