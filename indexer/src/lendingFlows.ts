@@ -17,7 +17,7 @@ import {
   txLendingEvents,
   WAD,
 } from "./helpers";
-import { readMarkAtBlock } from "./marks";
+import { readMarkAtBlockSoft } from "./marks";
 import { recordTxSwaps } from "./swaps";
 
 type Venue = "MORPHO" | "AAVE_V3" | "AAVE_V4";
@@ -348,7 +348,7 @@ async function synthesizeAdjust(context: Context, flow: FlowEvent, positionRowId
   // capture the pre-tx equity once (this tx's first synthesized flow), then reuse it
   const equityBase = existing ? (existing.equityBase ?? 0n) : (live?.equity ?? 0n);
 
-  const markX18 = await readMarkAtBlock({
+  const markX18 = await readMarkAtBlockSoft({
     context,
     venue: flow.venue,
     collateral: flow.collateral,
@@ -914,8 +914,9 @@ export async function recordLiquidation(context: Context, liq: LiquidationEvent)
     // liquidation execution price: debt cleared per collateral seized
     priceX18: liq.seizedCollateral > 0n ? (liq.repaidDebt * WAD) / liq.seizedCollateral : null,
     poolId: null,
-    // A liquidation carries no router-reported LTV, so the mark is an oracle read at its block.
-    markX18: await readMarkAtBlock({
+    // A liquidation carries no router-reported LTV, so the mark is an oracle read at its block —
+    // softened, since an oracle failure must not halt indexing during a liquidation storm.
+    markX18: await readMarkAtBlockSoft({
       context,
       venue: liq.venue,
       collateral: liq.collateral,

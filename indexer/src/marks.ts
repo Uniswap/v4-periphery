@@ -92,7 +92,37 @@ export async function readMarkAtBlock(params: {
   return (collateralUsd * WAD * 10n ** BigInt(debtDecimals)) / (debtUsd * 10n ** BigInt(collateralDecimals));
 }
 
-/** Derive from the event where possible, else read the oracle. */
+/**
+ * readMarkAtBlock, softened: warn and return null on any failure (unavailable/reverting oracle,
+ * missing market ref) so a per-action mark read never halts the indexer — an honest null mark on
+ * that action instead. Used by every per-action mark path (curated actions, synthetic ADJUSTs, and
+ * liquidations, where oracle staleness clusters); callers that genuinely require a mark keep using
+ * readMarkAtBlock directly.
+ */
+export async function readMarkAtBlockSoft(params: {
+  context: Context;
+  venue: string;
+  collateral: `0x${string}`;
+  debt: `0x${string}`;
+  morphoMarketId: `0x${string}` | null;
+  blockNumber: bigint;
+}): Promise<bigint | null> {
+  try {
+    return await readMarkAtBlock(params);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(
+      `mark: no oracle mark for ${params.venue} ${params.collateral}/${params.debt} @ block ${params.blockNumber} (${reason}); recording null`
+    );
+    return null;
+  }
+}
+
+/**
+ * Derive from the event where possible, else read the oracle. Returns null (with a warning) when no
+ * mark is available: a blocking oracle readContract on every action is an ops risk, so an unavailable
+ * or reverting oracle yields honest null PnL for that action rather than halting the indexer.
+ */
 export async function resolveMarkX18(params: {
   context: Context;
   venue: string;
@@ -103,11 +133,11 @@ export async function resolveMarkX18(params: {
   collateralTotal: bigint;
   debtTotal: bigint;
   ltvAfterWad: bigint | null;
-}): Promise<bigint> {
+}): Promise<bigint | null> {
   const { ltvAfterWad, collateralTotal, debtTotal } = params;
   if (ltvAfterWad !== null) {
     const derived = deriveMarkFromTotals({ collateralTotal, debtTotal, ltvAfterWad });
     if (derived !== null) return derived;
   }
-  return readMarkAtBlock(params);
+  return readMarkAtBlockSoft(params);
 }
