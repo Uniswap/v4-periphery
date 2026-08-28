@@ -23,8 +23,9 @@ Production: `npm start` with `DATABASE_URL` pointing at Postgres.
 |---|---|---|
 | MarginRouter | `0x0000000000F57fCd0d5a78a19907240F1169EDEC` | Lifecycle: `AccountCreated`, `PositionIncreased/Decreased`, `CollateralAdded`, `AdapterAllowed`, and `PositionUpdated` (resulting-state snapshot on every mutation, including `execute` plans) |
 | MorphoLendingAdapter | `0x766C34DcFBA565a1b72ce83ECD96712376Ca1f3D` | `MarketSet` market registry (market id, oracle, LLTV) |
-| Aave v3 / v4 adapters | `0x7E1A...098aC` / `0xAb3C...AE2Eb` | `MarketSet` market registries |
-| Compound v3 adapter | `0x7759...95e0d` | `MarketSet` market registry |
+| Aave v3 adapter | `0x7E1A...098aC` | `MarketSet` market registry |
+| Aave v4 adapter | `0xAb3C...AE2Eb` | `MarketSet` market registry |
+| Compound v3 adapter | `0x7759...95e0d` | `MarketSet` market registry (venue `COMPOUND_V3`; Comet truth layer deferred) |
 | Morpho Blue | `0xBBBB...FFCb` | Collateral/debt flows + `Liquidate`, attributed by `onBehalf` ∈ margin accounts |
 | Aave v3 Pool | `0x8787...A4E2` | Flows + `LiquidationCall`, attributed by `onBehalfOf`/`user` |
 | Aave v4 Spoke | `0x94e7...c485` | Flows + `LiquidationCall`, attributed by `onBehalfOf`/`user` |
@@ -128,5 +129,8 @@ History feed for a position:
   The fee tier is still recorded per swap on `swapEvent.fee`. To resolve older pools
   fully, lower the PoolManager start block (v4 genesis is 21688329) and use Postgres
   rather than the embedded PGlite for the larger backfill.
+- **Full-close dust sweep**: a full close sweeps residual dust back in the debt token via a `Swept`
+  event that is not indexed in v1, so realized PnL can drift by the measured dust buffer
+  (`sizeFullClose`) — dust-sized by construction.
 - **Chains**: mainnet only today; add deployments to `addresses.ts` and mirror the
   contract entries in `ponder.config.ts`.

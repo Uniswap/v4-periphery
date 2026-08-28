@@ -127,7 +127,7 @@ appear here with `applied: false` and no `positionAction` row.
 ```graphql
 {
   lendingEvents(
-    where: { account: "0x7430d056212fe4a35992c65166d22e5c2823583c" }
+    where: { account: "0x1111111111111111111111111111111111111111" }
     orderBy: "blockNumber"
     orderDirection: "asc"
   ) {
@@ -156,7 +156,7 @@ appear here with `applied: false` and no `positionAction` row.
 ## 10. Point lookups and pagination
 
 ```graphql
-{ account(address: "0x7430d056212fe4a35992c65166d22e5c2823583c") { owner subId } }
+{ account(address: "0x1111111111111111111111111111111111111111") { owner subId } }
 ```
 
 Cursor pagination on any collection:
