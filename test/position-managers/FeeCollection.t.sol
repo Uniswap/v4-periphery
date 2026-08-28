@@ -73,8 +73,7 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_fuzz_collect_erc20(ModifyLiquidityParams memory params) public {
         params.liquidityDelta = bound(params.liquidityDelta, 10e18, 10_000e18);
         uint256 tokenId;
-        (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
-        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
+        (tokenId, params) = addFuzzyTwoSidedLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
 
         PositionConfig memory config =
             PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
@@ -102,8 +101,7 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
 
     function test_fuzz_collect_sameRange_erc20(ModifyLiquidityParams memory params, uint256 liquidityDeltaBob) public {
         params.liquidityDelta = bound(params.liquidityDelta, 10e18, 10_000e18);
-        params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
-        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
+        params = createFuzzyTwoSidedLiquidityParams(key, params, SQRT_PRICE_1_1);
 
         liquidityDeltaBob = bound(liquidityDeltaBob, 100e18, 100_000e18);
 

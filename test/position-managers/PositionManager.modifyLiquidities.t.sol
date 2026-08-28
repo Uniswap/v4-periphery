@@ -870,7 +870,13 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
 
         tickLower = fotKey.tickSpacing * (tickLower / fotKey.tickSpacing);
         tickUpper = fotKey.tickSpacing * (tickUpper / fotKey.tickSpacing);
-        vm.assume(tickUpper > tickLower);
+        // order the ticks and make them distinct instead of rejecting inputs, so no fuzz run is discarded
+        if (tickLower > tickUpper) (tickLower, tickUpper) = (tickUpper, tickLower);
+        if (tickLower == tickUpper) {
+            int24 alignedMax = fotKey.tickSpacing * (TickMath.MAX_TICK / fotKey.tickSpacing);
+            if (tickUpper + fotKey.tickSpacing <= alignedMax) tickUpper += fotKey.tickSpacing;
+            else tickLower -= fotKey.tickSpacing;
+        }
 
         (uint160 sqrtPriceX96,,,) = manager.getSlot0(fotKey.toId());
         {
