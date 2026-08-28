@@ -18,6 +18,7 @@ import {
 } from "./helpers";
 import { reverseAndSupersedeAdjust } from "./lendingFlows";
 import { resolveMarkX18 } from "./marks";
+import { observedVenue } from "./marginAccounts";
 import { recordTxSwaps } from "./swaps";
 
 /**
@@ -56,6 +57,18 @@ async function consumeSwaps(context: Context, txHash: `0x${string}`): Promise<`0
     await context.db.update(swapEvent, { id: swap.id }).set({ consumed: true });
   }
   return swaps[0]?.poolId ?? null;
+}
+
+/**
+ * Repair an epoch the flow layer could not attribute. Only ever turns UNKNOWN into a known venue —
+ * never rewrites one venue as another, so a row cannot flap and a wrong hint cannot displace real
+ * flow evidence. Returns an empty patch when there is nothing to do, so it spreads into any update.
+ */
+function upgradeVenue(
+  row: { venue: string },
+  hint: ReturnType<typeof observedVenue>
+): { venue: NonNullable<ReturnType<typeof observedVenue>> } | Record<string, never> {
+  return row.venue === "UNKNOWN" && hint !== undefined ? { venue: hint } : {};
 }
 
 /** Attribute this tx's staged lending flows to the pair; returns venue context. */
@@ -128,6 +141,13 @@ ponder.on("MarginRouter:PositionIncreased", async ({ event, context }) => {
   // so it starts a NEW epoch and overwrites the pointer instead of folding into the dead one.
   const existing = await findActivePosition(context, accountAddr, collateral, debt);
 
+  const venueHint = observedVenue({
+    txHash: event.transaction.hash,
+    account: accountAddr,
+    collateral,
+    debt,
+  });
+
   if (existing) {
     await reverseAndSupersedeAdjust(context, { txHash: event.transaction.hash, positionRowId: existing.id });
   }
@@ -135,9 +155,11 @@ ponder.on("MarginRouter:PositionIncreased", async ({ event, context }) => {
   // A genuine increase: a prior router event already reported this epoch's open.
   if (existing && existing.openReported) {
     const updated = await context.db.update(position, { id: existing.id }).set((row) => {
+      const repaired = upgradeVenue(row, venueHint);
       const totalBought = row.totalCollateralBought + collateralBought;
       const totalDrawn = row.totalDebtDrawn + debtDrawn;
       return {
+        ...repaired,
         equity: row.equity + equity,
         // Authoritative totals below come from the event either way; only the cost basis is skipped.
         ...(unknownFill
@@ -194,8 +216,21 @@ ponder.on("MarginRouter:PositionIncreased", async ({ event, context }) => {
   // that could not resolve the pair, so no epoch was opened by the flow layer). Either way the event
   // totals are authoritative and the economics come only from here.
   const id = existing ? existing.id : positionId(accountAddr, collateral, debt, event.transaction.hash);
+  // `existing` is nullable, so test it before reading through it. Precedence matches upgradeVenue:
+  // real flow evidence, then the epoch's own venue, then the clone's adapter.
+  const openedVenue =
+    flows.venue !== "UNKNOWN"
+      ? flows.venue
+      : existing && existing.venue !== "UNKNOWN"
+        ? existing.venue
+        : (observedVenue({
+            txHash: event.transaction.hash,
+            account: accountAddr,
+            collateral,
+            debt,
+          }) ?? ("UNKNOWN" as const));
   const opened = {
-    venue: flows.venue !== "UNKNOWN" ? flows.venue : (existing?.venue ?? flows.venue),
+    venue: openedVenue,
     equity,
     // An unknown fill opens with an EMPTY basis, not a real collateralBought against a zero cost —
     // otherwise the null price here is cosmetic and the next ordinary increase averages against a
@@ -300,6 +335,13 @@ ponder.on("MarginRouter:PositionDecreased", async ({ event, context }) => {
   const row = await context.db.find(position, { id: pointer.positionId });
   if (!row) return;
 
+  const venueHint = observedVenue({
+    txHash: event.transaction.hash,
+    account: accountAddr,
+    collateral,
+    debt,
+  });
+
   await reverseAndSupersedeAdjust(context, { txHash: event.transaction.hash, positionRowId: row.id });
 
   // The event's debtRepaid is the caller's REQUESTED amount, which the venue clamps when it
@@ -322,6 +364,9 @@ ponder.on("MarginRouter:PositionDecreased", async ({ event, context }) => {
   const priceX18 = collateralSold > 0n ? (measuredRepaid * WAD) / collateralSold : null;
 
   await context.db.update(position, { id: row.id }).set({
+    // Not on a close: MarginRouter's debt-free full close can emit its snapshot with no
+    // adapter-bearing clone event in the transaction, so the hint may belong to another leg.
+    ...(isClose ? {} : upgradeVenue(row, venueHint)),
     collateralAmount: collateralTotal,
     debtPrincipal: debtTotal,
     lastLtvWad: currentLtv,
@@ -417,6 +462,7 @@ ponder.on("MarginRouter:CollateralAdded", async ({ event, context }) => {
   await reverseAndSupersedeAdjust(context, { txHash: event.transaction.hash, positionRowId: live.id });
 
   const added = await context.db.update(position, { id: live.id }).set((row) => ({
+    ...upgradeVenue(row, observedVenue({ txHash: event.transaction.hash, account: accountAddr, collateral, debt })),
     equity: row.equity + amount,
     collateralAmount: collateralTotal,
     debtPrincipal: debtTotal,
@@ -503,6 +549,9 @@ ponder.on("MarginRouter:PositionUpdated", async ({ event, context }) => {
 
   if (live) {
     await context.db.update(position, { id: live.id }).set({
+      ...(terminal
+        ? {}
+        : upgradeVenue(live, observedVenue({ txHash: event.transaction.hash, account: accountAddr, collateral, debt }))),
       collateralAmount: collateralTotal,
       debtPrincipal: debtTotal,
       lltv: maxLtv,
@@ -527,6 +576,15 @@ ponder.on("MarginRouter:PositionUpdated", async ({ event, context }) => {
   // Open the epoch from the snapshot. Venue comes from this tx's staged flows when resolvable (Aave v3
   // unattributed opens), else UNKNOWN (Compound, which stages no flows).
   const flows = await drainFlows(context, event.transaction.hash, accountAddr, collateral, debt);
+  const snapshotVenue =
+    flows.venue !== "UNKNOWN"
+      ? flows.venue
+      : (observedVenue({
+          txHash: event.transaction.hash,
+          account: accountAddr,
+          collateral,
+          debt,
+        }) ?? ("UNKNOWN" as const));
   const id = positionId(accountAddr, collateral, debt, event.transaction.hash);
   await context.db
     .insert(position)
@@ -537,7 +595,7 @@ ponder.on("MarginRouter:PositionUpdated", async ({ event, context }) => {
       account: accountAddr,
       collateral,
       debt,
-      venue: flows.venue,
+      venue: snapshotVenue,
       status: "OPEN",
       openReported: false,
       collateralAmount: collateralTotal,

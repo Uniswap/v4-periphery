@@ -539,4 +539,28 @@ export const marginAccountAbi = [
       { name: "to", type: "address", indexed: false },
     ],
   },
+  // The exit legs. Indexed for their `adapter` only — their amounts are unusable
+  // (CollateralWithdrawn logs zero on every venue but Aave v4, per its NatSpec), and the
+  // venue events remain the single writer of balances.
+  {
+    type: "event",
+    name: "CollateralWithdrawn",
+    inputs: [
+      { name: "caller", type: "address", indexed: true },
+      { name: "adapter", type: "address", indexed: true },
+      { name: "collateral", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "to", type: "address", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "Repaid",
+    inputs: [
+      { name: "caller", type: "address", indexed: true },
+      { name: "adapter", type: "address", indexed: true },
+      { name: "debt", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
 ] as const;

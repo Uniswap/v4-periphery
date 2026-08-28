@@ -15,7 +15,7 @@ import * as schema from "ponder:schema";
 // handler registration side effects: every src module records into the registry stub
 import "../../src/aave";
 import "../../src/lendingFlows";
-import "../../src/marginAccounts";
+import { _resetObservationsForTests } from "../../src/marginAccounts";
 import "../../src/markets";
 import "../../src/morpho";
 import "../../src/pools";
@@ -257,6 +257,8 @@ export async function createHarness(): Promise<Harness> {
     },
     readCalls,
     reset: async (): Promise<void> => {
+      // src module scratch state is tx-scoped, not test-scoped, so it outlives a table wipe.
+      _resetObservationsForTests();
       stubs.length = 0;
       readCalls.length = 0;
       receiptLogs.clear();

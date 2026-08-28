@@ -4,7 +4,7 @@ import { adapter, lendingMarket, morphoMarketRef } from "ponder:schema";
 import { deployments } from "../addresses";
 import { ensureToken, lower } from "./helpers";
 
-const VENUE_BY_ADAPTER: Record<string, "MORPHO" | "AAVE_V3" | "AAVE_V4" | "COMPOUND_V3"> = {
+export const VENUE_BY_ADAPTER: Record<string, "MORPHO" | "AAVE_V3" | "AAVE_V4" | "COMPOUND_V3"> = {
   [lower(deployments.mainnet.morphoAdapter)]: "MORPHO",
   [lower(deployments.mainnet.aaveAdapter)]: "AAVE_V3",
   [lower(deployments.mainnet.aaveV4Adapter)]: "AAVE_V4",
