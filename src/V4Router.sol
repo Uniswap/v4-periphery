@@ -27,11 +27,13 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     using CalldataDecoder for bytes;
     using BipsLibrary for uint256;
 
+    // X36 fixed-point scale for realized hop prices: a hop's price is amountOut * PRECISION /
+    // amountIn (output per input), compared against the caller's minHopPriceX36
     uint256 private constant PRECISION = 1e36;
 
     constructor(IPoolManager _poolManager) BaseActionsRouter(_poolManager) {}
 
-    function _handleAction(uint256 action, bytes calldata params) internal override {
+    function _handleAction(uint256 action, bytes calldata params) internal virtual override {
         // swap actions and payment actions in different blocks for gas efficiency
         if (action < Actions.SETTLE) {
             if (action == Actions.SWAP_EXACT_IN) {
@@ -81,8 +83,21 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         revert UnsupportedAction(action);
     }
 
+    /// @notice Maps a swap action's amount before it is used, so an inheriting router can resolve a
+    ///         route-level sentinel (e.g. a callback register populated by a prior command) into a
+    ///         concrete amount at execution time.
+    /// @dev Applied to the amount read from the swap params (`amountIn` for exact-input,
+    ///      `amountOut` for exact-output) before the `OPEN_DELTA` sentinel is interpreted, so the
+    ///      default identity mapping preserves existing behavior exactly. A value that maps to
+    ///      `OPEN_DELTA` (0) is still treated as the open-delta sentinel by the swap helpers.
+    /// @param amount The raw amount taken from the swap params
+    /// @return The amount to use for the swap
+    function _mapSwapAmount(uint128 amount) internal view virtual returns (uint128) {
+        return amount;
+    }
+
     function _swapExactInputSingle(IV4Router.ExactInputSingleParams calldata params) private {
-        uint128 amountIn = params.amountIn;
+        uint128 amountIn = _mapSwapAmount(params.amountIn);
         if (amountIn == ActionConstants.OPEN_DELTA) {
             amountIn =
                 _getFullCredit(params.zeroForOne ? params.poolKey.currency0 : params.poolKey.currency1).toUint128();
@@ -105,7 +120,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             uint256 pathLength = params.path.length;
             uint128 amountOut;
             Currency currencyIn = params.currencyIn;
-            uint128 amountIn = params.amountIn;
+            uint128 amountIn = _mapSwapAmount(params.amountIn);
             if (amountIn == ActionConstants.OPEN_DELTA) amountIn = _getFullCredit(currencyIn).toUint128();
             PathKey calldata pathKey;
 
@@ -135,7 +150,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     }
 
     function _swapExactOutputSingle(IV4Router.ExactOutputSingleParams calldata params) private {
-        uint128 amountOut = params.amountOut;
+        uint128 amountOut = _mapSwapAmount(params.amountOut);
         if (amountOut == ActionConstants.OPEN_DELTA) {
             amountOut =
                 _getFullDebt(params.zeroForOne ? params.poolKey.currency1 : params.poolKey.currency0).toUint128();
@@ -163,7 +178,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             // Caching for gas savings
             uint256 pathLength = params.path.length;
             uint128 amountIn;
-            uint128 amountOut = params.amountOut;
+            uint128 amountOut = _mapSwapAmount(params.amountOut);
             Currency currencyOut = params.currencyOut;
             PathKey calldata pathKey;
 

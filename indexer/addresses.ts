@@ -1,0 +1,49 @@
+/**
+ * Canonical margin-trading deployment registry, keyed by Ponder chain name.
+ * ponder.config.ts derives its contract config from this map.
+ *
+ * The live mainnet margin suite (DeployMargin.s.sol broadcast, blocks 25842465-25842483, commit
+ * 0df9a61), verified onchain: contract code, governance
+ * 0x58e28b95a2ee57c4E90613AFce9e8CCEED3aB1E8, the adapter allowlist, and every canonical market
+ * read back true. This is the post-audit suite: it carries the full OpenZeppelin fix set (delta
+ * fill checks, encodeEnableCollateral, measured-repay gating, owner-lifecycle events) on top of
+ * the unlock-free-path PositionUpdated emissions and the IAmountResolver adapter surface. The
+ * superseded 2026-08-12 router 0x000000000075e82F7B7DdC5DD1B4984b560eF5D4 remains live onchain but
+ * is not indexed.
+ *
+ * CollateralAdded carries no debt token, so src/router.ts resolves the pair from the same-tx
+ * PositionUpdated snapshot. That is the primary resolver, not a fallback: a Compound add stages no
+ * flow to attribute by, and an Aave add whose reserve maps to several registered markets cannot be
+ * disambiguated from the flow alone either.
+ */
+export const deployments = {
+  mainnet: {
+    /** MarginRouter (also emits the factory's AccountCreated). */
+    marginRouter: "0x0000000000F57fCd0d5a78a19907240F1169EDEC",
+    /** MorphoLendingAdapter. */
+    morphoAdapter: "0x766C34DcFBA565a1b72ce83ECD96712376Ca1f3D",
+    /** AaveLendingAdapter (Aave v3). */
+    aaveAdapter: "0x7E1A543Bd8ed2F16D61DA4b6bC2eC5d240D098aC",
+    /** AaveV4LendingAdapter. */
+    aaveV4Adapter: "0xAb3C2661c810295Db32125942f04b92c61fAE2Eb",
+    /** CompoundV3LendingAdapter. */
+    compoundAdapter: "0x77598B845d0200fc707bD32A8Ad6DCF85C995e0d",
+    /** Morpho Blue singleton. */
+    morphoBlue: "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
+    /** Aave v3 Pool (resolved from the PoolAddressesProvider). Also the read-time source for a
+     *  reserve's aToken / variable-debt token (getReserveAToken, getReserveVariableDebtToken). */
+    aaveV3Pool: "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
+    /** Aave v4 Main Spoke (proxy). Reserve-keyed supply/withdraw/borrow/repay flows. */
+    aaveV4Spoke: "0x94e7A5dCbE816e498b89aB752661904E2F56c485",
+    /** AaveOracle (getAssetPrice, 8dp USD), resolved from the v3 PoolAddressesProvider.
+     *  Shared by v3 and v4: USD prices are venue-independent and the v4 Spoke's own
+     *  oracle is not getAssetPrice-shaped. */
+    aaveOracle: "0x54586bE62E3c3580375aE3723C145253060Ca0C2",
+    /** Uniswap v4 PoolManager singleton. */
+    poolManager: "0x000000000004444c5dc75cB358380D2e3dE08A90",
+    /** First block of the margin suite deployment (the redeploy broadcast's first receipt).
+     *  Everything is indexed from here, including PoolManager Initialize (pools created earlier
+     *  have no `pool` metadata row; their fee tier is still on `swapEvent.fee`). */
+    startBlock: 25842465,
+  },
+} as const;

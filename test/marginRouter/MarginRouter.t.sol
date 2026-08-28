@@ -1,0 +1,255 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.26;
+
+import {Test} from "forge-std/Test.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+
+import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
+import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
+import {MarginAccount} from "../../src/MarginAccount.sol";
+import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
+import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
+import {Market} from "../../src/types/Market.sol";
+import {Ltv, toLtv} from "../../src/types/Ltv.sol";
+import {NotOwner, ZeroOwner, NotPendingOwner} from "../../src/types/Owner.sol";
+
+/// @dev Unit tests for the router's wiring and pre-unlock guards. The swap-coupled leverage flows
+///      (open, close end-to-end) run through a real PoolManager and are validated by the integration
+///      and fork suite, not here.
+import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
+
+contract MarginRouterTest is Test, MarginRouteHelpers {
+    /// @dev Mirrors MarginRouter's event for expectEmit; the router is deployed via `vm.getCode`
+    ///      (never imported here), so the declaration cannot be referenced from the contract.
+    event GovernanceTransferred(address indexed previousGovernance, address indexed newGovernance);
+
+    IMarginRouter internal router;
+    address internal owner = makeAddr("owner");
+    Currency internal c0 = Currency.wrap(address(0x1111));
+    Currency internal c1 = Currency.wrap(address(0x2222));
+
+    function setUp() public {
+        vm.warp(1_000);
+        address impl = address(new MarginAccount());
+        // poolManager / permit2 / weth9 are not called on the tested (pre-unlock) paths and these
+        // tests never route a swap
+        router = IMarginRouter(
+            deployMarginRouter(
+                IPoolManager(makeAddr("poolManager")),
+                IAllowanceTransfer(makeAddr("permit2")),
+                IWETH9(makeAddr("weth9")),
+                impl,
+                address(this)
+            )
+        );
+    }
+
+    function _openParams() internal view returns (IMarginRouter.IncreaseParams memory p) {
+        p.market = Market({collateral: c0, debt: c1});
+        p.equity = 1e18;
+        p.collateralToBuy = 2e18;
+        p.maxDebtIn = 1;
+        p.deadline = block.timestamp + 1 hours;
+    }
+
+    function test_factory_managerIsRouter() public {
+        // the router is the manager baked into every account it deploys
+        address account = router.createAccount(address(this), 0);
+        assertEq(MarginAccount(payable(account)).manager(), address(router));
+    }
+
+    function test_accountOf_isDeterministic() public view {
+        assertEq(router.accountOf(owner, 0), router.accountOf(owner, 0));
+        assertTrue(router.accountOf(owner, 0) != router.accountOf(owner, 1));
+    }
+
+    function test_increasePosition_revertsWhenSlippageBoundZero() public {
+        IMarginRouter.IncreaseParams memory p = _openParams();
+        p.maxDebtIn = 0;
+        vm.expectRevert(IMarginRouter.SlippageBoundRequired.selector);
+        router.increasePosition(p);
+    }
+
+    function test_increasePosition_revertsWhenCollateralToBuyZero() public {
+        IMarginRouter.IncreaseParams memory p = _openParams();
+        p.collateralToBuy = 0;
+        vm.expectRevert(IMarginRouter.ZeroAmount.selector);
+        router.increasePosition(p);
+    }
+
+    function test_decreasePosition_revertsWhenDebtToRepayZero() public {
+        IMarginRouter.DecreaseParams memory p;
+        p.deadline = block.timestamp + 1 hours;
+        p.debtToRepay = 0;
+        p.maxCollateralIn = 1;
+        p.maxLtvAfter = toLtv(0.9e18);
+        vm.expectRevert(IMarginRouter.ZeroAmount.selector);
+        router.decreasePosition(p);
+    }
+
+    function test_increasePosition_revertsAfterDeadline() public {
+        IMarginRouter.IncreaseParams memory p = _openParams();
+        p.deadline = block.timestamp - 1;
+        vm.expectRevert(abi.encodeWithSelector(IMarginRouter.DeadlinePassed.selector, p.deadline));
+        router.increasePosition(p);
+    }
+
+    function test_fullClose_revertsWhenSlippageBoundZero() public {
+        // maxCollateralIn only gates the swap path, so the position must carry debt to reach it (a
+        // debt-free full close takes the swap-free path and ignores the bound)
+        IMarginRouter.DecreaseParams memory p;
+        p.adapter = ILendingAdapter(makeAddr("adapter"));
+        p.deadline = block.timestamp + 1 hours;
+        p.debtToRepay = type(uint256).max; // full close
+        p.maxCollateralIn = 0;
+        vm.mockCall(
+            address(p.adapter),
+            abi.encodeWithSelector(ILendingAdapter.positionOf.selector),
+            abi.encode(uint256(1e18), uint256(1e18))
+        );
+        vm.expectRevert(IMarginRouter.SlippageBoundRequired.selector);
+        router.decreasePosition(p);
+    }
+
+    function test_partialDecrease_revertsWhenPositionDebtFree() public {
+        // a partial decrease against a debt-free position has nothing to repay: the swap would buy
+        // debt tokens no repay consumes, so the router fails loudly instead of stranding them and
+        // emitting a repay that never happened
+        IMarginRouter.DecreaseParams memory p;
+        p.adapter = ILendingAdapter(makeAddr("adapter"));
+        p.deadline = block.timestamp + 1 hours;
+        p.debtToRepay = 1e18;
+        p.maxCollateralIn = 1;
+        p.maxLtvAfter = toLtv(0.9e18);
+        vm.mockCall(
+            address(p.adapter),
+            abi.encodeWithSelector(ILendingAdapter.positionOf.selector),
+            abi.encode(uint256(5e18), uint256(0))
+        );
+        vm.expectRevert(IMarginRouter.NoDebtToRepay.selector);
+        router.decreasePosition(p);
+    }
+
+    function test_governance_isDeployer() public view {
+        assertEq(router.governance(), address(this));
+    }
+
+    // initial governance is observable onchain (audit N-12): the constructor emits the same
+    // GovernanceTransferred a completed handoff does, from the zero address
+    function test_constructor_emitsInitialGovernanceTransferred() public {
+        address impl = address(new MarginAccount());
+        vm.expectEmit(true, true, true, true);
+        emit GovernanceTransferred(address(0), address(this));
+        deployMarginRouter(
+            IPoolManager(makeAddr("poolManager")),
+            IAllowanceTransfer(makeAddr("permit2")),
+            IWETH9(makeAddr("weth9")),
+            impl,
+            address(this)
+        );
+    }
+
+    function test_setAdapterAllowed_onlyGovernance() public {
+        vm.prank(makeAddr("stranger"));
+        vm.expectRevert(abi.encodeWithSelector(NotOwner.selector, makeAddr("stranger")));
+        router.setAdapterAllowed(ILendingAdapter(address(0xA)), true);
+    }
+
+    function test_transferGovernance_onlyGovernance() public {
+        vm.prank(makeAddr("stranger"));
+        vm.expectRevert(abi.encodeWithSelector(NotOwner.selector, makeAddr("stranger")));
+        router.transferGovernance(makeAddr("newGov"));
+    }
+
+    function test_transferGovernance_revertsForZeroAddress() public {
+        vm.expectRevert(ZeroOwner.selector);
+        router.transferGovernance(address(0));
+    }
+
+    function test_transferGovernance_proposesWithoutChangingGovernance() public {
+        address newGov = makeAddr("newGov");
+        router.transferGovernance(newGov);
+        // current governance is unchanged until the successor accepts
+        assertEq(router.governance(), address(this));
+        assertEq(router.pendingGovernance(), newGov);
+    }
+
+    function test_acceptGovernance_completesHandoff() public {
+        address newGov = makeAddr("newGov");
+        router.transferGovernance(newGov);
+
+        vm.prank(newGov);
+        router.acceptGovernance();
+
+        assertEq(router.governance(), newGov);
+        assertEq(router.pendingGovernance(), address(0));
+    }
+
+    function test_oldGovernanceRetainsPowerUntilAccept() public {
+        address newGov = makeAddr("newGov");
+        router.transferGovernance(newGov);
+        // the old governance can still curate the allowlist before the handoff completes
+        router.setAdapterAllowed(ILendingAdapter(address(0xA)), true);
+        assertTrue(router.isAdapterAllowed(ILendingAdapter(address(0xA))));
+    }
+
+    function test_acceptGovernance_revertsForNonPendingCaller() public {
+        router.transferGovernance(makeAddr("newGov"));
+        vm.prank(makeAddr("stranger"));
+        vm.expectRevert(abi.encodeWithSelector(NotPendingOwner.selector, makeAddr("stranger")));
+        router.acceptGovernance();
+    }
+
+    function test_acceptGovernance_revertsWhenNonePending() public {
+        vm.prank(makeAddr("stranger"));
+        vm.expectRevert(abi.encodeWithSelector(NotPendingOwner.selector, makeAddr("stranger")));
+        router.acceptGovernance();
+    }
+
+    function test_increasePosition_revertsWhenAdapterNotAllowed() public {
+        // _openParams leaves adapter as the zero address, which is not allowlisted
+        IMarginRouter.IncreaseParams memory p = _openParams();
+        vm.expectRevert(abi.encodeWithSelector(IMarginRouter.AdapterNotAllowed.selector, address(0)));
+        router.increasePosition(p);
+    }
+
+    // ── a supplied health bound must be able to bind (non-zero maxLtvAfter must be < 100%) ──
+
+    function test_increasePosition_revertsWhenMaxLtvAfterAtOrAbove100pct() public {
+        // a non-zero bound at/above 100% (e.g. type(uint256).max, the codebase's "no limit" sentinel)
+        // would read as "set" yet leave ASSERT_HEALTH a no-op; it is rejected up front
+        IMarginRouter.IncreaseParams memory p = _openParams();
+        p.maxLtvAfter = toLtv(1e18);
+        vm.expectRevert(abi.encodeWithSelector(IMarginRouter.IneffectiveLtvBound.selector, toLtv(1e18)));
+        router.increasePosition(p);
+
+        p.maxLtvAfter = toLtv(type(uint256).max);
+        vm.expectRevert(abi.encodeWithSelector(IMarginRouter.IneffectiveLtvBound.selector, toLtv(type(uint256).max)));
+        router.increasePosition(p);
+    }
+
+    function test_increasePosition_allowsZeroMaxLtvAfter() public {
+        // zero still means "skip the check" (documented, back-compatible); it passes the new guard and
+        // proceeds to the allowlist check, proving the ineffective-bound guard did not trip on zero
+        IMarginRouter.IncreaseParams memory p = _openParams();
+        p.maxLtvAfter = Ltv.wrap(0);
+        vm.expectRevert(abi.encodeWithSelector(IMarginRouter.AdapterNotAllowed.selector, address(0)));
+        router.increasePosition(p);
+    }
+
+    function test_decreasePosition_revertsWhenMaxLtvAfterAtOrAbove100pct() public {
+        // the partial-decrease bound is mandatory; it must also be effective (< 100%), so a
+        // max-uint value can no longer satisfy the requirement while disabling the health assert
+        IMarginRouter.DecreaseParams memory p;
+        p.deadline = block.timestamp + 1 hours;
+        p.debtToRepay = 1e18; // partial (not type(uint256).max)
+        p.maxCollateralIn = 1;
+        p.maxLtvAfter = toLtv(type(uint256).max);
+        vm.expectRevert(abi.encodeWithSelector(IMarginRouter.IneffectiveLtvBound.selector, toLtv(type(uint256).max)));
+        router.decreasePosition(p);
+    }
+}

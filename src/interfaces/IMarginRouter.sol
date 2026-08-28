@@ -1,0 +1,483 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.26;
+
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+
+import {ILendingAdapter} from "./ILendingAdapter.sol";
+import {IMulticall_v4} from "./IMulticall_v4.sol";
+import {IImmutableState} from "./IImmutableState.sol";
+import {IPermit2Forwarder} from "./IPermit2Forwarder.sol";
+import {Market} from "../types/Market.sol";
+import {Ltv} from "../types/Ltv.sol";
+
+/// @title IMarginRouter
+/// @author Uniswap Labs
+/// @notice The full external surface of the margin router: opening, closing, and topping up leveraged
+///         spot positions, the general-purpose `execute` plan interpreter, account addressing, the
+///         governance-curated adapter allowlist, and the inherited `multicall`. Each position call
+///         operates on the caller's own MarginAccount, derived from the authenticated caller and a
+///         subId, never from a caller-supplied account address. Leverage is built as a single
+///         flash-style swap inside one PoolManager unlock: borrow the debt, swap it into collateral,
+///         supply the collateral, and draw the debt to settle the swap.
+interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
+    // -------------------------------------------------------------------------
+    // Errors
+    // -------------------------------------------------------------------------
+
+    /// @dev Thrown when `block.timestamp` has passed the caller-supplied deadline.
+    /// @param deadline The deadline that was exceeded.
+    error DeadlinePassed(uint256 deadline);
+
+    /// @dev Thrown when a required slippage or health bound is zero: `maxDebtIn` / `maxCollateralIn`
+    ///      (swap slippage) or `maxLtvAfter` (resulting health). Leaving a bound unset would allow a
+    ///      swap to execute at an arbitrary price or leave a position in an unchecked state.
+    error SlippageBoundRequired();
+
+    /// @dev Thrown when a non-zero `maxLtvAfter` is at or above 100% (`1e18`). Such a bound can never
+    ///      be exceeded by a real LTV, so it would satisfy the "bound is set" check yet leave the
+    ///      resulting-health assertion a no-op. A supplied bound must sit strictly below 100%.
+    /// @param maxLtvAfter The ineffective bound that was supplied.
+    error IneffectiveLtvBound(Ltv maxLtvAfter);
+
+    /// @dev Thrown when a required non-zero amount is zero: `collateralToBuy`, an `addCollateral` or
+    ///      `PULL_TO_ACCOUNT` amount, or a partial `debtToRepay`. A zero amount is always a caller
+    ///      error, rejected rather than resolved to a full-balance sentinel.
+    error ZeroAmount();
+
+    /// @dev Thrown by the post-action health check (`ASSERT_HEALTH`) when a position mutation leaves
+    ///      the account's current LTV above the CALLER-supplied bound (`maxLtvAfter` on the curated
+    ///      flows, the encoded bound in an `execute` plan). The bound is the caller's own health
+    ///      limit, not the adapter's liquidation LTV, and a zero bound skips the check entirely
+    ///      (used by full closes, which end debt-free). The venue's liquidation LTV is enforced by
+    ///      the lending protocol at call time regardless.
+    error PositionUnhealthy();
+
+    /// @dev Thrown when a partial decrease has nothing to repay: before the unlock when the position
+    ///      reads debt-free, and after it when the repay leg no-oped because the debt was cleared
+    ///      inside the transaction (venues accept permissionless onBehalf repays, so route-path code
+    ///      can retire the debt between the two points). Either way the swap would have bought debt
+    ///      tokens no repay consumes (stranding them in the account, since only a full close sweeps
+    ///      the surplus back) while the event reported a repay that never happened. A debt-free
+    ///      position is exited with a full close (`debtToRepay == type(uint256).max`), which
+    ///      withdraws the collateral directly.
+    error NoDebtToRepay();
+
+    /// @dev Thrown when a flow is called with a lending adapter that governance has not allowlisted.
+    ///      A non-allowlisted adapter could redirect equity to an arbitrary destination.
+    /// @param adapter The disallowed adapter address that was supplied.
+    error AdapterNotAllowed(address adapter);
+
+    /// @dev Thrown when native ETH is sent with a position call but the market's collateral is not
+    ///      WETH. ETH is wrapped to WETH before crediting the account; mismatching collateral would
+    ///      leave the account funded in the wrong token.
+    error NativeCollateralMismatch();
+
+    /// @dev Thrown by the `ASSERT_ACCOUNT_BALANCE` fill check when the active account's resulting
+    ///      balance of the bought currency is below the required minimum: the routed swap delivered
+    ///      less than requested (a thin route can hit its price limit before the full exact-output is
+    ///      bought). The curated flows set the minimum to the account's balance going into the unlock
+    ///      PLUS the amount the swap was asked to deliver, so the absolute check enforces the swap
+    ///      DELTA and a pre-existing balance cannot mask a short fill; the flows are all-or-nothing and
+    ///      revert rather than build on a short fill. Also thrown by `ASSERT_FILL`, which applies the
+    ///      same guarantee to the router's own credit in an output currency inside `execute` plans.
+    /// @param requested The minimum the failed check required: the account's pre-unlock balance plus
+    ///        the amount the swap was asked to deliver (`ASSERT_ACCOUNT_BALANCE`), or the minimum
+    ///        router credit (`ASSERT_FILL`).
+    /// @param received What the check measured: the account's resulting balance of the bought
+    ///        currency (`ASSERT_ACCOUNT_BALANCE`), or the router's credit in it (`ASSERT_FILL`).
+    error IncompleteFill(uint256 requested, uint256 received);
+
+    /// @dev Thrown when an account-scoped action in an `execute` plan runs with no active account
+    ///      set. A plan must open each account-scoped section with a `SET_ACCOUNT` action; the
+    ///      curated entry points set the account themselves and never hit this.
+    error NoActiveAccount();
+
+    /// @dev Thrown when a `ROUTE_SWAP` (a curated increase/decrease swap or an `execute` route action)
+    ///      supplies a zero Universal Router address. The UR is provided per call, and the swap cannot
+    ///      be dispatched to the zero address.
+    error UniversalRouterNotSet();
+
+    // -------------------------------------------------------------------------
+    // Events
+    // -------------------------------------------------------------------------
+
+    /// @notice Emitted when leverage is opened or added via `increasePosition`. The first increase
+    ///         for an account is paired with an `AccountCreated` event from the factory; subsequent
+    ///         increases into the same account add leverage to the existing position. The
+    ///         resulting-state fields let an indexer reconstruct the full position from this one log;
+    ///         the entry price is `debtDrawn / collateralBought` in the market's native decimals.
+    /// @param owner The position owner (the authenticated caller at the time of the call).
+    /// @param account The MarginAccount holding the position.
+    /// @param collateral The collateral currency of the market.
+    /// @param debt The debt currency of the market.
+    /// @param equity The equity the caller contributed, in the collateral token's native decimals
+    ///        (the wrapped native amount when funded with ETH). The increase supplies the account's
+    ///        FULL collateral balance, so any idle balance the account already held is committed on
+    ///        top of this amount; `collateralTotal` reflects the true resulting supply.
+    /// @param collateralBought The collateral purchased by the increase swap, in the collateral
+    ///        token's native decimals.
+    /// @param debtDrawn The debt borrowed to fund the swap (the entry notional), in the debt token's
+    ///        native decimals.
+    /// @param collateralTotal The account's total collateral after the increase.
+    /// @param debtTotal The account's total debt after the increase.
+    /// @param currentLtv The position's LTV after the increase (WAD, 1e18 == 100%).
+    /// @param maxLtv The market's max (liquidation) LTV (WAD, 1e18 == 100%).
+    /// @param healthFactorWad The position health factor after the increase (WAD, 1e18 == 1.0).
+    event PositionIncreased(
+        address indexed owner,
+        address indexed account,
+        Currency collateral,
+        Currency debt,
+        uint256 equity,
+        uint256 collateralBought,
+        uint256 debtDrawn,
+        uint256 collateralTotal,
+        uint256 debtTotal,
+        Ltv currentLtv,
+        Ltv maxLtv,
+        uint256 healthFactorWad
+    );
+
+    /// @notice Emitted when a position is reduced or fully closed via `decreasePosition`. A full close
+    ///         is indicated by `debtTotal == 0`, and the residual (realized PnL) returned to the caller
+    ///         is `collateralReturned`. The resulting-state fields let an indexer reconstruct the full
+    ///         position from this one log.
+    /// @param owner The position owner (the authenticated caller).
+    /// @param account The MarginAccount holding the position.
+    /// @param collateral The collateral currency of the market.
+    /// @param debt The debt currency of the market.
+    /// @param debtRepaid The requested repay amount, in the debt token's native decimals: the
+    ///        caller's `debtToRepay` on a partial decrease, all outstanding debt on a full close. A
+    ///        partial request above the live debt clamps at the venue (Compound in its encoder, Aave
+    ///        protocol-side, Morpho at the reported debt), so this field can then exceed the amount
+    ///        actually repaid; the co-emitted `PositionUpdated` carries the measured resulting debt.
+    /// @param collateralWithdrawn The collateral removed from the lending position, in the collateral
+    ///        token's native decimals (the swap cost on a partial decrease; all collateral on a full
+    ///        close).
+    /// @param collateralReturned The collateral returned to the caller, in the collateral token's
+    ///        native decimals: zero on a partial decrease, the realized PnL on a full close.
+    /// @param collateralTotal The account's total collateral after the operation (zero on a full close).
+    /// @param debtTotal The account's total debt after the operation (zero on a full close).
+    /// @param currentLtv The position's LTV after the operation (WAD, 1e18 == 100%).
+    /// @param healthFactorWad The position health factor after the operation (WAD, 1e18 == 1.0).
+    event PositionDecreased(
+        address indexed owner,
+        address indexed account,
+        Currency collateral,
+        Currency debt,
+        uint256 debtRepaid,
+        uint256 collateralWithdrawn,
+        uint256 collateralReturned,
+        uint256 collateralTotal,
+        uint256 debtTotal,
+        Ltv currentLtv,
+        uint256 healthFactorWad
+    );
+
+    /// @notice Emitted when collateral is added to a position via `addCollateral`.
+    /// @param owner The position owner (the authenticated caller).
+    /// @param account The MarginAccount that received the collateral.
+    /// @param collateral The collateral currency supplied.
+    /// @param amount The amount of collateral added, in the collateral token's native decimals.
+    /// @param collateralTotal The account's total collateral after the add.
+    /// @param debtTotal The account's total debt after the add (unchanged by the add).
+    /// @param currentLtv The position's LTV after the add (WAD, 1e18 == 100%).
+    /// @param healthFactorWad The position health factor after the add (WAD, 1e18 == 1.0).
+    event CollateralAdded(
+        address indexed owner,
+        address indexed account,
+        Currency collateral,
+        uint256 amount,
+        uint256 collateralTotal,
+        uint256 debtTotal,
+        Ltv currentLtv,
+        uint256 healthFactorWad
+    );
+
+    /// @notice Emitted after a position mutation (supply, withdraw, borrow, or repay) with the
+    ///         account's resulting snapshot in the `(collateral, debt)` market. Fires on every router
+    ///         path that mutates a position: the curated flows, `execute` plans, and the direct
+    ///         unlock-free paths (`addCollateral` and the zero-debt swap-free close), so an indexer
+    ///         can reconstruct position state from router logs alone, without an archive
+    ///         `describePosition` call. Mutations made through the owner escape hatch (calling the
+    ///         `MarginAccount` directly) bypass the router entirely and emit no snapshot. A single
+    ///         transaction may emit several (an open emits one after the supply and one after the
+    ///         borrow); take the last per `(account, collateral, debt)` as the resulting state. The
+    ///         curated entry points additionally emit the richer `Position*` events carrying the
+    ///         per-operation deltas.
+    /// @dev Best-effort: the snapshot reads `adapter.describePosition`, which reverts for a
+    ///      de-registered market. To preserve the exit guarantee (withdraw/repay are never
+    ///      market-gated), a failing read is swallowed and no event is emitted rather than reverting
+    ///      the action.
+    /// @param owner The position owner (the authenticated caller).
+    /// @param account The MarginAccount holding the position.
+    /// @param collateral The collateral currency of the market.
+    /// @param debt The debt currency of the market.
+    /// @param collateralTotal The account's total collateral after the action.
+    /// @param debtTotal The account's total debt after the action.
+    /// @param currentLtv The position's current LTV after the action (WAD, 1e18 == 100%).
+    /// @param maxLtv The market's max (liquidation) LTV (WAD, 1e18 == 100%).
+    /// @param healthFactorWad The position health factor after the action (WAD, 1e18 == 1.0).
+    event PositionUpdated(
+        address indexed owner,
+        address indexed account,
+        Currency collateral,
+        Currency debt,
+        uint256 collateralTotal,
+        uint256 debtTotal,
+        Ltv currentLtv,
+        Ltv maxLtv,
+        uint256 healthFactorWad
+    );
+
+    // -------------------------------------------------------------------------
+    // Param structs
+    // -------------------------------------------------------------------------
+
+    /// @notice Parameters for opening or increasing a leveraged position (`increasePosition`).
+    /// @dev The swap always sells the market's debt to buy its collateral. The trade direction is
+    ///      set entirely by the market's (collateral, debt) assignment: the position is long the
+    ///      collateral and short the debt. Equity is provided in the collateral currency.
+    /// @param adapter The allowlisted lending adapter that encodes and reads lending protocol calls.
+    /// @param market The (collateral, debt) pair defining the margin market. This pairing sets the
+    ///        trade direction: long the collateral, short the debt.
+    /// @param equity The amount of collateral the caller contributes as equity, in the collateral
+    ///        token's native decimals. Ignored when `msg.value > 0` (native ETH is used instead).
+    /// @param collateralToBuy The exact amount of collateral the route buys (its exact-output amount),
+    ///        in the collateral token's native decimals. The router asserts the account received it, so
+    ///        it must match the `amountOut` encoded in the route.
+    /// @param maxDebtIn The maximum debt the router flash-takes and lets the Universal Router spend, in
+    ///        the debt token's native decimals. Must be non-zero. It is the binding slippage cap (the
+    ///        router grants the Universal Router a Permit2 allowance of exactly this much), independent
+    ///        of the route's own `amountInMaximum`. Derive it from a quote, not spot price, and keep it
+    ///        within the debt token's flash-takeable PoolManager liquidity.
+    /// @param universalRouter The Universal Router to route the debt->collateral swap through, supplied
+    ///        per call so the caller picks the UR deployment their route targets rather than a fixed
+    ///        router immutable. Must be non-zero and carry already-unlocked `V4_SWAP` support (PR #491).
+    /// @param routeCommands The Universal Router command byte string for the debt->collateral swap. The
+    ///        route MUST buy `collateralToBuy` collateral exact-output and deliver it to the caller's
+    ///        MarginAccount, drawing the input from the router (the payer) via Permit2. Built off-chain
+    ///        so the caller can source liquidity across v2/v3/v4.
+    /// @param routeInputs The per-command ABI-encoded inputs for `routeCommands`.
+    /// @param maxLtvAfter The maximum LTV the position may have after the increase (WAD, 1e18 ==
+    ///        100%). Because the open sizes on the pool while liquidation uses the venue oracle,
+    ///        adverse inclusion can consume the full `maxDebtIn` budget and land the position near
+    ///        LLTV; this asserts the resulting oracle-LTV so a caller can bound leverage by health,
+    ///        not just by swap input. Zero skips the check (back-compatible with `maxDebtIn`-only
+    ///        callers).
+    /// @param subId A caller-chosen sub-account index allowing one address to hold multiple
+    ///        independent positions. The (caller, subId) pair determines the MarginAccount address.
+    /// @param deadline A Unix timestamp; the call reverts if `block.timestamp` exceeds this value.
+    struct IncreaseParams {
+        ILendingAdapter adapter;
+        Market market;
+        uint256 equity;
+        uint128 collateralToBuy;
+        uint128 maxDebtIn;
+        address universalRouter;
+        bytes routeCommands;
+        bytes[] routeInputs;
+        Ltv maxLtvAfter;
+        uint256 subId;
+        uint256 deadline;
+    }
+
+    /// @notice Parameters for reducing (delevering) or fully closing a position.
+    /// @dev Sells collateral to buy and repay `debtToRepay` of debt. A partial decrease keeps the
+    ///      position open and shrinks it by the swap's collateral cost and the repaid debt, with
+    ///      `maxLtvAfter` asserting the resulting LTV; it requires live debt and reverts
+    ///      `NoDebtToRepay` against a debt-free position (exit those with a full close instead).
+    ///      Passing `debtToRepay == type(uint256).max`
+    ///      instead fully closes the position: it repays all debt, withdraws all collateral, and
+    ///      returns the residual (realized PnL) to the caller; a zero-debt position takes a swap-free
+    ///      path, and `maxLtvAfter` is ignored on a full close. One state is not expressible here: a
+    ///      position holding debt against ZERO collateral (possible only after venue-side changes,
+    ///      e.g. a full liquidation leaving dust debt) cannot be fully closed through this flow - the
+    ///      zero withdraw amount collides with the `OPEN_DELTA` sentinel and reverts opaquely at the
+    ///      venue. Repay such a position through an `execute` plan or the account's own `repay`.
+    /// @param adapter The allowlisted lending adapter.
+    /// @param market The (collateral, debt) pair defining the margin market.
+    /// @param debtToRepay The exact amount of debt the route buys and repays (its exact-output amount),
+    ///        in the debt token's native decimals, or `type(uint256).max` to fully close. On a full
+    ///        close the route must buy AT LEAST the current debt (quote it with a small accrual buffer);
+    ///        the router asserts coverage, repays all, and returns any over-bought debt to the caller.
+    /// @param maxCollateralIn The maximum collateral the router flash-takes and lets the Universal
+    ///        Router spend, in the collateral token's native decimals. Must be non-zero on the swap
+    ///        path. It is the binding slippage cap (a Permit2 allowance of exactly this much),
+    ///        independent of the route's own `amountInMaximum`. Derive it from a quote; keep it within
+    ///        the collateral token's flash-takeable PoolManager liquidity. A zero-debt full close takes
+    ///        a swap-free path and ignores it.
+    /// @param universalRouter The Universal Router to route the collateral->debt swap through, supplied
+    ///        per call so the caller picks the UR deployment their route targets rather than a fixed
+    ///        router immutable. Must be non-zero on the swap path and carry already-unlocked `V4_SWAP`
+    ///        support (PR #491). Ignored on a zero-debt full close (swap-free path).
+    /// @param routeCommands The Universal Router command byte string for the collateral->debt swap. The
+    ///        route MUST buy the target debt exact-output and deliver it to the caller's MarginAccount,
+    ///        drawing the input from the router (the payer) via Permit2. Built off-chain so the caller
+    ///        can source liquidity across v2/v3/v4. Ignored on a zero-debt full close.
+    /// @param routeInputs The per-command ABI-encoded inputs for `routeCommands`.
+    /// @param maxLtvAfter The maximum LTV the position may have after a partial decrease (WAD, 1e18 ==
+    ///        100%). Must be non-zero for a partial decrease; ignored on a full close. Zero is the
+    ///        skip sentinel in `ASSERT_HEALTH`, so a literal zero-LTV bound is unexpressible; the
+    ///        nearest expressible bound is 1 wei of LTV.
+    /// @param subId The sub-account index identifying which MarginAccount to decrease or close.
+    /// @param deadline A Unix timestamp; the call reverts if `block.timestamp` exceeds this value.
+    struct DecreaseParams {
+        ILendingAdapter adapter;
+        Market market;
+        uint256 debtToRepay;
+        uint128 maxCollateralIn;
+        address universalRouter;
+        bytes routeCommands;
+        bytes[] routeInputs;
+        Ltv maxLtvAfter;
+        uint256 subId;
+        uint256 deadline;
+    }
+
+    /// @notice Parameters for adding collateral to an existing position without changing leverage.
+    /// @param adapter The allowlisted lending adapter.
+    /// @param market The (collateral, debt) pair defining the margin market.
+    /// @param amount The amount of collateral to add, in the collateral token's native decimals.
+    ///        Ignored when `msg.value > 0` (native ETH is wrapped and used instead).
+    /// @param subId The sub-account index identifying which MarginAccount receives the collateral.
+    ///        The account is deployed if it does not yet exist.
+    /// @param deadline A Unix timestamp; the call reverts if `block.timestamp` exceeds this value.
+    struct AddCollateralParams {
+        ILendingAdapter adapter;
+        Market market;
+        uint256 amount;
+        uint256 subId;
+        uint256 deadline;
+    }
+
+    // -------------------------------------------------------------------------
+    // External functions
+    // -------------------------------------------------------------------------
+
+    /// @notice Opens or adds to a leveraged position for the caller, deploying their MarginAccount if
+    ///         needed. Equity is ERC-20 collateral pulled via Permit2, or native ETH sent as
+    ///         `msg.value` (which the router wraps to WETH; the market collateral must then be WETH).
+    ///         When `msg.value` is non-zero it is used as the equity and `params.equity` is ignored.
+    ///         Calling again on an account that already holds a position adds leverage to it; set
+    ///         `equity` to zero and send no value for a pure leverage increase with no new equity.
+    /// @param params See `IncreaseParams`.
+    /// @return account The caller's MarginAccount holding the position.
+    function increasePosition(IncreaseParams calldata params) external payable returns (address account);
+
+    /// @notice Reduces the caller's position by repaying `debtToRepay` (funded by selling collateral),
+    ///         or fully closes it when `debtToRepay == type(uint256).max` (repay all, withdraw all,
+    ///         and return the residual realized PnL to the caller). A partial decrease keeps the
+    ///         position open and enforces `params.maxLtvAfter`; a full close ignores it.
+    /// @dev The adapter allowlist gates only exposure-increasing operations (increase, add
+    ///      collateral), so a position can always be delevered or closed even if its adapter is later
+    ///      removed from the allowlist. This is safe because the flow operates only on the caller's
+    ///      own account, and the MarginAccount itself constrains the call target, receiver, and value
+    ///      regardless of the adapter.
+    /// @param params See `DecreaseParams`.
+    /// @return account The caller's MarginAccount.
+    function decreasePosition(DecreaseParams calldata params) external returns (address account);
+
+    /// @notice Adds collateral to the caller's position without changing debt, deploying their
+    ///         MarginAccount if needed. Collateral is pulled via Permit2, or sent as native ETH
+    ///         (wrapped to WETH; the market collateral must then be WETH).
+    /// @param params See `AddCollateralParams`.
+    /// @return account The caller's MarginAccount.
+    function addCollateral(AddCollateralParams calldata params) external payable returns (address account);
+
+    /// @notice The deterministic MarginAccount address for a given owner and subId, whether or not
+    ///         the account has been deployed yet.
+    /// @param owner The account owner whose address is used in the CREATE2 salt.
+    /// @param subId The sub-account index.
+    /// @return The predicted MarginAccount clone address.
+    function accountOf(address owner, uint256 subId) external view returns (address);
+
+    /// @notice Executes an arbitrary plan of v4 routing and margin actions atomically in one
+    ///         PoolManager unlock. The general-purpose counterpart to the curated entry points:
+    ///         any composition the interpreter supports (swap, settle, take, wrap/unwrap/sweep,
+    ///         and the account-scoped margin actions) runs as a single flash-accounted sequence.
+    ///         `unlockData` is `abi.encode(bytes actions, bytes[] params)`, where `actions` is the
+    ///         packed opcode string and `params[i]` is the encoded parameters for `actions[i]`.
+    ///
+    ///         Composing plans safely (the curated entry points enforce these for you; `execute`
+    ///         does not):
+    ///
+    ///         1. Active account: open each account-scoped section with `SET_ACCOUNT(subId)`. The
+    ///            account is always derived from the authenticated caller, never from calldata, so
+    ///            a plan can only touch the caller's own accounts. The active account is cleared
+    ///            when the call returns.
+    ///         2. No entry validation: `execute` enforces no slippage, health, or fill bounds.
+    ///            Encode `amountInMaximum`/`amountOutMinimum` on swaps, `ASSERT_FILL` after an
+    ///            exact-output swap, and `ASSERT_HEALTH` yourself. The curated entry points remain
+    ///            the guard-railed path.
+    ///         3. Health: append `ASSERT_HEALTH` per touched (account, market), after each
+    ///            `SET_ACCOUNT` section, not once at the end. A trailing assert only checks the
+    ///            last active account.
+    ///         4. Residuals: a plan MUST net the router to zero. Terminate with `SWEEP` for every
+    ///            currency the plan may leave on the router. Balances left behind are claimable by
+    ///            the next caller and are not protocol-protected.
+    ///         5. Allowlist asymmetry: `ACCOUNT_SUPPLY_COLLATERAL` and `ACCOUNT_BORROW` require an
+    ///            allowlisted adapter; withdraw, repay, and account-sweep do not, so a position is
+    ///            always exitable.
+    ///         6. `PULL_TO_ACCOUNT`: an encoded `0` amount reverts (it is not an `OPEN_DELTA`
+    ///            full-balance sentinel here, unlike every other opcode); `CONTRACT_BALANCE` is
+    ///            honored only on the router-balance path. Native currency is unsupported: wrap to
+    ///            WETH first.
+    ///         7. Signing an `execute` plan is equivalent to handing over the sub-account: a
+    ///            malicious plan can borrow to the market maximum, withdraw all collateral, and
+    ///            direct everything to an arbitrary address, with no token approval required (the
+    ///            router is the account manager) - strictly worse than a token approval. Never
+    ///            execute plans from untrusted builders; frontends must build the calldata.
+    ///         8. Events: `execute` plans emit account-level events (`CollateralSupplied`,
+    ///            `CollateralWithdrawn`, `Borrowed`, `Repaid`, `Swept`, `AccountCreated`) plus a
+    ///            best-effort `PositionUpdated` snapshot after every supply, withdraw, borrow, and
+    ///            repay action. They do not emit the richer delta-carrying events
+    ///            (`PositionIncreased`, `PositionDecreased`, `CollateralAdded`) reserved for the
+    ///            curated entry points.
+    ///
+    /// @param unlockData `abi.encode(bytes actions, bytes[] params)` describing the plan.
+    /// @param deadline The Unix timestamp after which the call reverts `DeadlinePassed`.
+    function execute(bytes calldata unlockData, uint256 deadline) external payable;
+
+    /// @notice Deploys the MarginAccount owned by `owner` for `subId` if it does not yet exist,
+    ///         returning its address. Idempotent: a repeat call returns the existing account.
+    ///         Permissionless: anyone may deploy any owner's account, and the owner is bound into
+    ///         the CREATE2 salt, so a third-party deploy cannot change who owns it.
+    /// @param owner The account owner baked into the clone.
+    /// @param subId The sub-account index.
+    /// @return account The deployed (or already-existing) account address.
+    function createAccount(address owner, uint256 subId) external returns (address account);
+
+    // -------------------------------------------------------------------------
+    // Governance
+    // -------------------------------------------------------------------------
+
+    /// @notice The governance address that curates the adapter allowlist.
+    /// @return The current governance address.
+    function governance() external view returns (address);
+
+    /// @notice The address proposed to become governance, pending its acceptance. Zero when no
+    ///         handoff is in progress.
+    /// @return The pending governance address.
+    function pendingGovernance() external view returns (address);
+
+    /// @notice Completes a governance handoff. Callable by anyone, but only the address previously
+    ///         named by `transferGovernance` succeeds; all others revert.
+    function acceptGovernance() external;
+
+    /// @notice Begins a two-step governance handoff by proposing a successor. Only the current
+    ///         governance may call this; the zero address is rejected.
+    /// @param newGovernance The address proposed to become the new governance.
+    function transferGovernance(address newGovernance) external;
+
+    /// @notice Allows or disallows a lending adapter for the exposure-increasing flows. Only the
+    ///         current governance may call this.
+    /// @param adapter The lending adapter to allow or disallow.
+    /// @param allowed True to allow; false to disallow.
+    function setAdapterAllowed(ILendingAdapter adapter, bool allowed) external;
+
+    /// @notice Whether `adapter` is on the governance allowlist and may be used in position flows.
+    /// @param adapter The lending adapter to check.
+    /// @return True if the adapter is allowlisted.
+    function isAdapterAllowed(ILendingAdapter adapter) external view returns (bool);
+}
