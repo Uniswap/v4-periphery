@@ -11,14 +11,13 @@
  * superseded 2026-08-12 router 0x000000000075e82F7B7DdC5DD1B4984b560eF5D4 remains live onchain but
  * is not indexed.
  *
- * Of the CollateralAdded pair-resolution fallbacks in src/router.ts, only the raw-candidates
- * fallback is pre-startBlock-only (there are no such txs: indexing starts at the redeploy); the
- * justUpdated preference remains the post-startBlock PRIMARY resolver for Aave v4 / Compound adds,
- * whose flow layer stages no pair to attribute by.
+ * CollateralAdded carries no debt token, so src/router.ts resolves the pair from the same-tx
+ * PositionUpdated snapshot. That is the primary resolver, not a fallback: a Compound add stages no
+ * flow to attribute by, and an Aave add whose reserve maps to several registered markets cannot be
+ * disambiguated from the flow alone either.
  */
 export const deployments = {
   mainnet: {
-    chainId: 1,
     /** MarginRouter (also emits the factory's AccountCreated). */
     marginRouter: "0x0000000000F57fCd0d5a78a19907240F1169EDEC",
     /** MorphoLendingAdapter. */
@@ -32,8 +31,7 @@ export const deployments = {
     /** Morpho Blue singleton. */
     morphoBlue: "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
     /** Aave v3 Pool (resolved from the PoolAddressesProvider). Also the read-time source for a
-     *  reserve's aToken / variable-debt token (getReserveAToken, getReserveVariableDebtToken), so
-     *  no separate protocol-data-provider address needs registering here. */
+     *  reserve's aToken / variable-debt token (getReserveAToken, getReserveVariableDebtToken). */
     aaveV3Pool: "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
     /** Aave v4 Main Spoke (proxy). Reserve-keyed supply/withdraw/borrow/repay flows. */
     aaveV4Spoke: "0x94e7A5dCbE816e498b89aB752661904E2F56c485",
@@ -43,9 +41,6 @@ export const deployments = {
     aaveOracle: "0x54586bE62E3c3580375aE3723C145253060Ca0C2",
     /** Uniswap v4 PoolManager singleton. */
     poolManager: "0x000000000004444c5dc75cB358380D2e3dE08A90",
-    /** Compound v3 USDC Comet (cUSDCv3): the base=USDC market the Compound adapter routes through.
-     *  Recorded for the deferred Comet truth layer (see src/aave.ts); not yet an indexed contract. */
-    compoundComet: "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
     /** First block of the margin suite deployment (the redeploy broadcast's first receipt).
      *  Everything is indexed from here, including PoolManager Initialize (pools created earlier
      *  have no `pool` metadata row; their fee tier is still on `swapEvent.fee`). */

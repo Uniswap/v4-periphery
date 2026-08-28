@@ -29,6 +29,7 @@ Production: `npm start` with `DATABASE_URL` pointing at Postgres.
 | Morpho Blue | `0xBBBB...FFCb` | Collateral/debt flows + `Liquidate`, attributed by `onBehalf` ∈ margin accounts |
 | Aave v3 Pool | `0x8787...A4E2` | Flows + `LiquidationCall`, attributed by `onBehalfOf`/`user` |
 | Aave v4 Spoke | `0x94e7...c485` | Flows + `LiquidationCall`, attributed by `onBehalfOf`/`user` |
+| MarginAccount clones | factory on `AccountCreated` | `CollateralSupplied` / `Borrowed`, used only to resolve an Aave flow's (collateral, debt) pair |
 | v4 PoolManager | `0x0000...8A90` | `Initialize` (pool metadata) from the margin deploy block; margin transactions' `Swap` logs are parsed from the transaction receipt by the router and flow layers (the swap caller is any Universal Router the route names) |
 
 The full checksummed registry lives in `addresses.ts`.
@@ -38,10 +39,12 @@ The full checksummed registry lives in `addresses.ts`.
 The curated lifecycle events (`PositionIncreased`/`Decreased`, `CollateralAdded`) carry the
 full position economics directly: equity, debt drawn, resulting totals, current/max LTV, and
 health factor. Entry price is `debtDrawn / collateralBought` from a single log — the exact
-execution cost including fees and price impact, protocol-agnostic across venues. The
-lending-protocol logs (which precede the router event in each transaction) are still staged and
-joined by tx hash, but only for venue/market attribution, liquidations, and flows that bypass the
-router entirely (owner escape-hatch operations).
+execution cost including fees and price impact, protocol-agnostic across venues — except when the
+router saturates `debtDrawn` to zero, which means the borrow cost is unknown: the fill is then left
+out of the cost basis entirely rather than booked at a price of zero. The
+lending-protocol logs (which precede the router event in each transaction) are the source of truth for
+position existence and running amounts, and also carry venue/market attribution, liquidations, and the
+flows that bypass the router entirely (owner-driven calls on the clone).
 
 Positions composed through the general-purpose `execute` entrypoint emit no curated lifecycle
 event, so the router also emits a `PositionUpdated` resulting-state snapshot (owner, account,
@@ -49,7 +52,7 @@ pair, resulting totals, current LTV, max/liquidation LTV, health factor) after e
 supply/withdraw/borrow/repay on any path. The handler uses it to (1) fill the LTV/health/max-LTV
 snapshot and reconcile totals on a live epoch, and (2) open an epoch for an `execute` position the
 flow layer never created — an Aave v3 open whose single-reserve events could not resolve the pair,
-or an Aave v4 / Compound v3 open (which have no flow-truth layer indexed yet). Such epochs carry
+or a Compound v3 open, which has no flow-truth layer indexed yet. Such epochs carry
 authoritative amounts, LTV, and health but leave economics (equity, entry price, leverage) empty
 until a curated event adopts them; `openReported` stays false until then. `execute`-composed
 positions are therefore observable at parity with curated ones, without any extra RPC.
@@ -68,7 +71,7 @@ unit — scale by `10^(collateralDecimals - debtDecimals)` for a human price.
 | Pair sub-label (fee tier, hooks) | `position.openPoolId` → `pool` | Same-tx v4 `Swap` → `Initialize` metadata. No calldata decode or write-through needed |
 | Lending venue | `position.venue` | Which protocol's events fired in the open tx |
 | Direction | derived | Long the collateral, short the debt (client-side label) |
-| Size | `position.totalCollateralBought`, `.collateralAmount` | `PositionOpened` accumulation; running amount maintained from lending events (principal only — live reads for interest-accrued debt) |
+| Size | `position.totalCollateralBought`, `.collateralAmount` | `PositionIncreased` accumulation; running amount maintained from lending events (principal only — live reads for interest-accrued debt) |
 | Entry price | `position.avgEntryPriceX18`; per-fill `positionAction.priceX18` | `debtDrawn * 1e18 / collateralBought` from `PositionIncreased`; volume-weighted across increases |
 | Exit price | `position.exitPriceX18` | Repay vs collateral sold on close |
 | Margin (equity) | `position.equity` | Emitted directly on `PositionIncreased`; accumulated with `CollateralAdded` |
@@ -87,7 +90,7 @@ Positions for an owner (active + completed):
 
 ```graphql
 {
-  positions(where: { owner: "0x1199A3f7bEf0211db99d843e330f32400548c8AE" }) {
+  positions(where: { owner: "0x1111111111111111111111111111111111111111" }) {
     items {
       id collateral debt venue status
       equity totalCollateralBought avgEntryPriceX18 leverageX18AtOpen
@@ -113,15 +116,16 @@ History feed for a position:
 
 - **Interest accrual**: `debtPrincipal` tracks principal from events; live debt (and
   therefore live liquidation price / PnL) needs an onchain `positionOf` read.
-- **Aave v4 / Compound v3**: lifecycle rows (curated router events) and resulting-state
-  snapshots (`PositionUpdated`, including `execute`-composed opens) both work, so amounts, LTV,
-  and health are tracked. Still pending the venue truth layer (Aave Spoke / Comet event ABIs):
-  per-flow `lendingEvent` rows, equity for `execute`-only positions (no curated event to supply
-  it, so `openReported` stays false), and liquidation detection (see `src/aave.ts`).
-- **Aave pair ambiguity**: Aave events carry one reserve; when several registered pairs
-  share it, attribution falls back to the account's live positions and, failing that, the
-  router event in the same tx. Supply-only actions to an account with multiple positions
-  sharing a collateral token may stay unattributed in `lendingEvent`.
+- **Compound v3**: lifecycle rows (curated router events) and resulting-state snapshots
+  (`PositionUpdated`, including `execute`-composed opens) both work, so amounts, LTV, and health are
+  tracked. Still pending the Comet truth layer: per-flow `lendingEvent` rows, equity for
+  `execute`-only positions (no curated event to supply it, so `openReported` stays false), and
+  liquidation detection (see `src/aave.ts`).
+- **Aave pair ambiguity**: Aave events carry one reserve; when several registered pairs share it,
+  attribution falls back to the account's live positions, then to the clone's own
+  `CollateralSupplied` / `Borrowed` events in the same tx (which name both currencies), and finally
+  to the router event. Supply-only actions to an account with multiple positions sharing a
+  collateral token may stay unattributed in `lendingEvent`.
 - **Multiple opens in one multicall tx**: swap attribution takes the first unconsumed
   swap; economics remain correct per pair, pool labels may cross-attribute.
 - **Pre-existing pools**: `Initialize` is indexed from the margin deploy block, so a

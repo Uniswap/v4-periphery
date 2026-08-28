@@ -25,7 +25,6 @@ export const lendingEventKind = onchainEnum("lending_event_kind", [
   "BORROW",
   "REPAY",
   "LIQUIDATE",
-  "DEFICIT",
 ]);
 
 /** ERC-20 metadata, populated lazily the first time a token appears. */
@@ -133,10 +132,10 @@ export const position = onchainTable(
     // but equity/leverage/pool/entry price are unknown. The first curated event adopts it and flips true.
     openReported: t.boolean().notNull(),
 
-    // Running amounts, from lending-protocol events where a flow-truth layer exists (Morpho, Aave v3) and
-    // reconciled to the router's describePosition totals on every PositionUpdated. For venues with no
-    // flow layer yet (Aave v4, Compound v3) PositionUpdated / the curated Position* totals are the only
-    // source. debtPrincipal ignores interest accrual between events; live debt must be read onchain.
+    // Running amounts, from lending-protocol events where a flow-truth layer exists (Morpho, Aave v3/v4)
+    // and reconciled to the router's describePosition totals on every PositionUpdated. Compound v3 has
+    // no flow layer, so there PositionUpdated / the curated Position* totals are the only source.
+    // debtPrincipal ignores interest accrual between events; live debt must be read onchain.
     collateralAmount: t.bigint().notNull(),
     debtPrincipal: t.bigint().notNull(),
 
@@ -147,7 +146,8 @@ export const position = onchainTable(
     avgEntryPriceX18: t.bigint(), // totalDebtDrawn * 1e18 / totalCollateralBought
     // Venue-oracle mark at open, RAW ×1e18. Distinct from avgEntryPriceX18, which is the fill price
     // of the BORROWED leg only and re-averages on every later buy — so it drifts on a pure leverage
-    // change and was never the price the owner's own margin went in at. Written once, at open.
+    // change and was never the price the owner's own margin went in at. Pinned at open — an adopting
+    // curated event re-pins it — and never moved by a later action.
     entryMarkX18: t.bigint(),
     // Total collateral at open, raw units. totalCollateralBought is a running high-water figure that
     // no sell decrements, so it cannot answer "how big was this position when it opened".
@@ -175,7 +175,6 @@ export const position = onchainTable(
     liquidationTxHash: t.hex(),
     seizedCollateral: t.bigint().notNull(),
     liquidationRepaidDebt: t.bigint().notNull(),
-    badDebt: t.bigint().notNull(),
 
     // Resulting state from the router's most recent PositionUpdated snapshot (emitted after every
     // mutation on any path, curated or `execute`) or curated Position* event. Snapshots, not live
@@ -234,11 +233,10 @@ export const positionAction = onchainTable(
     // which are protocol events and carry no router-reported state).
     ltvAfterWad: t.bigint(),
     healthFactorWad: t.bigint(),
-    // Position equity before this tx's synthetic ADJUST began (execute-driven ops
-    // only; null otherwise). The per-flow equity write and its supersession both
-    // recompute equity as clamp0(equityBase + equityDelta), so clamp0 is applied
-    // once rather than composed — exact and step-order-independent even when an
-    // intermediate step would floor equity at 0.
+    // Position equity before this tx's synthetic ADJUST began (execute-driven ops only; null
+    // otherwise). Each per-flow write recomputes equity as clamp0(equityBase + equityDelta) rather
+    // than composing clamp0 across flows, and supersession restores clamp0(equityBase) outright — so
+    // both are exact and step-order-independent even when an intermediate step would floor equity at 0.
     equityBase: t.bigint(),
   }),
   (table) => ({

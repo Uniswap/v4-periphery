@@ -6,13 +6,13 @@
  * several registered markets share that reserve in the same role. A first-ever open has no live
  * position, so that fallback finds nothing and the flow is STAGED with a null pair.
  *
- * A staged flow used to be completed by the curated router event later in the same transaction. An
- * `execute()`-driven open emits no router event, so nothing drains it: the position gets no row at all
- * — not wrong numbers, NO ROW, so it is invisible to the API and cannot be closed.
+ * A staged flow is completed by a router event later in the same transaction. An owner who calls
+ * `supplyCollateral` / `borrow` on the clone directly bypasses the router, so nothing drains it and the
+ * position carries debt against ZERO collateral — infinite leverage everywhere downstream. The clone's
+ * own events name both currencies, which is what closes the gap.
  *
- * Not reachable with today's registry (WETH/USDC in both directions gives exactly one candidate per
- * reserve+role), which is why it has gone unnoticed. It opens the moment a second Aave market shares a
- * reserve in the same role — a WETH/USDT market alongside WETH/USDC.
+ * Reachable whenever two registered Aave markets share a reserve in the same role, which the launch
+ * registry does many times over: USDC is the debt token of nine of the twelve markets.
  */
 import { activePosition, lendingEvent, position } from "ponder:schema";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -68,7 +68,6 @@ function aaveFlow(args: { name: string; extra: Record<string, unknown>; logIndex
     name: args.name,
     args: args.extra,
     txHash: OPEN_TX,
-    txTo: MARGIN_ROUTER,
     logIndex: args.logIndex,
     blockNumber: BLOCK,
     timestamp: BLOCK,
@@ -83,7 +82,6 @@ function cloneEvent(args: { name: string; extra: Record<string, unknown>; logInd
     name: args.name,
     args: args.extra,
     txHash: OPEN_TX,
-    txTo: MARGIN_ROUTER,
     logIndex: args.logIndex,
     blockNumber: BLOCK,
     timestamp: BLOCK,

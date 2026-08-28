@@ -269,17 +269,6 @@ export const aaveV3PoolAbi = [
       { name: "receiveAToken", type: "bool", indexed: false },
     ],
   },
-  // bad debt written off by a liquidation, in debt-asset units; fires BEFORE
-  // the same-tx LiquidationCall (verified against the deployed pool impl)
-  {
-    type: "event",
-    name: "DeficitCreated",
-    inputs: [
-      { name: "user", type: "address", indexed: true },
-      { name: "debtAsset", type: "address", indexed: true },
-      { name: "amountCreated", type: "uint256", indexed: false },
-    ],
-  },
 ] as const;
 
 /**
@@ -346,16 +335,6 @@ export const aaveV4SpokeAbi = [
       },
     ],
   },
-  {
-    type: "event",
-    name: "SetUsingAsCollateral",
-    inputs: [
-      { name: "reserveId", type: "uint256", indexed: true },
-      { name: "caller", type: "address", indexed: true },
-      { name: "onBehalfOf", type: "address", indexed: true },
-      { name: "usingAsCollateral", type: "bool", indexed: false },
-    ],
-  },
   // names from the verified Spoke impl ABI; `collateralAmountRemoved` is the total
   // collateral assets seized (liquidator portion + treasury fee)
   {
@@ -382,29 +361,6 @@ export const aaveV4SpokeAbi = [
       { name: "collateralAmountRemoved", type: "uint256", indexed: false },
       { name: "collateralSharesLiquidated", type: "uint256", indexed: false },
       { name: "collateralSharesToLiquidator", type: "uint256", indexed: false },
-    ],
-  },
-  // bad debt written off by a liquidation, in hub SHARES (convert via the
-  // hub's previewRestoreByShares); fires AFTER the same-tx LiquidationCall
-  // (topic0 0x59932f333b3a5e3fec86e662babe8dd767529ed207420e7468bd220cdfb3f076,
-  // verified against live mainnet logs)
-  {
-    type: "event",
-    name: "ReportDeficit",
-    inputs: [
-      { name: "reserveId", type: "uint256", indexed: true },
-      { name: "user", type: "address", indexed: true },
-      { name: "drawnShares", type: "uint256", indexed: false },
-      {
-        name: "premiumDelta",
-        type: "tuple",
-        indexed: false,
-        components: [
-          { name: "sharesDelta", type: "int256" },
-          { name: "offsetRayDelta", type: "int256" },
-          { name: "restoredPremiumRay", type: "uint256" },
-        ],
-      },
     ],
   },
 ] as const;
@@ -513,27 +469,6 @@ export const aaveV4SpokeFunctionsAbi = [
     ],
     outputs: [{ type: "uint256" }],
   },
-  // reserve routing: underlying asset + hub and hub-side assetId
-  {
-    type: "function",
-    name: "getReserve",
-    stateMutability: "view",
-    inputs: [{ name: "reserveId", type: "uint256" }],
-    outputs: [
-      {
-        type: "tuple",
-        components: [
-          { name: "underlying", type: "address" },
-          { name: "hub", type: "address" },
-          { name: "assetId", type: "uint16" },
-          { name: "decimals", type: "uint8" },
-          { name: "collateralRisk", type: "uint24" },
-          { name: "flags", type: "uint8" },
-          { name: "dynamicConfigKey", type: "uint32" },
-        ],
-      },
-    ],
-  },
   // underlying supplied by the user on a reserve
   {
     type: "function",
@@ -542,20 +477,6 @@ export const aaveV4SpokeFunctionsAbi = [
     inputs: [
       { name: "reserveId", type: "uint256" },
       { name: "user", type: "address" },
-    ],
-    outputs: [{ type: "uint256" }],
-  },
-] as const;
-
-export const aaveV4HubFunctionsAbi = [
-  // hub shares -> underlying assets at the pinned block
-  {
-    type: "function",
-    name: "previewRestoreByShares",
-    stateMutability: "view",
-    inputs: [
-      { name: "assetId", type: "uint256" },
-      { name: "shares", type: "uint256" },
     ],
     outputs: [{ type: "uint256" }],
   },

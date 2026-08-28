@@ -1,6 +1,6 @@
 import type { Context } from "ponder:registry";
 import { account, activePosition, lendingEvent, lendingMarket, position, positionAction, swapEvent } from "ponder:schema";
-import { and, desc, eq } from "ponder";
+import { and, eq } from "ponder";
 import { erc20Abi } from "viem";
 
 import { aaveV3PoolFunctionsAbi, aaveV4SpokeFunctionsAbi, morphoBlueFunctionsAbi } from "../abis";
@@ -14,6 +14,7 @@ import {
   lower,
   pairKey,
   positionId,
+  reserveBelongsTo,
   syntheticCloseId,
   txLendingEvents,
   WAD,
@@ -33,7 +34,6 @@ interface FlowEvent {
   morphoMarketId?: `0x${string}`;
   assets: bigint;
   txHash: `0x${string}`;
-  txTo: `0x${string}` | null; // event.transaction.to — diagnostics only (does not gate close detection)
   logIndex: number;
   blockNumber: bigint;
   timestamp: bigint;
@@ -42,7 +42,7 @@ interface FlowEvent {
 /**
  * Open a new position epoch from a lending flow, when no live epoch exists for the pair. This makes
  * the lending-protocol layer the source of truth for position existence and amounts, so positions
- * driven by an `execute` plan or an owner escape-hatch op (neither emits a router event) are
+ * driven by an `execute` plan or an owner escape-hatch op (neither emits a curated router event) are
  * tracked. Economics (equity, leverage, pool, entry price, LTV) are left empty; a curated router
  * event later in the same tx adopts this epoch and fills them in (see router.ts). Amounts start at
  * zero and the caller applies the opening flow's delta, so there is no double count.
@@ -82,7 +82,6 @@ async function openFlowPosition(context: Context, flow: FlowEvent): Promise<{ id
       liquidated: false,
       seizedCollateral: 0n,
       liquidationRepaidDebt: 0n,
-      badDebt: 0n,
       lastLtvWad: null,
       lastHealthFactorWad: null,
       updatedAt: flow.timestamp,
@@ -167,10 +166,10 @@ async function applyFlow(
     await context.db.insert(lendingEvent).values({ id, ...row });
   }
 
-  // Execute-driven ops emit no router event, so the ADJUST action row and the
-  // equity move are synthesized here (after the lendingEvent insert, so the
-  // gross-sum re-derivation sees this flow). A terminal zero-out is a CLOSE, not
-  // an ADJUST, so it is skipped when detectRouterlessClose fired.
+  // Execute-driven ops emit only a resulting-state snapshot, never a delta-carrying router event, so
+  // the ADJUST action row and the equity move are synthesized here (after the lendingEvent insert, so
+  // the gross-sum re-derivation sees this flow). A terminal zero-out is a CLOSE, not an ADJUST, so it
+  // is skipped when detectRouterlessClose fired.
   if (live && !closed) {
     await synthesizeAdjust(context, flow, live.id);
   }
@@ -215,20 +214,10 @@ async function txSwaps(
  * debt, a sell the reverse. Borrow and repay legs are mutually exclusive within one
  * plan (marginExecuteEncoding rejects both), so the direction is unambiguous.
  *
- * Multi-hop is out of scope: an intermediate pool's leg is neither market currency and nothing in a swap
- * row distinguishes it. Summing across swaps is right for a SPLIT (each path trades the same pair) and
- * silently wrong for a multi-hop, where it would add an intermediate token's amounts to the market's.
- *
- * Summing is correct for a SPLIT, which the encoder now emits: every path of a split trades the market's
- * own pair (each split pool is validated against the market before encoding), so the received and paid
- * amounts add up in the market's two currencies. It is wrong only for a MULTI-HOP, whose middle fill is
- * denominated in an intermediate token.
- *
- * MULTI-HOP CANNOT REACH HERE, and that is a cross-component invariant worth stating: the encoder emits
- * only SWAP_EXACT_OUT_SINGLE and has no path opcode, routing discovery drops multi-hop candidates, and
- * the client audit refuses them. `attributable` is the tripwire for the shape that would break the fold
- * — a fill whose amounts cannot be attributed to the pair. Enabling multi-hop means deriving attribution
- * from the calldata's ASSERT_FILL first, and threading `txInput` through the test harness to prove it.
+ * Summing across swaps is right for a SPLIT — every path trades the market's own pair — and silently
+ * wrong for a MULTI-HOP, whose middle fill is denominated in an intermediate token the swap row cannot
+ * identify. Multi-hop cannot reach here: the encoder emits only SWAP_EXACT_OUT_SINGLE and has no path
+ * opcode. Enabling it means deriving attribution from the calldata's ASSERT_FILL first.
  */
 function swapEconomics(
   swaps: SwapRow[],
@@ -238,7 +227,6 @@ function swapEconomics(
   sold: bigint;
   buyDebt: bigint;
   poolId: `0x${string}` | null;
-  attributable: boolean;
 } {
   let bought = 0n;
   let sold = 0n;
@@ -256,7 +244,7 @@ function swapEconomics(
       sold += paid;
     }
   }
-  return { bought, sold, buyDebt, poolId, attributable: true };
+  return { bought, sold, buyDebt, poolId };
 }
 
 /** Per-tx gross flow amounts for the pair, re-derived from this tx's lendingEvent rows. */
@@ -280,26 +268,6 @@ function grossSums(
   return { supplied, withdrawn, borrowed, repaid };
 }
 
-/**
- * Synthesize (or refresh) the tx's ADJUST action and move equity for an
- * execute-driven op. Called once per applying flow; it re-derives the full tx
- * state each time, so the row and equity are correct after the last flow
- * regardless of flow/swap order.
- *
- * Equity is swap-relative: `equityIn = supplied − bought`, `equityOut =
- * withdrawn − sold` (both clamped ≥ 0), so collateral bought/sold as leverage
- * is excluded and only real margin in/out moves equity. Equity is recomputed as
- * `clamp0(equityBase + equityDelta)` from a stable pre-tx base captured on the
- * first flow — clamp0 is applied once, not composed across flows — so the write
- * is exact, step-order-independent, and exactly reversible on supersession even
- * when an intermediate step would floor equity at 0.
- *
- * Economics (totalCollateralBought/totalDebtDrawn/avgEntry) update only on a buy
- * leg, with the same volume-weighted formula as the PositionIncreased handler.
- * PoC scope: assumes a single buy leg per tx (a real margin adjust swaps once);
- * `priceX18 != null` marks that a prior flow already applied buy economics, so
- * the per-flow economics diff neither double-counts nor drops it.
- */
 // True when this tx already booked a LIQUIDATION for the position. A liquidation is a protocol event
 // with equityDelta 0 — the seizure is a loss against a frozen basis, not an owner-driven equity move —
 // so an ADJUST synthesized from the same tx's Withdraw/Repay flows would double-count it.
@@ -321,6 +289,26 @@ async function hasLiquidationInTx(
   return rows.length > 0;
 }
 
+/**
+ * Synthesize (or refresh) the tx's ADJUST action and move equity for an
+ * execute-driven op. Called once per applying flow; it re-derives the full tx
+ * state each time, so the row and equity are correct after the last flow
+ * regardless of flow/swap order.
+ *
+ * Equity is swap-relative: `equityIn = supplied − bought`, `equityOut =
+ * withdrawn − sold` (both clamped ≥ 0), so collateral bought/sold as leverage
+ * is excluded and only real margin in/out moves equity. Equity is recomputed as
+ * `clamp0(equityBase + equityDelta)` from a stable pre-tx base captured on the
+ * first flow — clamp0 is applied once, not composed across flows — so the write
+ * is exact, step-order-independent, and exactly reversible on supersession even
+ * when an intermediate step would floor equity at 0.
+ *
+ * Economics (totalCollateralBought/totalDebtDrawn/avgEntry) update only on a buy
+ * leg, with the same volume-weighted formula as the PositionIncreased handler.
+ * PoC scope: assumes a single buy leg per tx (a real margin adjust swaps once);
+ * `priceX18 != null` marks that a prior flow already applied buy economics, so
+ * the per-flow economics diff neither double-counts nor drops it.
+ */
 async function synthesizeAdjust(context: Context, flow: FlowEvent, positionRowId: string): Promise<void> {
   const lendingRows = await txLendingEvents(context, flow.txHash, flow.account);
   const { supplied, withdrawn, borrowed, repaid } = grossSums(lendingRows, flow.collateral, flow.debt);
@@ -328,20 +316,17 @@ async function synthesizeAdjust(context: Context, flow: FlowEvent, positionRowId
   // Borrow and repay legs are mutually exclusive within one plan, so exactly one of these identifies the
   // leg. Anything else — neither, or both — is not attributable and must not be guessed at.
   const leg = borrowed > 0n && repaid === 0n ? "BUY" : repaid > 0n && borrowed === 0n ? "SELL" : "NONE";
-  const { bought, sold, buyDebt, poolId, attributable } = swapEconomics(swaps, { leg });
+  const { bought, sold, buyDebt, poolId } = swapEconomics(swaps, { leg });
 
   const equityDelta = clamp0(supplied - bought) - clamp0(withdrawn - sold);
   const collateralDelta = supplied - withdrawn;
   const debtDelta = borrowed - repaid;
-  // Null rather than a number nobody can justify: a wrong entry price silently corrupts cost basis
-  // forever. See swapEconomics for what `attributable` guarantees and what would break it.
-  const priceX18 = attributable && bought > 0n ? (buyDebt * WAD) / bought : null;
+  // Null rather than a number nobody can justify: a wrong entry price silently corrupts cost basis forever.
+  const priceX18 = bought > 0n ? (buyDebt * WAD) / bought : null;
 
   const id = adjustId(flow.txHash, positionRowId);
   const existing = await context.db.find(positionAction, { id });
 
-  // A liquidation in the same tx already booked its own economics with equityDelta 0. Synthesizing an
-  // ADJUST on top would double-count the seizure as an owner-driven equity move.
   if (await hasLiquidationInTx(context, flow.txHash, positionRowId)) {
     return;
   }
@@ -404,8 +389,8 @@ async function synthesizeAdjust(context: Context, flow: FlowEvent, positionRowId
 
   // Mark and size at open. router.ts pins these on a curated open and explains why: reading either off
   // the running totals later would let a pure leverage change move a figure the owner never traded at.
-  // A flow-created epoch never reaches that code, so without this buildCostBasis falls back and renders
-  // an entry price of 0 and an opened leverage of 0 for every execute()-driven position.
+  // A flow-created epoch never reaches that code, so without this the backend's cost-basis fold falls
+  // back and renders an entry price of 0 and an opened leverage of 0 for every execute()-driven position.
   //
   // Written only while this tx IS the epoch's opening tx, and rewritten on each of its flows so the
   // value settles on the end-of-tx totals — the opening supply and the bought leverage can arrive in
@@ -448,12 +433,7 @@ async function synthesizeAdjust(context: Context, flow: FlowEvent, positionRowId
  */
 export async function reverseAndSupersedeAdjust(
   context: Context,
-  { txHash, positionRowId, collateral, debt }: {
-    txHash: `0x${string}`;
-    positionRowId: string;
-    collateral: `0x${string}`;
-    debt: `0x${string}`;
-  }
+  { txHash, positionRowId }: { txHash: `0x${string}`; positionRowId: string }
 ): Promise<void> {
   const id = adjustId(txHash, positionRowId);
   const row = await context.db.find(positionAction, { id });
@@ -508,18 +488,10 @@ export async function applyStagedFlows(
   // Ordered by NUMERIC log index. Ids are `${txHash}-${logIndex}`, so a string sort puts 12 before 8 and
   // replays the deltas out of emission order — which changes where clamp0 bites and can miss a
   // cross-through-zero that should have closed the epoch.
-  // A staged row belongs to this pair only if the reserve it named IS one of the pair's currencies, in
-  // the role its flow kind implies. Anything else is another market's flow that happens to share the tx.
-  const belongs = (row: { kind: string; reserve: `0x${string}` | null }): boolean => {
-    if (!row.reserve) {
-      return false;
-    }
-    const expected = row.kind === "SUPPLY_COLLATERAL" || row.kind === "WITHDRAW_COLLATERAL" ? collateral : debt;
-    return lower(row.reserve) === lower(expected);
-  };
+  const belongs = reserveBelongsTo({ collateral, debt });
   const ordered = staged
     .filter((r) => r.collateral === null && belongs(r))
-    .map((r) => ({ row: r, logIndex: Number(r.id.slice(r.id.lastIndexOf("-") + 1)) }))
+    .map((r) => ({ row: r, logIndex: logIndexOf(r.id) }))
     .sort((a, b) => a.logIndex - b.logIndex);
   for (const { row, logIndex } of ordered) {
     // Liquidations carry their own terminal accounting, and an UNKNOWN venue is not something to
@@ -528,7 +500,6 @@ export async function applyStagedFlows(
     // attribution and the local Venue union stays the set of flow-truth-capable venues.
     if (
       row.kind === "LIQUIDATE" ||
-      row.kind === "DEFICIT" ||
       row.venue === "UNKNOWN" ||
       row.venue === "COMPOUND_V3"
     ) {
@@ -545,7 +516,6 @@ export async function applyStagedFlows(
         morphoMarketId: row.morphoMarketId ?? undefined,
         assets: row.assets,
         txHash: row.txHash,
-        txTo: null,
         logIndex,
         blockNumber: row.blockNumber,
         timestamp: row.timestamp,
@@ -597,22 +567,6 @@ interface LiquidationEvent {
   timestamp: bigint;
 }
 
-/** variableDebtToken addresses are immutable per reserve; resolve once. */
-const aaveV3DebtTokenByAsset = new Map<string, `0x${string}`>();
-
-/** Test-only: the module-level cache would otherwise leak state across replay-harness tests. */
-export function _clearAaveV3DebtTokenCacheForTests(): void {
-  aaveV3DebtTokenByAsset.clear();
-}
-
-/** aToken addresses are immutable per reserve; resolve once. */
-const aaveV3ATokenByAsset = new Map<string, `0x${string}`>();
-
-/** Test-only: paired with _clearAaveV3DebtTokenCacheForTests. */
-export function _clearAaveV3ATokenCacheForTests(): void {
-  aaveV3ATokenByAsset.clear();
-}
-
 /**
  * Block-pinned venue truth for "nothing left at all" — both legs, unlike
  * readVenueDebt: escape-hatch termination requires zero debt AND collateral.
@@ -635,28 +589,22 @@ async function readVenueBalances(
       return { collateral, debt: borrowShares };
     }
     case "AAVE_V3": {
-      let aToken = aaveV3ATokenByAsset.get(lower(flow.collateral));
-      if (!aToken) {
-        aToken = await context.client.readContract({
+      const [aToken, debtToken] = await Promise.all([
+        context.client.readContract({
           abi: aaveV3PoolFunctionsAbi,
           address: deployments.mainnet.aaveV3Pool,
           functionName: "getReserveAToken",
           args: [flow.collateral],
           blockNumber,
-        });
-        aaveV3ATokenByAsset.set(lower(flow.collateral), aToken);
-      }
-      let debtToken = aaveV3DebtTokenByAsset.get(lower(flow.debt));
-      if (!debtToken) {
-        debtToken = await context.client.readContract({
+        }),
+        context.client.readContract({
           abi: aaveV3PoolFunctionsAbi,
           address: deployments.mainnet.aaveV3Pool,
           functionName: "getReserveVariableDebtToken",
           args: [flow.debt],
           blockNumber,
-        });
-        aaveV3DebtTokenByAsset.set(lower(flow.debt), debtToken);
-      }
+        }),
+      ]);
       const [collateral, debt] = await Promise.all([
         context.client.readContract({ abi: erc20Abi, address: aToken, functionName: "balanceOf", args: [flow.account], blockNumber }),
         context.client.readContract({ abi: erc20Abi, address: debtToken, functionName: "balanceOf", args: [flow.account], blockNumber }),
@@ -694,13 +642,10 @@ async function readVenueBalances(
 }
 
 /**
- * A router-less full close: an `execute` plan or an owner escape-hatch op emits
- * venue flows that zero both legs but never the router event that closes an
- * epoch. When a flow zeroes both running amounts on an OPEN epoch, confirm
- * against block-pinned venue truth and apply the terminal transition here.
- *
- * No tx.to gate: execute plans run with tx.to == MarginRouter and emit no
- * Position* event, so a clone-only gate would leave them stuck OPEN. The
+ * A router-less full close: venue flows zero both legs with no curated router close. When a flow
+ * zeroes both running amounts on an OPEN epoch, confirm against block-pinned venue truth and apply
+ * the terminal transition here. The owner escape hatch bypasses the router entirely, so not even a
+ * PositionUpdated snapshot arrives — this is the only writer that can retire those epochs. The
  * activePosition pointer is left in place — findActivePosition ignores non-OPEN
  * pointers so the next open starts a fresh epoch, and a curated router close
  * later in the same tx still finds the pointer to enrich. The synthetic CLOSE
@@ -721,20 +666,10 @@ async function detectRouterlessClose(
 
   // a terminal zero-out is a CLOSE, not an ADJUST: reverse and delete any
   // synthetic ADJUST this tx's earlier flows wrote, then read the restored equity
-  await reverseAndSupersedeAdjust(context, {
-    txHash: flow.txHash,
-    positionRowId: live.id,
-    collateral: flow.collateral,
-    debt: flow.debt,
-  });
+  await reverseAndSupersedeAdjust(context, { txHash: flow.txHash, positionRowId: live.id });
   const restored = await context.db.find(position, { id: live.id });
   const equity = restored?.equity ?? live.equity;
 
-  // Close economics, derived rather than left null. The unwind ran outside the router, but the flows it
-  // emitted are enough: the collateral this tx withdrew that did NOT fund the repay swap is what reached
-  // the owner, and realized PnL is that against the equity the owner had in the position. Leaving these
-  // null loses realized PnL for every execute()-driven close, since no curated close arrives to fill
-  // them in. A same-tx curated close still supersedes this row with its authoritative figures.
   // collateralReturned / exitPriceX18 / realizedPnl stay NULL. They are derivable in principle — the
   // collateral that left and was not spent on the repay swap is what reached the owner — but not from
   // what is available here, and a wrong number is worse than an honest unknown.
@@ -813,17 +748,13 @@ async function readVenueDebt(context: Context, liq: LiquidationEvent): Promise<b
         return (num + den - 1n) / den;
       }
       case "AAVE_V3": {
-        let debtToken = aaveV3DebtTokenByAsset.get(lower(liq.debt));
-        if (!debtToken) {
-          debtToken = await context.client.readContract({
-            abi: aaveV3PoolFunctionsAbi,
-            address: deployments.mainnet.aaveV3Pool,
-            functionName: "getReserveVariableDebtToken",
-            args: [liq.debt],
-            blockNumber,
-          });
-          aaveV3DebtTokenByAsset.set(lower(liq.debt), debtToken);
-        }
+        const debtToken = await context.client.readContract({
+          abi: aaveV3PoolFunctionsAbi,
+          address: deployments.mainnet.aaveV3Pool,
+          functionName: "getReserveVariableDebtToken",
+          args: [liq.debt],
+          blockNumber,
+        });
         return await context.client.readContract({
           abi: erc20Abi,
           address: debtToken,
@@ -895,7 +826,6 @@ export async function recordLiquidation(context: Context, liq: LiquidationEvent)
     liquidationTxHash: liq.txHash,
     seizedCollateral: row.seizedCollateral + liq.seizedCollateral,
     liquidationRepaidDebt: row.liquidationRepaidDebt + liq.repaidDebt,
-    badDebt: row.badDebt + liq.badDebt,
     status: fullyLiquidated ? "LIQUIDATED" : row.status,
     updatedAt: liq.timestamp,
   }));
@@ -931,80 +861,4 @@ export async function recordLiquidation(context: Context, liq: LiquidationEvent)
   if (fullyLiquidated) {
     await context.db.delete(activePosition, { id: pairKey(liq.account, liq.collateral, liq.debt) });
   }
-}
-
-interface DeficitEvent {
-  venue: Venue;
-  account: `0x${string}`;
-  collateral: `0x${string}` | null; // null when the emitting event can't resolve the pair
-  debt: `0x${string}`;
-  assets: bigint; // bad debt written off, debt-asset units (v4 shares pre-converted)
-  txHash: `0x${string}`;
-  logIndex: number;
-  blockNumber: bigint;
-  timestamp: bigint;
-}
-
-/**
- * The position epoch a deficit belongs to. The live pointer works for v3
- * (DeficitCreated fires before the same-tx LiquidationCall); for v4 the
- * pointer is already gone (ReportDeficit fires after), so the pair comes from
- * this tx's LIQUIDATE row and the row from the pair's most recent epoch.
- */
-async function resolveDeficitPosition(
-  context: Context,
-  def: DeficitEvent
-): Promise<{ row: { id: string } | null; collateral: `0x${string}` | null }> {
-  let collateral = def.collateral;
-  if (!collateral) {
-    const txRows = await txLendingEvents(context, def.txHash, def.account);
-    const liqRow = txRows.find(
-      (row) => row.kind === "LIQUIDATE" && row.venue === def.venue && row.debt !== null && lower(row.debt) === lower(def.debt)
-    );
-    collateral = liqRow?.collateral ?? null;
-  }
-  if (!collateral) return { row: null, collateral: null };
-
-  const live = await findActivePosition(context, def.account, collateral, def.debt);
-  if (live) return { row: live, collateral };
-
-  const epochs = await context.db.sql
-    .select()
-    .from(position)
-    .where(and(eq(position.account, def.account), eq(position.collateral, collateral), eq(position.debt, def.debt)))
-    .orderBy(desc(position.openedAt))
-    .limit(1);
-  return { row: epochs[0] ?? null, collateral };
-}
-
-/**
- * Bad debt socialized by the venue (v3 DeficitCreated, v4 ReportDeficit).
- * Bookkeeping ONLY — the terminal transition lives in recordLiquidation's
- * chain-truth check: v3 deficits fire before LiquidationCall (position still
- * live) and v4 deficits after (epoch already closed), so transitioning here
- * would corrupt one ordering or the other.
- */
-export async function recordDeficit(context: Context, def: DeficitEvent): Promise<void> {
-  const target = await resolveDeficitPosition(context, def);
-
-  await context.db.insert(lendingEvent).values({
-    id: eventId(def.txHash, def.logIndex),
-    txHash: def.txHash,
-    venue: def.venue,
-    kind: "DEFICIT",
-    account: def.account,
-    collateral: target.collateral,
-    debt: def.debt,
-    assets: def.assets,
-    badDebtAssets: def.assets,
-    blockNumber: def.blockNumber,
-    timestamp: def.timestamp,
-    applied: target.row !== null,
-  });
-
-  if (!target.row) return;
-  await context.db.update(position, { id: target.row.id }).set((row) => ({
-    badDebt: row.badDebt + def.assets,
-    updatedAt: def.timestamp,
-  }));
 }

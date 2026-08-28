@@ -130,8 +130,8 @@ describe("a saturated debtDrawn reads as an unknown price, not zero", () => {
     expect(open.priceX18).toBeNull();
   });
 
-  // An unknown fill must leave NO trace in the basis. Asserting only that the average is not 0 is
-  // satisfied by null and proves nothing — the damage is the inflated denominator it leaves behind.
+  // An unknown fill must leave NO trace in the basis: the damage is the inflated denominator it would
+  // leave behind, not the price on the action row.
   it("opens with an empty cost basis, so the next real increase is not diluted", async () => {
     await openWith({ debtDrawn: 0n, collateralBought: E18 / 2n });
     const opened = (await harness.db.select().from(position))[0]!;
@@ -139,7 +139,7 @@ describe("a saturated debtDrawn reads as an unknown price, not zero", () => {
     expect(opened.totalCollateralBought).toBe(0n);
     expect(opened.totalDebtDrawn).toBe(0n);
 
-    // a normal increase now prices at its OWN fill, not half of it
+    // a normal increase prices at its OWN fill, not half of it
     const after = await increaseWith({ debtDrawn: 2000n * E6, collateralBought: E18 / 2n });
     expect(after.avgEntryPriceX18).toBe(4000n * E6);
   });

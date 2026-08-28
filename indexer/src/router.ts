@@ -9,8 +9,8 @@ import {
   eventId,
   findActivePosition,
   logIndexOf,
-  lower,
   pairKey,
+  reserveBelongsTo,
   positionId,
   syntheticCloseId,
   txLendingEvents,
@@ -73,18 +73,10 @@ async function drainFlows(
   // (sums the tx's flows, so a same-pair multicall of decreases attributes all of it to the last)
   let repaidAssets = 0n;
 
-  // A staged (null-pair) row is claimed only when the single reserve it named belongs to THIS pair in
-  // the role its kind implies — the same predicate applyStagedFlows uses. Without it, two markets
-  // sharing a reserve in one tx drain each other's staged flows. A reserve-less staged row is refused
-  // (fail-closed): there is nothing to attribute it by.
-  const belongs = (row: { kind: string; reserve: `0x${string}` | null }): boolean => {
-    if (!row.reserve) return false;
-    const expected = row.kind === "SUPPLY_COLLATERAL" || row.kind === "WITHDRAW_COLLATERAL" ? collateral : debt;
-    return lower(row.reserve) === lower(expected);
-  };
+  const belongs = reserveBelongsTo({ collateral, debt });
 
   for (const row of rows) {
-    if (row.kind === "LIQUIDATE" || row.kind === "DEFICIT") continue;
+    if (row.kind === "LIQUIDATE") continue;
     const matches =
       row.collateral === null && row.debt === null
         ? belongs(row)
@@ -136,14 +128,8 @@ ponder.on("MarginRouter:PositionIncreased", async ({ event, context }) => {
   // so it starts a NEW epoch and overwrites the pointer instead of folding into the dead one.
   const existing = await findActivePosition(context, accountAddr, collateral, debt);
 
-  // supersede any execute-driven ADJUST this tx's flows synthesized earlier
   if (existing) {
-    await reverseAndSupersedeAdjust(context, {
-      txHash: event.transaction.hash,
-      positionRowId: existing.id,
-      collateral,
-      debt,
-    });
+    await reverseAndSupersedeAdjust(context, { txHash: event.transaction.hash, positionRowId: existing.id });
   }
 
   // A genuine increase: a prior router event already reported this epoch's open.
@@ -246,7 +232,6 @@ ponder.on("MarginRouter:PositionIncreased", async ({ event, context }) => {
       liquidated: false,
       seizedCollateral: 0n,
       liquidationRepaidDebt: 0n,
-      badDebt: 0n,
       ...opened,
     });
     await context.db.insert(activePosition).values({ id: key, positionId: id }).onConflictDoUpdate({ positionId: id });
@@ -315,18 +300,12 @@ ponder.on("MarginRouter:PositionDecreased", async ({ event, context }) => {
   const row = await context.db.find(position, { id: pointer.positionId });
   if (!row) return;
 
-  // supersede any execute-driven ADJUST this tx's flows synthesized earlier
-  await reverseAndSupersedeAdjust(context, {
-    txHash: event.transaction.hash,
-    positionRowId: row.id,
-    collateral,
-    debt,
-  });
+  await reverseAndSupersedeAdjust(context, { txHash: event.transaction.hash, positionRowId: row.id });
 
   // The event's debtRepaid is the caller's REQUESTED amount, which the venue clamps when it
   // exceeds the live debt (documented on PositionDecreased); the same-tx venue repay flow carries
-  // the measured assets, so prefer it for the action delta and execution price. Aave v4 and
-  // Compound stage no flow layer yet, so those fall back to the requested amount.
+  // the measured assets, so prefer it for the action delta and execution price. Compound stages no
+  // flows, so it falls back to the requested amount.
   const measuredRepaid = flows.repaidAssets > 0n ? flows.repaidAssets : debtRepaid;
 
   // a full close leaves nothing behind; a partial decrease keeps the epoch open
@@ -411,11 +390,11 @@ ponder.on("MarginRouter:CollateralAdded", async ({ event, context }) => {
     healthFactorWad,
   } = event.args;
 
-  // resolve the pair: from this tx's staged supply flow (carries it for Morpho), or from the
-  // epoch the same-tx PositionUpdated snapshot just touched (post-snapshot routers emit it with
-  // the full pair at a lower logIndex, so it has already opened or reconciled the epoch by the
-  // time this handler runs), or fall back to the account's single open position with this
-  // collateral token (pre-snapshot routers, e.g. the live deployment).
+  // CollateralAdded carries no debt token. Resolve the pair from this tx's staged supply flow (which
+  // carries it for Morpho), else from the epoch the same-tx PositionUpdated snapshot just touched —
+  // that snapshot names the full pair and is emitted inside the same try block, so it has always
+  // landed by the time this handler runs. Aave v4 and Compound adds stage no pair, which is what
+  // makes the snapshot the primary resolver rather than a fallback.
   const rows = await txLendingEvents(context, event.transaction.hash, accountAddr);
   const supplyRow = rows.find((r) => r.kind === "SUPPLY_COLLATERAL");
   let debt = supplyRow?.debt ?? null;
@@ -425,9 +404,8 @@ ponder.on("MarginRouter:CollateralAdded", async ({ event, context }) => {
       .from(position)
       .where(and(eq(position.account, accountAddr), eq(position.collateral, collateral), eq(position.status, "OPEN")));
     const justUpdated = candidates.filter((c) => c.updatedAt === event.block.timestamp);
-    const resolved = justUpdated.length === 1 ? justUpdated : candidates;
-    if (resolved.length !== 1) return; // ambiguous or none; raw lendingEvent row remains
-    debt = resolved[0]!.debt;
+    if (justUpdated.length !== 1) return; // ambiguous or none; raw lendingEvent row remains
+    debt = justUpdated[0]!.debt;
   }
 
   await drainFlows(context, event.transaction.hash, accountAddr, collateral, debt);
@@ -436,13 +414,7 @@ ponder.on("MarginRouter:CollateralAdded", async ({ event, context }) => {
   const live = await findActivePosition(context, accountAddr, collateral, debt);
   if (!live) return;
 
-  // supersede any execute-driven ADJUST this tx's flows synthesized earlier
-  await reverseAndSupersedeAdjust(context, {
-    txHash: event.transaction.hash,
-    positionRowId: live.id,
-    collateral,
-    debt,
-  });
+  await reverseAndSupersedeAdjust(context, { txHash: event.transaction.hash, positionRowId: live.id });
 
   const added = await context.db.update(position, { id: live.id }).set((row) => ({
     equity: row.equity + amount,
@@ -491,21 +463,20 @@ ponder.on("MarginRouter:CollateralAdded", async ({ event, context }) => {
 
 /**
  * Resulting-state snapshot, emitted after every supply/withdraw/borrow/repay on every router path: the
- * curated flows, `execute` plans, and (on post-snapshot routers) the unlock-free paths, addCollateral
- * and the zero-debt swap-free close. The live pre-upgrade deployment does not emit it on those two
- * direct paths, which is why the CollateralAdded pair-resolution fallbacks below remain. It carries the
- * full pair and the adapter's describePosition totals, so it fills the resulting-state fields that the
- * curated Position* events would otherwise be the only source of. It never touches economics (equity, entry price, leverage) or writes a positionAction row: those
- * come from the curated events and the lending-flow layer. Two jobs:
+ * curated flows, `execute` plans, and the unlock-free paths — addCollateral and the zero-debt
+ * swap-free close. It carries the full pair and the adapter's describePosition totals, so it fills the
+ * resulting-state fields the curated Position* events would otherwise be the only source of. It never
+ * touches economics (equity, entry price, leverage) and never writes a positionAction row: those come
+ * from the curated events and the lending-flow layer. Two jobs:
  *
  *  1. On a live epoch, reconcile the router-authoritative snapshot: LTV, health, max/liquidation LTV,
  *     and the running totals. For a curated flow this matches the Position* event that follows in the
  *     same tx (redundant but idempotent); for an execute plan it is the ONLY source of the LTV/health
- *     snapshot, and for Aave v4 / Compound v3 (no flow-truth layer indexed) it is also the only source
- *     of the running totals.
+ *     snapshot, and for Compound v3 (no flow-truth layer indexed) it is also the only source of
+ *     the running totals.
  *  2. When no epoch is live, open one. This is an execute-composed open the flow layer never created:
- *     an Aave v3 open whose pair its single-reserve events could not resolve, or an Aave v4 / Compound
- *     v3 open with no flow-truth layer. Economics stay empty (openReported = false); a later curated
+ *     an Aave open whose pair its single-reserve events could not resolve, or a Compound v3 open,
+ *     which has no flow-truth layer. Economics stay empty (openReported = false); a later curated
  *     event adopts and fills them, exactly as it adopts a flow-created epoch.
  */
 ponder.on("MarginRouter:PositionUpdated", async ({ event, context }) => {
@@ -537,12 +508,11 @@ ponder.on("MarginRouter:PositionUpdated", async ({ event, context }) => {
       lltv: maxLtv,
       lastLtvWad: currentLtv,
       lastHealthFactorWad: healthFactorWad,
-      // an execute-composed close nets the position to zero and emits no curated close; terminate
-      // the epoch here. (The owner escape hatch bypasses the router entirely and emits no snapshot
-      // at all; only the venue flow layer can see those.) Leave the activePosition pointer (as the
-      // flow layer does) so a curated close in the same tx can still enrich it and the next open
-      // overwrites it.
-      // A snapshot terminal (execute-composed close): record the close context; economics stay null.
+      // An execute-composed close nets the position to zero and emits no curated close, so terminate
+      // the epoch here; economics stay null. (The owner escape hatch bypasses the router entirely and
+      // emits no snapshot at all — only the venue flow layer sees those.) Leave the activePosition
+      // pointer, as the flow layer does, so a curated close in the same tx can still enrich it and the
+      // next open overwrites it.
       ...(terminal
         ? { status: "CLOSED" as const, closeTxHash: event.transaction.hash, closedAt: event.block.timestamp }
         : {}),
@@ -555,7 +525,7 @@ ponder.on("MarginRouter:PositionUpdated", async ({ event, context }) => {
   if (terminal) return;
 
   // Open the epoch from the snapshot. Venue comes from this tx's staged flows when resolvable (Aave v3
-  // unattributed opens), else UNKNOWN (Aave v4 / Compound, which stage no flows).
+  // unattributed opens), else UNKNOWN (Compound, which stages no flows).
   const flows = await drainFlows(context, event.transaction.hash, accountAddr, collateral, debt);
   const id = positionId(accountAddr, collateral, debt, event.transaction.hash);
   await context.db
@@ -586,7 +556,6 @@ ponder.on("MarginRouter:PositionUpdated", async ({ event, context }) => {
       liquidated: false,
       seizedCollateral: 0n,
       liquidationRepaidDebt: 0n,
-      badDebt: 0n,
       lastLtvWad: currentLtv,
       lastHealthFactorWad: healthFactorWad,
       updatedAt: event.block.timestamp,

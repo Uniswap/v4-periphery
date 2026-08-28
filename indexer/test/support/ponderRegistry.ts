@@ -22,7 +22,3 @@ export function getHandler(name: string): RecordedHandler {
   }
   return handler;
 }
-
-export function recordedHandlerNames(): string[] {
-  return [...handlers.keys()];
-}

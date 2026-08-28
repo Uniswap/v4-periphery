@@ -1,5 +1,5 @@
 /**
- * IDX-4: don't fold a curated open into a snapshot-terminated epoch.
+ * Don't fold a curated open into a snapshot-terminated epoch.
  *  - PositionIncreased / CollateralAdded status-filter the pointer (findActivePosition), so a curated
  *    open on a pair whose pointed epoch is non-OPEN starts a NEW epoch and overwrites the pointer;
  *  - a terminal PositionUpdated snapshot marks status/closedAt/closeTxHash but leaves the pointer and

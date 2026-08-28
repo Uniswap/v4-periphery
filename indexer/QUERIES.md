@@ -122,7 +122,8 @@ Every lifecycle action with its deltas and per-fill execution price.
 ## 7. Raw account activity, including owner escape-hatch operations
 
 Flows with no router lifecycle event (e.g. a direct `execute` collateral withdrawal)
-appear here with `applied: false` and no `positionAction` row.
+appear here regardless. A flow with no live epoch to apply to stays `applied: false`; one that applies
+to a live epoch is `applied: true` and also produces a synthetic `ADJUST` positionAction.
 
 ```graphql
 {

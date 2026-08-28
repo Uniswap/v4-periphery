@@ -1,18 +1,15 @@
 /**
- * Liquidation fidelity matrix (plan cases a–f; g lives in harness.test.ts):
- * status transitions come from block-pinned chain-truth debt reads, the
- * arithmetic debtPrincipal update stays for display, and deficit events are
- * bookkept as badDebt without driving terminal transitions themselves.
+ * Liquidation fidelity: status transitions come from block-pinned chain-truth debt reads, the
+ * arithmetic debtPrincipal update stays for display.
  */
 import { activePosition, lendingEvent, position } from "ponder:schema";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { pairKey, positionId } from "../src/helpers";
+import { decodeReceiptEvents, loadReceipt } from "./support/fixtures";
 import { createHarness, type Harness } from "./support/harness";
 import {
   stubOracleMarks,
-  AAVE_V3_POOL,
-  AAVE_V4_HUB,
   AAVE_V4_SPOKE,
   ACCOUNT,
   E6,
@@ -22,7 +19,6 @@ import {
   LIQ_TX,
   LIQ_TX_2,
   OPEN_TX,
-  PREMIUM_DELTA_ZERO,
   USDC,
   WETH,
   liquidationEvent,
@@ -184,106 +180,6 @@ describe("(e) partial then full", () => {
   });
 });
 
-describe("(f) deficit liquidations", () => {
-  it("AAVE_V3: DeficitCreated (before LiquidationCall) bookkeeps badDebt; chain truth terminates", async () => {
-    await openMarginPosition(harness, { venue: "AAVE_V3" });
-    stubChainDebt(harness, { venue: "AAVE_V3", remaining: 0n });
-
-    // verified v3 ordering: DeficitCreated fires BEFORE LiquidationCall in the same tx
-    await harness.dispatch({
-      name: "AaveV3Pool:DeficitCreated",
-      args: { user: ACCOUNT, debtAsset: USDC, amountCreated: 500n * E6 },
-      txHash: LIQ_TX,
-      logIndex: 2,
-      blockNumber: LIQ_BLOCK,
-      timestamp: LIQ_BLOCK,
-      logAddress: AAVE_V3_POOL,
-    });
-
-    // deficit alone must NOT terminate the epoch
-    let row = await findPosition();
-    expect(row!.status).toBe("OPEN");
-    expect(row!.badDebt).toBe(500n * E6);
-    expect(await findPointer()).not.toBeNull();
-
-    await dispatchLiquidation({ venue: "AAVE_V3", repaidDebt: 3500n * E6, seizedCollateral: 2n * E18, logIndex: 3 });
-
-    row = await findPosition();
-    expect(row!.status).toBe("LIQUIDATED");
-    expect(row!.badDebt).toBe(500n * E6);
-    expect(await findPointer()).toBeNull();
-
-    const deficits = (await harness.db.select().from(lendingEvent)).filter((event) => event.kind === "DEFICIT");
-    expect(deficits).toHaveLength(1);
-    expect(deficits[0]!.assets).toBe(500n * E6);
-    expect(deficits[0]!.badDebtAssets).toBe(500n * E6);
-    expect(deficits[0]!.debt).toBe(USDC);
-  });
-
-  it("AAVE_V4: ReportDeficit (after LiquidationCall) converts shares and bookkeeps on the closed epoch", async () => {
-    await openMarginPosition(harness, { venue: "AAVE_V4" });
-    stubChainDebt(harness, { venue: "AAVE_V4", remaining: 0n });
-    harness.onRead(
-      { address: AAVE_V4_SPOKE, functionName: "getReserve" },
-      { underlying: USDC, hub: AAVE_V4_HUB, assetId: 5, decimals: 6, collateralRisk: 0, flags: 12, dynamicConfigKey: 0 }
-    );
-    harness.onRead({ address: AAVE_V4_HUB, functionName: "previewRestoreByShares" }, 500n * E6);
-
-    // verified v4 ordering: LiquidationCall fires BEFORE ReportDeficit in the same tx
-    await dispatchLiquidation({ venue: "AAVE_V4", repaidDebt: 3500n * E6, seizedCollateral: 2n * E18, logIndex: 2 });
-    let row = await findPosition();
-    expect(row!.status).toBe("LIQUIDATED");
-    expect(await findPointer()).toBeNull();
-
-    await harness.dispatch({
-      name: "AaveV4Spoke:ReportDeficit",
-      args: { reserveId: 7n, user: ACCOUNT, drawnShares: 450n * E6, premiumDelta: PREMIUM_DELTA_ZERO },
-      txHash: LIQ_TX,
-      logIndex: 3,
-      blockNumber: LIQ_BLOCK,
-      timestamp: LIQ_BLOCK,
-      logAddress: AAVE_V4_SPOKE,
-    });
-
-    row = await findPosition();
-    expect(row!.status).toBe("LIQUIDATED");
-    expect(row!.badDebt).toBe(500n * E6);
-
-    const deficits = (await harness.db.select().from(lendingEvent)).filter((event) => event.kind === "DEFICIT");
-    expect(deficits).toHaveLength(1);
-    expect(deficits[0]!.assets).toBe(500n * E6); // assets, not shares
-    expect(deficits[0]!.debt).toBe(USDC);
-
-    // shares → assets conversion is pinned to the deficit block
-    const conversionReads = harness.readCalls.filter((call) => call.functionName === "previewRestoreByShares");
-    expect(conversionReads).toHaveLength(1);
-    expect(conversionReads[0]!.blockNumber).toBe(LIQ_BLOCK);
-    expect(conversionReads[0]!.args).toEqual([5n, 450n * E6]);
-  });
-
-  it("filters deficit events for non-margin users", async () => {
-    await harness.dispatch({
-      name: "AaveV3Pool:DeficitCreated",
-      args: { user: "0x00000000000000000000000000000000000000dd", debtAsset: USDC, amountCreated: E6 },
-      txHash: LIQ_TX,
-      logIndex: 1,
-      blockNumber: LIQ_BLOCK,
-      timestamp: LIQ_BLOCK,
-      logAddress: AAVE_V3_POOL,
-    });
-    await harness.dispatch({
-      name: "AaveV4Spoke:ReportDeficit",
-      args: { reserveId: 7n, user: "0x00000000000000000000000000000000000000dd", drawnShares: E6, premiumDelta: PREMIUM_DELTA_ZERO },
-      txHash: LIQ_TX,
-      logIndex: 2,
-      blockNumber: LIQ_BLOCK,
-      timestamp: LIQ_BLOCK,
-      logAddress: AAVE_V4_SPOKE,
-    });
-    expect(await harness.db.select().from(lendingEvent)).toHaveLength(0);
-  });
-});
-
 describe("(g) Morpho reports SHARES, not assets", () => {
   it("converts borrowShares to assets (toAssetsUp) before storing the remainder", async () => {
     await openMarginPosition(harness, { venue: "MORPHO" });
@@ -328,4 +224,41 @@ describe("(h) unreadable venue falls back to the stored-principal arithmetic", (
     expect(row!.status).toBe("OPEN");
     expect(await findPointer()).not.toBeNull();
   });
+});
+
+// Mechanically re-proves the v4 Spoke LiquidationCall arg layout against mainnet log data:
+// `args` are the exact decoded values, re-derived from the receipt JSON.
+const FIXTURES = [
+  {
+    file: "receipt-0xb423d2d3.json",
+    block: 25524077n,
+    args: {
+      user: "0x3Dd7D7db118028783F7018A25bB90f6a6449df13",
+      collateralReserveId: 3n,
+      debtReserveId: 8n,
+      debtAmountRestored: 1626586829n,
+      collateralAmountRemoved: 2743450n,
+    },
+  },
+];
+
+describe("real Aave v4 liquidation receipts", () => {
+  for (const { file, block, args: expectedArgs } of FIXTURES) {
+    it(`${file}: decodes exactly one Spoke LiquidationCall and the handler filters it`, async () => {
+      const receipt = loadReceipt(file);
+      expect(BigInt(receipt.blockNumber)).toBe(block);
+
+      const events = decodeReceiptEvents({ receipt, contract: "AaveV4Spoke", address: AAVE_V4_SPOKE });
+      const liquidations = events.filter((e) => e.name === "AaveV4Spoke:LiquidationCall");
+      expect(liquidations).toHaveLength(1);
+      expect(liquidations[0]!.args).toMatchObject(expectedArgs);
+
+      // non-margin borrower: handler drops the event before any write
+      for (const event of events) {
+        await harness.dispatch(event);
+      }
+      expect(await harness.db.select().from(lendingEvent)).toHaveLength(0);
+      expect(await harness.db.select().from(position)).toHaveLength(0);
+    });
+  }
 });

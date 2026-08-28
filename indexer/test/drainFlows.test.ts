@@ -1,15 +1,16 @@
 /**
- * IDX-3 validation: the drainFlows twin of the flow-attribution hardening.
+ * drainFlows' attribution rules:
  *  - a staged (null-pair) lendingEvent is claimed only when its named reserve belongs to the pair
  *    (same predicate applyStagedFlows uses); a reserve-less staged row is refused (fail-closed);
  *  - consumeSwaps + txLendingEvents replay in NUMERIC log-index order (ids are `${txHash}-${logIndex}`
  *    strings, so a lexical sort puts logIndex 12 before 8);
- *  - the 62a514f-shaped same-block ambiguous collateral add does not cross-claim.
+ *  - a same-block ambiguous collateral add does not cross-claim between two positions that share a
+ *    collateral reserve.
  */
 import { lendingEvent, position, positionAction, swapEvent } from "ponder:schema";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { eventId, pairKey, positionId } from "../src/helpers";
+import { eventId, positionId } from "../src/helpers";
 import { createHarness, type Harness } from "./support/harness";
 import { ACCOUNT, E6, E18, OPEN_BLOCK, OWNER, stubOracleMarks, USDC, WETH } from "./support/scenario";
 
@@ -24,6 +25,7 @@ const TX_SWAP = ("0x" + "5a".repeat(32)) as Hex;
 const TX_USDC = ("0x" + "d1".repeat(32)) as Hex; // WETH/USDC open
 const TX_DAI = ("0x" + "d2".repeat(32)) as Hex; // WETH/DAI open
 const ADD_TX = ("0x" + "add".padEnd(64, "0")) as Hex;
+const VENUE_TX = ("0x" + "e1".repeat(32)) as Hex;
 const ADD_BLOCK = OPEN_BLOCK + 100n;
 
 let harness: Harness;
@@ -158,7 +160,7 @@ describe("consumeSwaps replays in numeric log-index order", () => {
   });
 });
 
-describe("a 62a514f-shaped same-block ambiguous collateral add does not cross-claim", () => {
+describe("a same-block ambiguous collateral add does not cross-claim", () => {
   it("leaves both WETH-collateral positions untouched when the add cannot be disambiguated", async () => {
     // Two OPEN positions on the same account share WETH collateral (WETH/USDC and WETH/DAI).
     await harness.dispatch({
@@ -208,5 +210,55 @@ describe("a 62a514f-shaped same-block ambiguous collateral add does not cross-cl
     expect(daiAfter!.equity).toBe(daiBefore!.equity);
     const adds = (await harness.db.select().from(positionAction)).filter((a) => a.type === "ADD_COLLATERAL");
     expect(adds).toHaveLength(0);
+  });
+});
+
+describe("drainFlows threads a staged row's venue onto the opened epoch", () => {
+  it("adopts the staged flow's venue rather than leaving the epoch UNKNOWN", async () => {
+    // Stage a resolved (pair-bearing) AAVE_V3 flow for this (tx, account, pair), then open the epoch
+    // with a curated router event in the same tx. drainFlows matches on (collateral, debt).
+    await harness.context.db.insert(lendingEvent).values({
+      id: eventId(VENUE_TX, 0),
+      txHash: VENUE_TX,
+      venue: "AAVE_V3",
+      kind: "SUPPLY_COLLATERAL",
+      account: ACCOUNT,
+      collateral: WETH,
+      debt: USDC,
+      assets: 2n * E18,
+      blockNumber: OPEN_BLOCK,
+      timestamp: OPEN_BLOCK,
+      applied: false,
+    });
+
+    // currentLtv 0.5 lets resolveMarkX18 derive the mark from the event totals, so no oracle read.
+    await harness.dispatch({
+      name: "MarginRouter:PositionIncreased",
+      args: {
+        owner: OWNER,
+        account: ACCOUNT,
+        collateral: WETH,
+        debt: USDC,
+        equity: E18,
+        collateralBought: E18,
+        debtDrawn: 4000n * E6,
+        collateralTotal: 2n * E18,
+        debtTotal: 4000n * E6,
+        currentLtv: 500000000000000000n,
+        maxLtv: 860000000000000000n,
+        healthFactorWad: 2n * E18,
+      },
+      txHash: VENUE_TX,
+      logIndex: 10,
+      blockNumber: OPEN_BLOCK,
+      timestamp: OPEN_BLOCK,
+    });
+
+    const row = await harness.context.db.find(position, { id: positionId(ACCOUNT, WETH, USDC, VENUE_TX) });
+    expect(row!.venue).toBe("AAVE_V3");
+    expect(row!.status).toBe("OPEN");
+    // the matched row is marked applied, proving the match branch ran
+    const staged = await harness.context.db.find(lendingEvent, { id: eventId(VENUE_TX, 0) });
+    expect(staged!.applied).toBe(true);
   });
 });

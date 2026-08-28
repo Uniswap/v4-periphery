@@ -6,13 +6,12 @@
  * the row `${txHash}-${positionId}-adjust`. A curated router event later in the
  * same tx supersedes the synthetic row (deletes it, reverses its increments)
  * and applies its own authoritative economics. A terminal zero-out is a CLOSE
- * (P1 path), not an ADJUST, and also supersedes any same-tx synthetic ADJUST.
+ * not an ADJUST, and also supersedes any same-tx synthetic ADJUST.
  */
 import { activePosition, position, positionAction, swapEvent } from "ponder:schema";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { deployments } from "../addresses";
-import { adjustId, eventId, pairKey, positionId, syntheticCloseId } from "../src/helpers";
+import { adjustId, pairKey, positionId, syntheticCloseId } from "../src/helpers";
 import { createHarness, type Harness, type HarnessEvent } from "./support/harness";
 import {
   liquidationEvent,
@@ -20,8 +19,6 @@ import {
   stageSwap, stubOracleMarks, ACCOUNT, E18, E6, MORPHO_BLUE, MORPHO_MARKET_ID, MORPHO_ORACLE, openMarginPosition, OPEN_TX, OWNER, USDC, WETH, ZERO } from "./support/scenario";
 
 type Hex = `0x${string}`;
-
-const MARGIN_ROUTER = deployments.mainnet.marginRouter;
 
 const ADJUST_TX: Hex = "0x8888888888888888888888888888888888888888888888888888888888888888";
 const ADJUST_BLOCK = 25_600_090n;
@@ -54,9 +51,8 @@ function morphoFlow(args: {
   assets: bigint;
   logIndex: number;
   txHash?: Hex;
-  txTo?: Hex;
 }): HarnessEvent {
-  const { kind, assets, logIndex, txHash = ADJUST_TX, txTo = MARGIN_ROUTER } = args;
+  const { kind, assets, logIndex, txHash = ADJUST_TX } = args;
   const name = {
     SUPPLY_COLLATERAL: "MorphoBlue:SupplyCollateral",
     WITHDRAW_COLLATERAL: "MorphoBlue:WithdrawCollateral",
@@ -67,7 +63,6 @@ function morphoFlow(args: {
     name,
     args: { id: MORPHO_MARKET_ID, caller: ACCOUNT, onBehalf: ACCOUNT, receiver: ACCOUNT, assets, shares: 0n },
     txHash,
-    txTo,
     logIndex,
     blockNumber: ADJUST_BLOCK,
     timestamp: ADJUST_BLOCK,
@@ -109,18 +104,7 @@ describe("execute-driven ADJUST synthesis (no router event)", () => {
     expect(adjust!.equityDelta).toBe(E18 / 2n);
   });
 
-  it("still derives a price for the single-fill case, which is what the encoder emits", async () => {
-    swap({ amount0: -2000n * E6, amount1: E18 / 2n, logIndex: 1 });
-
-    await openMarginPosition(harness, { venue: "MORPHO" });
-    await harness.dispatch(morphoFlow({ kind: "BORROW", assets: 2000n * E6, logIndex: 0 }));
-    await harness.dispatch(morphoFlow({ kind: "SUPPLY_COLLATERAL", assets: E18, logIndex: 2 }));
-
-    const adjust = await adjustRow();
-    expect(adjust!.priceX18).toBe(4000n * E6);
-  });
-
-  it("a. withdraw-only → equity decrements, one ADJUST with negative collateral/equity delta", async () => {
+  it("withdraw-only → equity decrements, one ADJUST with negative collateral/equity delta", async () => {
     await openMarginPosition(harness, { venue: "MORPHO" });
 
     await harness.dispatch(morphoFlow({ kind: "WITHDRAW_COLLATERAL", assets: E18 / 2n, logIndex: 0 }));
@@ -138,7 +122,7 @@ describe("execute-driven ADJUST synthesis (no router event)", () => {
     expect(await actionsOfType("ADJUST")).toHaveLength(1);
   });
 
-  it("b. add+borrow (buy leg) → equityIn = supplied − bought, priceX18 derived, swap NOT consumed, avgEntry updated", async () => {
+  it("add+borrow (buy leg) → equityIn = supplied − bought, priceX18 derived, swap NOT consumed, avgEntry updated", async () => {
     swap({ amount0: -2000n * E6, amount1: E18 / 2n, logIndex: 1 }); // pay USDC, receive WETH
 
     await openMarginPosition(harness, { venue: "MORPHO" });
@@ -167,7 +151,7 @@ describe("execute-driven ADJUST synthesis (no router event)", () => {
     expect(swaps[0]!.consumed).toBe(false);
   });
 
-  it("b2. buy leg on a NATIVE-keyed pool → collateral is token0, equity still excludes the bought leverage", async () => {
+  it("buy leg on a NATIVE-keyed pool → collateral is token0, equity still excludes the bought leverage", async () => {
     swap({ amount0: E18 / 2n, amount1: -2000n * E6, logIndex: 1 }); // receive ETH, pay USDC
 
     await openMarginPosition(harness, { venue: "MORPHO" });
@@ -188,7 +172,7 @@ describe("execute-driven ADJUST synthesis (no router event)", () => {
     expect(adjust!.priceX18).toBe(4000n * E6);
   });
 
-  it("e2. sell leg on a NATIVE-keyed pool → collateral sold is token0, excluded from equityOut", async () => {
+  it("sell leg on a NATIVE-keyed pool → collateral sold is token0, excluded from equityOut", async () => {
     swap({ amount0: -(E18 / 4n), amount1: 1000n * E6, logIndex: 2 }); // pay ETH, receive USDC
 
     await openMarginPosition(harness, { venue: "MORPHO" });
@@ -209,7 +193,7 @@ describe("execute-driven ADJUST synthesis (no router event)", () => {
   // Mark and size at open. router.ts pins these on a curated open; a flow-created epoch never reaches
   // that code, so without pinning them here buildCostBasis falls back and every execute()-driven
   // position renders an entry price of 0 and an opened leverage of 0.
-  it("f. a flow-created epoch pins entryMarkX18 / collateralAtOpen / leverageX18AtOpen", async () => {
+  it("a flow-created epoch pins entryMarkX18 / collateralAtOpen / leverageX18AtOpen", async () => {
     swap({ amount0: -2000n * E6, amount1: E18 / 2n, logIndex: 1, txHash: FLOW_OPEN_TX });
 
     // Register the market and the account, but do NOT open a position — the epoch must come from flows
@@ -247,7 +231,7 @@ describe("execute-driven ADJUST synthesis (no router event)", () => {
     expect(row!.leverageX18AtOpen).toBe((E18 * 3n) / 2n);
   });
 
-  it("e3. delever + withdraw equity in one tx → only the owner-bound portion leaves equity", async () => {
+  it("delever + withdraw equity in one tx → only the owner-bound portion leaves equity", async () => {
     swap({ amount0: 1000n * E6, amount1: -(E18 / 4n), logIndex: 1 }); // receive USDC, pay WETH
 
     await openMarginPosition(harness, { venue: "MORPHO" });
@@ -262,7 +246,7 @@ describe("execute-driven ADJUST synthesis (no router event)", () => {
     expect(adjust!.debtDelta).toBe(-(1000n * E6));
   });
 
-  it("e. add+repay (sell leg) → debtDelta < 0, equityIn = supplied, collateralSold excluded from equityOut", async () => {
+  it("add+repay (sell leg) → debtDelta < 0, equityIn = supplied, collateralSold excluded from equityOut", async () => {
     swap({ amount0: 1000n * E6, amount1: -(E18 / 4n), logIndex: 2 }); // receive USDC, pay WETH
 
     await openMarginPosition(harness, { venue: "MORPHO" });
@@ -287,7 +271,7 @@ describe("execute-driven ADJUST synthesis (no router event)", () => {
 });
 
 describe("curated router event supersedes the synthetic ADJUST", () => {
-  it("c. same-tx PositionIncreased → no ADJUST survives, economics match router-only, poolId intact", async () => {
+  it("same-tx PositionIncreased → no ADJUST survives, economics match router-only, poolId intact", async () => {
     swap({ amount0: -2000n * E6, amount1: E18 / 2n, logIndex: 1 });
 
     await openMarginPosition(harness, { venue: "MORPHO" });
@@ -342,7 +326,7 @@ describe("curated router event supersedes the synthetic ADJUST", () => {
 });
 
 describe("terminal zero-out is a CLOSE, not an ADJUST", () => {
-  it("d. full unwind via execute in one tx → synthetic CLOSE, no surviving ADJUST", async () => {
+  it("full unwind via execute in one tx → synthetic CLOSE, no surviving ADJUST", async () => {
     await openMarginPosition(harness, { venue: "MORPHO" });
     harness.onRead({ address: MORPHO_BLUE, functionName: "position" }, [0n, 0n, 0n]);
 
@@ -368,7 +352,7 @@ describe("terminal zero-out is a CLOSE, not an ADJUST", () => {
 });
 
 describe("equity reversal is exact when a step would floor equity at 0", () => {
-  it("f. profit-extraction partial curated decrease → equity restored to the pre-tx base, not inflated", async () => {
+  it("profit-extraction partial curated decrease → equity restored to the pre-tx base, not inflated", async () => {
     await openMarginPosition(harness, { venue: "MORPHO" }); // equity E18, collateral 2E18, debt 4000 USDC
 
     // execute-driven withdraw of 1.5 WETH: equityDelta = −1.5E18 drives running equity below 0
@@ -473,7 +457,7 @@ describe("equity reversal is exact when a step would floor equity at 0", () => {
     expect(await actionsOfType("ADJUST")).toHaveLength(0);
   });
 
-  it("f2. pure-execute equity is step-order-independent even when a step would floor", async () => {
+  it("pure-execute equity is step-order-independent even when a step would floor", async () => {
     const finalEquity = async (flows: HarnessEvent[]): Promise<bigint> => {
       await harness.reset();
       stubOracleMarks(harness); // reset clears stubs
@@ -494,5 +478,63 @@ describe("equity reversal is exact when a step would floor equity at 0", () => {
 
     expect(withdrawFirst).toBe(E18 / 2n);
     expect(supplyFirst).toBe(E18 / 2n);
+  });
+});
+
+describe("PositionUpdated live-epoch reconcile coexists with a same-tx synthetic ADJUST", () => {
+  // The PositionUpdated live branch is state-only and does NOT call reverseAndSupersedeAdjust, unlike
+  // the curated handlers. A flow-layer synthetic ADJUST is an execute plan's ONLY history row, so
+  // superseding it here would erase it; the snapshot must reconcile LTV/health/lltv and the running
+  // totals around it.
+  it("keeps the ADJUST and its equity intact while reconciling the resulting-state snapshot", async () => {
+    await openMarginPosition(harness, { venue: "MORPHO" }); // equity E18, collateral 2E18, debt 4000 USDC
+
+    // A Morpho supply flow synthesizes an ADJUST on the live epoch (mirrors adjust.test.ts).
+    await harness.dispatch(morphoFlow({ kind: "SUPPLY_COLLATERAL", assets: E18, logIndex: 0 }));
+    const adjustBefore = await harness.context.db.find(positionAction, { id: adjustId(ADJUST_TX, POSITION_ID) });
+    expect(adjustBefore).not.toBeNull();
+    expect(adjustBefore!.type).toBe("ADJUST");
+    const equityAfterFlow = (await harness.context.db.find(position, { id: POSITION_ID }))!.equity;
+    expect(equityAfterFlow).toBe(2n * E18); // base E18 + supplied E18
+
+    // Same-tx PositionUpdated snapshot, with state distinct from the open fixture (0.5 / 2.0 / 0.86)
+    // so the reconcile is observable.
+    await harness.dispatch({
+      name: "MarginRouter:PositionUpdated",
+      args: {
+        owner: OWNER,
+        account: ACCOUNT,
+        collateral: WETH,
+        debt: USDC,
+        collateralTotal: 3n * E18,
+        debtTotal: 4000n * E6,
+        currentLtv: 600000000000000000n,
+        maxLtv: 800000000000000000n,
+        healthFactorWad: (3n * E18) / 2n,
+      },
+      txHash: ADJUST_TX,
+      logIndex: 20,
+      blockNumber: ADJUST_BLOCK,
+      timestamp: ADJUST_BLOCK,
+    });
+
+    const adjustAfter = await harness.context.db.find(positionAction, { id: adjustId(ADJUST_TX, POSITION_ID) });
+    const row = await harness.context.db.find(position, { id: POSITION_ID });
+
+    // The ADJUST survives untouched: not deleted, and its equity increment not reversed. A supersede
+    // would have deleted this row and restored equity to the captured base (E18) — neither happened.
+    expect(adjustAfter).not.toBeNull();
+    expect(adjustAfter!.type).toBe("ADJUST");
+    expect(adjustAfter!.equityDelta).toBe(E18);
+    expect(adjustAfter!.collateralDelta).toBe(E18);
+    expect(row!.equity).toBe(2n * E18); // still base + supplied; NOT reverted to equityBase E18
+
+    // The snapshot reconciled the resulting-state fields (distinct from the open fixture values).
+    expect(row!.status).toBe("OPEN");
+    expect(row!.collateralAmount).toBe(3n * E18);
+    expect(row!.debtPrincipal).toBe(4000n * E6);
+    expect(row!.lastLtvWad).toBe(600000000000000000n);
+    expect(row!.lastHealthFactorWad).toBe((3n * E18) / 2n);
+    expect(row!.lltv).toBe(800000000000000000n);
   });
 });

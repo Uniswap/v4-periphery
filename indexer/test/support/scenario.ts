@@ -32,8 +32,8 @@ export const MORPHO_ORACLE_PRICE = 4000n * 10n ** 24n;
 export const WETH_USD_8DP = 4000n * 10n ** 8n;
 export const USDC_USD_8DP = 10n ** 8n;
 
-// Every action now stamps a venue-oracle mark, so the price reads must be stubbed or the harness
-// throws. Registered first, so a test can still override with its own onRead.
+// Every action stamps a venue-oracle mark; stub the price reads so tests assert real marks instead of
+// the softened null. Registered first, so a test can still override with its own onRead.
 export function stubOracleMarks(harness: Harness): void {
   harness.onRead({ address: MORPHO_ORACLE, functionName: "price" }, MORPHO_ORACLE_PRICE);
   harness.onRead({ address: AAVE_ORACLE, functionName: "getAssetPrice" }, (call: ReadCall) =>

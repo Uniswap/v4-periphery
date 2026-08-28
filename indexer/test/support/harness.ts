@@ -14,7 +14,7 @@ import * as schema from "ponder:schema";
 
 // handler registration side effects: every src module records into the registry stub
 import "../../src/aave";
-import { _clearAaveV3ATokenCacheForTests, _clearAaveV3DebtTokenCacheForTests } from "../../src/lendingFlows";
+import "../../src/lendingFlows";
 import "../../src/marginAccounts";
 import "../../src/markets";
 import "../../src/morpho";
@@ -173,7 +173,6 @@ export interface HarnessEvent {
   name: string;
   args: Record<string, unknown>;
   txHash: Hex;
-  txTo?: Hex;
   logIndex: number;
   blockNumber: bigint;
   timestamp: bigint;
@@ -238,7 +237,7 @@ export async function createHarness(): Promise<Harness> {
         event: {
           args: event.args,
           log: { logIndex: event.logIndex, address: event.logAddress ?? "0x0000000000000000000000000000000000000000" },
-          transaction: { hash: event.txHash, to: event.txTo ?? null },
+          transaction: { hash: event.txHash, to: null },
           block: { number: event.blockNumber, timestamp: event.timestamp },
         },
         context,
@@ -261,8 +260,6 @@ export async function createHarness(): Promise<Harness> {
       stubs.length = 0;
       readCalls.length = 0;
       receiptLogs.clear();
-      _clearAaveV3DebtTokenCacheForTests();
-      _clearAaveV3ATokenCacheForTests();
       for (const table of onchainTables) {
         await db.delete(table as never);
       }

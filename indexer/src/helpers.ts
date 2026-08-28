@@ -33,6 +33,20 @@ export const syntheticCloseId = (txHash: string, positionRowId: string): string 
 export const adjustId = (txHash: string, positionRowId: string): string =>
   `${lower(txHash)}-${positionRowId}-adjust`;
 
+/**
+ * Whether a staged (null-pair) flow belongs to this pair: the single reserve it named must be one of
+ * the pair's currencies, in the role its kind implies. Without this check two markets sharing a
+ * reserve in one transaction drain each other's staged flows. Fail-closed — a reserve-less row has
+ * nothing to attribute it by.
+ */
+export const reserveBelongsTo =
+  ({ collateral, debt }: { collateral: `0x${string}`; debt: `0x${string}` }) =>
+  (row: { kind: string; reserve: `0x${string}` | null }): boolean => {
+    if (!row.reserve) return false;
+    const expected = row.kind === "SUPPLY_COLLATERAL" || row.kind === "WITHDRAW_COLLATERAL" ? collateral : debt;
+    return lower(row.reserve) === lower(expected);
+  };
+
 /** Lazily persist ERC-20 metadata so consumers can scale raw amounts. */
 export async function ensureToken(context: Context, address: `0x${string}`): Promise<void> {
   const existing = await context.db.find(token, { address });

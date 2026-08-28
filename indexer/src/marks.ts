@@ -18,11 +18,20 @@ import { WAD } from "./helpers";
  *     debt-free position (LTV 0), and the synthetic ADJUST the execute() path produces.
  */
 
+interface MarkParams {
+  context: Context;
+  venue: string;
+  collateral: `0x${string}`;
+  debt: `0x${string}`;
+  morphoMarketId: `0x${string}` | null;
+  blockNumber: bigint;
+}
+
 // An LTV at or above 1.0 means the position is past its own collateral value; the router should never
 // report it, and dividing by it would yield a mark that silently understates.
 const MAX_USABLE_LTV = WAD;
 
-export function deriveMarkFromTotals(params: {
+function deriveMarkFromTotals(params: {
   collateralTotal: bigint;
   debtTotal: bigint;
   ltvAfterWad: bigint;
@@ -42,17 +51,9 @@ async function decimalsOf(context: Context, address: `0x${string}`): Promise<num
 
 /**
  * Oracle mark at a specific block. Morpho reads the market's own oracle; Aave reads the shared
- * AaveOracle's two 8dp USD prices. Throws rather than returning null — the caller decides whether an
- * unavailable mark is tolerable, and a silent null here would make every action unvaluable.
+ * AaveOracle's two 8dp USD prices. Throws so the soft wrapper can log why the mark was unavailable.
  */
-export async function readMarkAtBlock(params: {
-  context: Context;
-  venue: string;
-  collateral: `0x${string}`;
-  debt: `0x${string}`;
-  morphoMarketId: `0x${string}` | null;
-  blockNumber: bigint;
-}): Promise<bigint> {
+async function readMarkAtBlock(params: MarkParams): Promise<bigint> {
   const { context, venue, collateral, debt, morphoMarketId, blockNumber } = params;
 
   if (venue === "MORPHO") {
@@ -93,20 +94,12 @@ export async function readMarkAtBlock(params: {
 }
 
 /**
- * readMarkAtBlock, softened: warn and return null on any failure (unavailable/reverting oracle,
- * missing market ref) so a per-action mark read never halts the indexer — an honest null mark on
- * that action instead. Used by every per-action mark path (curated actions, synthetic ADJUSTs, and
- * liquidations, where oracle staleness clusters); callers that genuinely require a mark keep using
- * readMarkAtBlock directly.
+ * Warn and return null on any failure (unavailable/reverting oracle, missing market ref) so a
+ * per-action mark read never halts the indexer — an honest null mark on that action instead. Every
+ * per-action mark path goes through here: curated actions, synthetic ADJUSTs, and liquidations,
+ * where oracle staleness clusters.
  */
-export async function readMarkAtBlockSoft(params: {
-  context: Context;
-  venue: string;
-  collateral: `0x${string}`;
-  debt: `0x${string}`;
-  morphoMarketId: `0x${string}` | null;
-  blockNumber: bigint;
-}): Promise<bigint | null> {
+export async function readMarkAtBlockSoft(params: MarkParams): Promise<bigint | null> {
   try {
     return await readMarkAtBlock(params);
   } catch (error) {
@@ -118,22 +111,10 @@ export async function readMarkAtBlockSoft(params: {
   }
 }
 
-/**
- * Derive from the event where possible, else read the oracle. Returns null (with a warning) when no
- * mark is available: a blocking oracle readContract on every action is an ops risk, so an unavailable
- * or reverting oracle yields honest null PnL for that action rather than halting the indexer.
- */
-export async function resolveMarkX18(params: {
-  context: Context;
-  venue: string;
-  collateral: `0x${string}`;
-  debt: `0x${string}`;
-  morphoMarketId: `0x${string}` | null;
-  blockNumber: bigint;
-  collateralTotal: bigint;
-  debtTotal: bigint;
-  ltvAfterWad: bigint | null;
-}): Promise<bigint | null> {
+/** Derive from the event's own totals where they give a usable LTV, else fall through to the oracle. */
+export async function resolveMarkX18(
+  params: MarkParams & { collateralTotal: bigint; debtTotal: bigint; ltvAfterWad: bigint | null }
+): Promise<bigint | null> {
   const { ltvAfterWad, collateralTotal, debtTotal } = params;
   if (ltvAfterWad !== null) {
     const derived = deriveMarkFromTotals({ collateralTotal, debtTotal, ltvAfterWad });

@@ -3,17 +3,18 @@
  *
  * An Aave event names a single reserve. `resolvePair` recovers the pair from the market registry, and
  * when several registered markets share that reserve in the same role it falls back to "which pair does
- * this account already hold?" — which finds nothing on a first-ever open. Those flows are staged with a
- * null pair, and used to be completed by the curated router event later in the same transaction. An
- * `execute()`-driven open emits no router event, so nothing completes them.
+ * this account already hold?" — which finds nothing on a first-ever open. Those flows stage with a null
+ * pair for a router event later in the transaction to complete. An owner who calls `supplyCollateral` /
+ * `borrow` on the clone directly (MarginAccount authorizes owner as well as manager) routes around the
+ * router entirely, so no router event ever arrives and nothing completes them.
  *
  * The clone's own events name both currencies: `CollateralSupplied` the collateral, `Borrowed` the debt.
  * Together they identify the pair with no registry lookup and no prior position.
  *
  * AMOUNTS ARE DELIBERATELY IGNORED HERE. `recordFlow` is the single writer of position balances, driven
- * by the venue events; reading amounts here would double-count every operation. The venue-event layer
- * also stays the completeness backstop — `MarginAccount.execute` is an owner escape hatch that emits only
- * `Executed`, so these events are not a complete source of truth on their own.
+ * by the venue events; reading amounts here would double-count every operation. These events are also
+ * not a complete source of truth on their own — `MarginAccount.execute` emits only `Executed`, naming
+ * neither currency.
  */
 import { ponder } from "ponder:registry";
 import { lendingMarket } from "ponder:schema";

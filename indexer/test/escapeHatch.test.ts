@@ -14,7 +14,6 @@
 import { activePosition, position, positionAction } from "ponder:schema";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { deployments } from "../addresses";
 import { eventId, pairKey, positionId, syntheticCloseId } from "../src/helpers";
 import { createHarness, type Harness, type HarnessEvent } from "./support/harness";
 import {
@@ -31,7 +30,6 @@ import {
   MORPHO_MARKET_ID,
   openMarginPosition,
   OPEN_TX,
-  RAW_MARK_X18,
   stageSwap,
   stubChainDebt,
   USDC,
@@ -40,8 +38,6 @@ import {
 } from "./support/scenario";
 
 type Hex = `0x${string}`;
-
-const MARGIN_ROUTER = deployments.mainnet.marginRouter;
 
 // aToken address for the WETH reserve (v3); balanceOf on it is stubbed to 0.
 const A_WETH: Hex = "0x00000000000000000000000000000000000000a1";
@@ -85,16 +81,14 @@ function morphoFlow(args: {
   kind: "REPAY" | "WITHDRAW_COLLATERAL";
   assets: bigint;
   txHash: Hex;
-  txTo: Hex;
   blockNumber: bigint;
   logIndex: number;
 }): HarnessEvent {
-  const { kind, assets, txHash, txTo, blockNumber, logIndex } = args;
+  const { kind, assets, txHash, blockNumber, logIndex } = args;
   return {
     name: kind === "REPAY" ? "MorphoBlue:Repay" : "MorphoBlue:WithdrawCollateral",
     args: { id: MORPHO_MARKET_ID, caller: ACCOUNT, onBehalf: ACCOUNT, receiver: ACCOUNT, assets, shares: 0n },
     txHash,
-    txTo,
     logIndex,
     blockNumber,
     timestamp: blockNumber,
@@ -106,16 +100,14 @@ function aaveV3Flow(args: {
   kind: "REPAY" | "WITHDRAW_COLLATERAL";
   assets: bigint;
   txHash: Hex;
-  txTo: Hex;
   blockNumber: bigint;
   logIndex: number;
 }): HarnessEvent {
-  const { kind, assets, txHash, txTo, blockNumber, logIndex } = args;
+  const { kind, assets, txHash, blockNumber, logIndex } = args;
   return {
     name: kind === "REPAY" ? "AaveV3Pool:Repay" : "AaveV3Pool:Withdraw",
     args: { reserve: kind === "REPAY" ? USDC : WETH, user: ACCOUNT, amount: assets },
     txHash,
-    txTo,
     logIndex,
     blockNumber,
     timestamp: blockNumber,
@@ -127,16 +119,14 @@ function aaveV4Flow(args: {
   kind: "REPAY" | "WITHDRAW_COLLATERAL";
   assets: bigint;
   txHash: Hex;
-  txTo: Hex;
   blockNumber: bigint;
   logIndex: number;
 }): HarnessEvent {
-  const { kind, assets, txHash, txTo, blockNumber, logIndex } = args;
+  const { kind, assets, txHash, blockNumber, logIndex } = args;
   return {
     name: kind === "REPAY" ? "AaveV4Spoke:Repay" : "AaveV4Spoke:Withdraw",
     args: { reserveId: kind === "REPAY" ? 7n : 0n, caller: ACCOUNT, onBehalfOf: ACCOUNT, amount: assets },
     txHash,
-    txTo,
     logIndex,
     blockNumber,
     timestamp: blockNumber,
@@ -145,28 +135,27 @@ function aaveV4Flow(args: {
 }
 
 /** Repay(full) then Withdraw(full), in two blocks/txs. */
-async function morphoFullUnwind({ txTo }: { txTo: Hex }): Promise<void> {
+async function morphoFullUnwind(): Promise<void> {
   await harness.dispatch(
-    morphoFlow({ kind: "REPAY", assets: 4000n * E6, txHash: ESCAPE_REPAY_TX, txTo, blockNumber: ESCAPE_BLOCK_1, logIndex: 0 })
+    morphoFlow({ kind: "REPAY", assets: 4000n * E6, txHash: ESCAPE_REPAY_TX, blockNumber: ESCAPE_BLOCK_1, logIndex: 0 })
   );
   await harness.dispatch(
     morphoFlow({
       kind: "WITHDRAW_COLLATERAL",
       assets: 2n * E18,
       txHash: ESCAPE_WITHDRAW_TX,
-      txTo,
-      blockNumber: ESCAPE_BLOCK_2,
+        blockNumber: ESCAPE_BLOCK_2,
       logIndex: 0,
     })
   );
 }
 
 describe("router-less close detection", () => {
-  it("1. Morpho escape-hatch unwind → CLOSED, economics null (repaid from outside the position)", async () => {
+  it("Morpho escape-hatch unwind → CLOSED, economics null (repaid from outside the position)", async () => {
     await openMarginPosition(harness, { venue: "MORPHO" });
     harness.onRead({ address: MORPHO_BLUE, functionName: "position" }, [0n, 0n, 0n]);
 
-    await morphoFullUnwind({ txTo: ACCOUNT });
+    await morphoFullUnwind();
 
     const row = await positionRow();
     expect(row!.status).toBe("CLOSED");
@@ -200,7 +189,7 @@ describe("router-less close detection", () => {
   //
   // Both are settled by the execute()-driven close, where the calldata is ours and ASSERT_FILL names the
   // swap's output currency and amount. Until then, null is the honest answer.
-  it("1b. self-funded unwind → CLOSED, economics still null (unprovable from flow sums)", async () => {
+  it("self-funded unwind → CLOSED, economics still null (unprovable from flow sums)", async () => {
     await openMarginPosition(harness, { venue: "MORPHO" });
     harness.onRead({ address: MORPHO_BLUE, functionName: "position" }, [0n, 0n, 0n]);
 
@@ -219,7 +208,6 @@ describe("router-less close detection", () => {
         kind: "WITHDRAW_COLLATERAL",
         assets: 2n * E18,
         txHash: ESCAPE_WITHDRAW_TX,
-        txTo: ACCOUNT,
         blockNumber: ESCAPE_BLOCK_2,
         logIndex: 0,
       }),
@@ -229,7 +217,6 @@ describe("router-less close detection", () => {
         kind: "REPAY",
         assets: 4000n * E6,
         txHash: ESCAPE_WITHDRAW_TX,
-        txTo: ACCOUNT,
         blockNumber: ESCAPE_BLOCK_2,
         logIndex: 2,
       }),
@@ -242,10 +229,10 @@ describe("router-less close detection", () => {
     expect(row!.realizedPnl).toBeNull();
   });
 
-  it("2. re-open of a closed pair starts a fresh epoch (stale pointer ignored)", async () => {
+  it("re-open of a closed pair starts a fresh epoch (stale pointer ignored)", async () => {
     await openMarginPosition(harness, { venue: "MORPHO" });
     harness.onRead({ address: MORPHO_BLUE, functionName: "position" }, [0n, 0n, 0n]);
-    await morphoFullUnwind({ txTo: ACCOUNT });
+    await morphoFullUnwind();
     // the stale pointer still references the CLOSED epoch
     expect((await pointerRow())!.positionId).toBe(POSITION_ID);
 
@@ -254,7 +241,6 @@ describe("router-less close detection", () => {
       name: "MorphoBlue:SupplyCollateral",
       args: { id: MORPHO_MARKET_ID, caller: ACCOUNT, onBehalf: ACCOUNT, assets: 3n * E18, shares: 0n },
       txHash: REOPEN_TX,
-      txTo: ACCOUNT,
       logIndex: 0,
       blockNumber: ESCAPE_BLOCK_2 + 1n,
       timestamp: ESCAPE_BLOCK_2 + 1n,
@@ -269,12 +255,12 @@ describe("router-less close detection", () => {
     expect((await pointerRow())!.positionId).toBe(positionId(ACCOUNT, WETH, USDC, REOPEN_TX));
   });
 
-  it("3. residual venue debt vetoes the close (debt leg)", async () => {
+  it("residual venue debt vetoes the close (debt leg)", async () => {
     await openMarginPosition(harness, { venue: "MORPHO" });
     // arithmetic hits zero, but accrued interest leaves borrowShares behind
     harness.onRead({ address: MORPHO_BLUE, functionName: "position" }, [0n, 5n, 0n]);
 
-    await morphoFullUnwind({ txTo: ACCOUNT });
+    await morphoFullUnwind();
 
     const row = await positionRow();
     expect(row!.status).toBe("OPEN");
@@ -284,12 +270,12 @@ describe("router-less close detection", () => {
     expect(harness.readCalls.some((c) => c.functionName === "position" && c.blockNumber === ESCAPE_BLOCK_2)).toBe(true);
   });
 
-  it("4. gate dropped: execute-path unwind (tx.to = router, no router event) still closes", async () => {
+  it("an execute-path unwind with no curated router event still closes", async () => {
     await openMarginPosition(harness, { venue: "MORPHO" });
     harness.onRead({ address: MORPHO_BLUE, functionName: "position" }, [0n, 0n, 0n]);
 
     // execute() plans run with tx.to == MarginRouter and emit no Position* event
-    await morphoFullUnwind({ txTo: MARGIN_ROUTER });
+    await morphoFullUnwind();
 
     const row = await positionRow();
     expect(row!.status).toBe("CLOSED");
@@ -301,19 +287,18 @@ describe("router-less close detection", () => {
     expect(harness.readCalls.some((c) => c.functionName === "position" && c.blockNumber === ESCAPE_BLOCK_2)).toBe(true);
   });
 
-  it("5. partial unwind (half collateral) does not close (no venue read)", async () => {
+  it("partial unwind (half collateral) does not close (no venue read)", async () => {
     await openMarginPosition(harness, { venue: "MORPHO" });
     harness.onRead({ address: MORPHO_BLUE, functionName: "position" }, [0n, 0n, 0n]);
 
     await harness.dispatch(
-      morphoFlow({ kind: "REPAY", assets: 4000n * E6, txHash: ESCAPE_REPAY_TX, txTo: ACCOUNT, blockNumber: ESCAPE_BLOCK_1, logIndex: 0 })
+      morphoFlow({ kind: "REPAY", assets: 4000n * E6, txHash: ESCAPE_REPAY_TX, blockNumber: ESCAPE_BLOCK_1, logIndex: 0 })
     );
     await harness.dispatch(
       morphoFlow({
         kind: "WITHDRAW_COLLATERAL",
         assets: E18, // half of the 2 WETH collateral
         txHash: ESCAPE_WITHDRAW_TX,
-        txTo: ACCOUNT,
         blockNumber: ESCAPE_BLOCK_2,
         logIndex: 0,
       })
@@ -325,21 +310,20 @@ describe("router-less close detection", () => {
     expect(harness.readCalls.some((c) => c.functionName === "position")).toBe(false);
   });
 
-  it("6. Aave v3 full unwind → CLOSED, pointer retained", async () => {
+  it("Aave v3 full unwind → CLOSED, pointer retained", async () => {
     await openMarginPosition(harness, { venue: "AAVE_V3" });
     harness.onRead({ address: AAVE_V3_POOL, functionName: "getReserveAToken" }, A_WETH);
     harness.onRead({ address: AAVE_V3_POOL, functionName: "getReserveVariableDebtToken" }, USDC_VARIABLE_DEBT_TOKEN);
     harness.onRead({ functionName: "balanceOf" }, 0n); // aToken + debtToken both zero
 
     await harness.dispatch(
-      aaveV3Flow({ kind: "REPAY", assets: 4000n * E6, txHash: ESCAPE_REPAY_TX, txTo: ACCOUNT, blockNumber: ESCAPE_BLOCK_1, logIndex: 0 })
+      aaveV3Flow({ kind: "REPAY", assets: 4000n * E6, txHash: ESCAPE_REPAY_TX, blockNumber: ESCAPE_BLOCK_1, logIndex: 0 })
     );
     await harness.dispatch(
       aaveV3Flow({
         kind: "WITHDRAW_COLLATERAL",
         assets: 2n * E18,
         txHash: ESCAPE_WITHDRAW_TX,
-        txTo: ACCOUNT,
         blockNumber: ESCAPE_BLOCK_2,
         logIndex: 0,
       })
@@ -350,20 +334,19 @@ describe("router-less close detection", () => {
     expect(await pointerRow()).not.toBeNull();
   });
 
-  it("7. Aave v4 full unwind → CLOSED, pointer retained, reads block-pinned", async () => {
+  it("Aave v4 full unwind → CLOSED, pointer retained, reads block-pinned", async () => {
     await openMarginPosition(harness, { venue: "AAVE_V4" });
     harness.onRead({ address: AAVE_V4_SPOKE, functionName: "getUserSuppliedAssets" }, 0n);
     harness.onRead({ address: AAVE_V4_SPOKE, functionName: "getUserTotalDebt" }, 0n);
 
     await harness.dispatch(
-      aaveV4Flow({ kind: "REPAY", assets: 4000n * E6, txHash: ESCAPE_REPAY_TX, txTo: ACCOUNT, blockNumber: ESCAPE_BLOCK_1, logIndex: 0 })
+      aaveV4Flow({ kind: "REPAY", assets: 4000n * E6, txHash: ESCAPE_REPAY_TX, blockNumber: ESCAPE_BLOCK_1, logIndex: 0 })
     );
     await harness.dispatch(
       aaveV4Flow({
         kind: "WITHDRAW_COLLATERAL",
         assets: 2n * E18,
         txHash: ESCAPE_WITHDRAW_TX,
-        txTo: ACCOUNT,
         blockNumber: ESCAPE_BLOCK_2,
         logIndex: 0,
       })
@@ -380,12 +363,12 @@ describe("router-less close detection", () => {
     for (const call of venueReads) expect(call.blockNumber).toBe(ESCAPE_BLOCK_2);
   });
 
-  it("8. residual venue collateral vetoes the close (collateral leg)", async () => {
+  it("residual venue collateral vetoes the close (collateral leg)", async () => {
     await openMarginPosition(harness, { venue: "MORPHO" });
     // debt cleared, collateral dust remains (realistic v3-style residual)
     harness.onRead({ address: MORPHO_BLUE, functionName: "position" }, [0n, 0n, 7n]);
 
-    await morphoFullUnwind({ txTo: ACCOUNT });
+    await morphoFullUnwind();
 
     const row = await positionRow();
     expect(row!.status).toBe("OPEN");
@@ -393,7 +376,7 @@ describe("router-less close detection", () => {
     expect(harness.readCalls.some((c) => c.functionName === "position" && c.blockNumber === ESCAPE_BLOCK_2)).toBe(true);
   });
 
-  it("9. close of a partially-liquidated epoch preserves liquidation state, pointer retained", async () => {
+  it("close of a partially-liquidated epoch preserves liquidation state, pointer retained", async () => {
     await openMarginPosition(harness, { venue: "MORPHO" });
 
     // partial liquidation: chain debt remains → OPEN with liquidated=true
@@ -407,10 +390,10 @@ describe("router-less close detection", () => {
     // unwind of the remaining E18 collateral + 2000 USDC debt
     harness.onRead({ address: MORPHO_BLUE, functionName: "position" }, [0n, 0n, 0n]);
     await harness.dispatch(
-      morphoFlow({ kind: "REPAY", assets: 2000n * E6, txHash: ESCAPE_REPAY_TX, txTo: ACCOUNT, blockNumber: ESCAPE_BLOCK_1, logIndex: 0 })
+      morphoFlow({ kind: "REPAY", assets: 2000n * E6, txHash: ESCAPE_REPAY_TX, blockNumber: ESCAPE_BLOCK_1, logIndex: 0 })
     );
     await harness.dispatch(
-      morphoFlow({ kind: "WITHDRAW_COLLATERAL", assets: E18, txHash: ESCAPE_WITHDRAW_TX, txTo: ACCOUNT, blockNumber: ESCAPE_BLOCK_2, logIndex: 0 })
+      morphoFlow({ kind: "WITHDRAW_COLLATERAL", assets: E18, txHash: ESCAPE_WITHDRAW_TX, blockNumber: ESCAPE_BLOCK_2, logIndex: 0 })
     );
 
     row = await positionRow();
@@ -420,7 +403,7 @@ describe("router-less close detection", () => {
     expect(await pointerRow()).not.toBeNull();
   });
 
-  it("10. detector is flow-order independent: repay as terminal leg closes", async () => {
+  it("detector is flow-order independent: repay as terminal leg closes", async () => {
     await openMarginPosition(harness, { venue: "MORPHO" });
     harness.onRead({ address: MORPHO_BLUE, functionName: "position" }, [0n, 0n, 0n]);
 
@@ -430,13 +413,12 @@ describe("router-less close detection", () => {
         kind: "WITHDRAW_COLLATERAL",
         assets: 2n * E18,
         txHash: ESCAPE_WITHDRAW_TX,
-        txTo: ACCOUNT,
         blockNumber: ESCAPE_BLOCK_1,
         logIndex: 0,
       })
     );
     await harness.dispatch(
-      morphoFlow({ kind: "REPAY", assets: 4000n * E6, txHash: ESCAPE_REPAY_TX, txTo: ACCOUNT, blockNumber: ESCAPE_BLOCK_2, logIndex: 0 })
+      morphoFlow({ kind: "REPAY", assets: 4000n * E6, txHash: ESCAPE_REPAY_TX, blockNumber: ESCAPE_BLOCK_2, logIndex: 0 })
     );
 
     const row = await positionRow();
@@ -454,10 +436,10 @@ describe("curated full close supersedes the synthetic router-less close", () => 
 
     // same-tx protocol flows zero both legs
     await harness.dispatch(
-      morphoFlow({ kind: "REPAY", assets: 4000n * E6, txHash: CLOSE_TX, txTo: MARGIN_ROUTER, blockNumber: CLOSE_BLOCK, logIndex: 0 })
+      morphoFlow({ kind: "REPAY", assets: 4000n * E6, txHash: CLOSE_TX, blockNumber: CLOSE_BLOCK, logIndex: 0 })
     );
     await harness.dispatch(
-      morphoFlow({ kind: "WITHDRAW_COLLATERAL", assets: 2n * E18, txHash: CLOSE_TX, txTo: MARGIN_ROUTER, blockNumber: CLOSE_BLOCK, logIndex: 1 })
+      morphoFlow({ kind: "WITHDRAW_COLLATERAL", assets: 2n * E18, txHash: CLOSE_TX, blockNumber: CLOSE_BLOCK, logIndex: 1 })
     );
 
     // synthetic close exists before the router event

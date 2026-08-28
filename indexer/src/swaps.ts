@@ -15,12 +15,8 @@ const poolManagerAddr = lower(deployments.mainnet.poolManager);
  * transaction with a margin event, on every execution path (curated route, execute-plan native
  * swap, any UR deployment).
  *
- * Called by BOTH the router lifecycle handlers and the venue flow layer, because neither alone
- * covers every path: an owner escape-hatch operation emits no router event at all, and within an
- * `execute` plan each venue event precedes the `PositionUpdated` that follows its action, so a
- * flow-derived price would read an empty swap table if only the router recorded them. The receipt
- * fetch is a cached, retryable client action and the insert is idempotent per swap log, so the
- * several handlers that fire for one transaction fetch once and insert each swap once.
+ * The receipt fetch is a cached, retryable client action and the insert is idempotent per swap log, so
+ * the several handlers that fire for one transaction fetch once and insert each swap once.
  */
 export async function recordTxSwaps(context: Context, txHash: `0x${string}`, blockNumber: bigint): Promise<void> {
   let receipt;
