@@ -10,6 +10,7 @@ import {
   clamp0,
   eventId,
   findActivePosition,
+  logIndexOf,
   lower,
   pairKey,
   positionId,
@@ -192,7 +193,11 @@ async function txSwaps(
   const where = includeConsumed
     ? eq(swapEvent.txHash, txHash)
     : and(eq(swapEvent.txHash, txHash), eq(swapEvent.consumed, false));
-  return await context.db.sql.select().from(swapEvent).where(where).orderBy(swapEvent.id);
+  const rows = await context.db.sql.select().from(swapEvent).where(where);
+  // swapEconomics attributes the pool from the FIRST row, so order is load-bearing. All rows share
+  // this tx; order by numeric log index (the id is `${txHash}-${logIndex}` and sorts lexically — 12
+  // before 8), same as consumeSwaps and txLendingEvents.
+  return rows.sort((a, b) => logIndexOf(a.id) - logIndexOf(b.id));
 }
 
 /**
@@ -768,12 +773,6 @@ async function detectRouterlessClose(
   return true;
 }
 
-/**
- * The venue's actual remaining debt for the liquidated account, read at the
- * liquidation block. Event arithmetic drifts from chain state (interest
- * accrual, share rounding, deficits), so terminal classification never relies
- * on it.
- */
 // Morpho SharesMath virtual offsets, mirrored for the shares -> assets conversion below.
 const MORPHO_VIRTUAL_SHARES = 1_000_000n;
 const MORPHO_VIRTUAL_ASSETS = 1n;
@@ -854,8 +853,9 @@ async function readVenueDebt(context: Context, liq: LiquidationEvent): Promise<b
  * Liquidations never emit a router event, so this applies terminally here:
  * amounts, accumulators, and (when the venue reports the debt fully cleared)
  * the LIQUIDATED status. Partial liquidations leave the position OPEN with
- * `liquidated` set. The terminal decision comes from a block-pinned chain
- * read; the arithmetic debtPrincipal update is kept for display only.
+ * `liquidated` set. Both the terminal decision AND the stored remainder come
+ * from one block-pinned venue read; the clamped subtraction is only the
+ * fallback for when that read is unavailable.
  */
 export async function recordLiquidation(context: Context, liq: LiquidationEvent): Promise<void> {
   await context.db.insert(lendingEvent).values({

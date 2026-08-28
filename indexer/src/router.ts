@@ -120,7 +120,16 @@ ponder.on("MarginRouter:PositionIncreased", async ({ event, context }) => {
   await recordTxSwaps(context, event.transaction.hash, event.block.number);
   const flows = await drainFlows(context, event.transaction.hash, accountAddr, collateral, debt);
   const poolId = await consumeSwaps(context, event.transaction.hash);
-  const priceX18 = collateralBought > 0n ? (debtDrawn * WAD) / collateralBought : null;
+  // The router SATURATES debtDrawn to zero when a permissionless onBehalf repay inside the tx leaves
+  // the debt below its pre-increase level. It is never legitimately zero here: _increase rejects
+  // collateralToBuy == 0 and borrows OPEN_DELTA (exactly the swap cost), so debtDrawn == 0 on this
+  // event means the borrow cost is UNKNOWN, not free.
+  //
+  // An unknown fill must contribute NOTHING to the cost basis — not just a null on this action row.
+  // Adding collateralBought to totalCollateralBought while totalDebtDrawn stands still would halve
+  // avgEntryPriceX18 and keep it there, since the inflated denominator is permanent.
+  const unknownFill = debtDrawn === 0n;
+  const priceX18 = collateralBought > 0n && !unknownFill ? (debtDrawn * WAD) / collateralBought : null;
 
   const key = pairKey(accountAddr, collateral, debt);
   // Status-filter the pointer: a curated open on a snapshot-terminated (non-OPEN) epoch reads as absent,
@@ -144,9 +153,14 @@ ponder.on("MarginRouter:PositionIncreased", async ({ event, context }) => {
       const totalDrawn = row.totalDebtDrawn + debtDrawn;
       return {
         equity: row.equity + equity,
-        totalCollateralBought: totalBought,
-        totalDebtDrawn: totalDrawn,
-        avgEntryPriceX18: totalBought > 0n ? (totalDrawn * WAD) / totalBought : row.avgEntryPriceX18,
+        // Authoritative totals below come from the event either way; only the cost basis is skipped.
+        ...(unknownFill
+          ? {}
+          : {
+              totalCollateralBought: totalBought,
+              totalDebtDrawn: totalDrawn,
+              avgEntryPriceX18: totalBought > 0n ? (totalDrawn * WAD) / totalBought : row.avgEntryPriceX18,
+            }),
         collateralAmount: collateralTotal,
         debtPrincipal: debtTotal,
         lltv: maxLtv,
@@ -197,8 +211,11 @@ ponder.on("MarginRouter:PositionIncreased", async ({ event, context }) => {
   const opened = {
     venue: flows.venue !== "UNKNOWN" ? flows.venue : (existing?.venue ?? flows.venue),
     equity,
-    totalCollateralBought: collateralBought,
-    totalDebtDrawn: debtDrawn,
+    // An unknown fill opens with an EMPTY basis, not a real collateralBought against a zero cost —
+    // otherwise the null price here is cosmetic and the next ordinary increase averages against a
+    // denominator that was never paid for.
+    totalCollateralBought: unknownFill ? 0n : collateralBought,
+    totalDebtDrawn: unknownFill ? 0n : debtDrawn,
     avgEntryPriceX18: priceX18,
     leverageX18AtOpen: equity > 0n ? (collateralTotal * WAD) / equity : null,
     collateralAmount: collateralTotal,

@@ -29,7 +29,7 @@ Production: `npm start` with `DATABASE_URL` pointing at Postgres.
 | Morpho Blue | `0xBBBB...FFCb` | Collateral/debt flows + `Liquidate`, attributed by `onBehalf` ∈ margin accounts |
 | Aave v3 Pool | `0x8787...A4E2` | Flows + `LiquidationCall`, attributed by `onBehalfOf`/`user` |
 | Aave v4 Spoke | `0x94e7...c485` | Flows + `LiquidationCall`, attributed by `onBehalfOf`/`user` |
-| v4 PoolManager | `0x0000...8A90` | `Initialize` (pool metadata) from the margin deploy block; margin transactions' `Swap` logs are parsed from receipts in the router handlers (any Universal Router the route names) |
+| v4 PoolManager | `0x0000...8A90` | `Initialize` (pool metadata) from the margin deploy block; margin transactions' `Swap` logs are parsed from the transaction receipt by the router and flow layers (the swap caller is any Universal Router the route names) |
 
 The full checksummed registry lives in `addresses.ts`.
 

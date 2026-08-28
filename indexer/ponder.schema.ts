@@ -248,8 +248,11 @@ export const positionAction = onchainTable(
 );
 
 /**
- * Raw margin swaps (v4 Swap events where sender == MarginRouter). Staged for
- * same-tx correlation by router handlers; kept afterward as an audit trail.
+ * Raw margin swaps: the v4 Swap logs sharing a transaction with a margin event,
+ * parsed from that transaction's receipt (the swap caller is whatever Universal
+ * Router the route named, so they cannot be filtered by sender — see
+ * src/swaps.ts). Staged for same-tx correlation by the router and flow layers;
+ * kept afterward as an audit trail.
  */
 export const swapEvent = onchainTable(
   "swap_event",

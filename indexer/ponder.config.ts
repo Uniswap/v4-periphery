@@ -24,7 +24,7 @@ export default createConfig({
     /** Lifecycle events: account creation, increases (open), decreases (close), adds. The
      *  handlers fetch each margin transaction's receipt to extract its v4 Swap logs: the swap
      *  caller is whatever Universal Router the route named (any address, per call), so PoolManager
-     *  logs cannot be pre-filtered by sender (see recordTxSwaps in src/router.ts). */
+     *  logs cannot be pre-filtered by sender (see recordTxSwaps in src/swaps.ts). */
     MarginRouter: {
       abi: marginRouterAbi,
       chain: "mainnet",
