@@ -9,7 +9,7 @@ import {ILendingAdapter} from "./interfaces/ILendingAdapter.sol";
 import {ISpoke} from "./interfaces/external/aave-v4/ISpoke.sol";
 import {OwnableAdapter} from "./base/OwnableAdapter.sol";
 import {PositionAmountResolver} from "./base/PositionAmountResolver.sol";
-import {Market} from "./types/Market.sol";
+import {Market, paginate} from "./types/Market.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
 import {PositionData} from "./types/PositionData.sol";
 
@@ -83,6 +83,16 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmount
     ///         Spoke. Managed via `setMarket`. The owner guard lives in `OwnableAdapter`.
     mapping(Currency collateral => mapping(Currency debt => V4MarketRoute)) internal _routes;
 
+    /// @notice The dense list of currently-registered pairs, making the route registry enumerable
+    ///         (`supportedMarketsLength`/`supportedMarkets`) so an offchain market picker can list the
+    ///         routable pairs without replaying `MarketSet` logs. Maintained in `setMarket`; a removal
+    ///         swaps the last entry into the freed slot, so order is not stable across un-registrations.
+    Market[] internal _marketKeys;
+
+    /// @notice The 1-based position of each registered pair in `_marketKeys` (0 means unregistered),
+    ///         used for O(1) removal.
+    mapping(Currency collateral => mapping(Currency debt => uint256)) internal _marketKeyIndex;
+
     /// @dev Thrown when the Spoke is the zero address at construction.
     error ZeroAddress();
 
@@ -140,6 +150,16 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmount
     /// @inheritdoc ILendingAdapter
     function isSupportedMarket(Market calldata market) external view returns (bool) {
         return _routes[market.collateral][market.debt].registered;
+    }
+
+    /// @inheritdoc ILendingAdapter
+    function supportedMarketsLength() external view returns (uint256) {
+        return _marketKeys.length;
+    }
+
+    /// @inheritdoc ILendingAdapter
+    function supportedMarkets(uint256 offset, uint256 limit) external view returns (Market[] memory) {
+        return paginate(_marketKeys, offset, limit);
     }
 
     /// @inheritdoc ILendingAdapter
@@ -336,10 +356,25 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmount
             if (collateralReserve.hub != debtReserve.hub) {
                 revert HubMismatch(collateralReserve.hub, debtReserve.hub);
             }
+            if (_marketKeyIndex[collateral][debt] == 0) {
+                _marketKeys.push(Market({collateral: collateral, debt: debt}));
+                _marketKeyIndex[collateral][debt] = _marketKeys.length; // 1-based
+            }
             _routes[collateral][debt] = V4MarketRoute({
                 collateralReserveId: collateralReserveId, debtReserveId: debtReserveId, registered: true
             });
         } else {
+            uint256 idx = _marketKeyIndex[collateral][debt]; // 1-based, 0 when not registered
+            if (idx != 0) {
+                uint256 last = _marketKeys.length;
+                if (idx != last) {
+                    Market memory moved = _marketKeys[last - 1];
+                    _marketKeys[idx - 1] = moved;
+                    _marketKeyIndex[moved.collateral][moved.debt] = idx;
+                }
+                _marketKeys.pop();
+                delete _marketKeyIndex[collateral][debt];
+            }
             delete _routes[collateral][debt];
         }
         emit MarketSet(Currency.unwrap(collateral), Currency.unwrap(debt), collateralReserveId, debtReserveId, allowed);

@@ -126,6 +126,16 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
     }
 
     /// @inheritdoc ILendingAdapter
+    function supportedMarketsLength() external view returns (uint256) {
+        return _markets.count();
+    }
+
+    /// @inheritdoc ILendingAdapter
+    function supportedMarkets(uint256 offset, uint256 limit) external view returns (Market[] memory) {
+        return _markets.page(offset, limit);
+    }
+
+    /// @inheritdoc ILendingAdapter
     /// @dev Encodes `IComet.supply(collateral, amount)`. Comet supplies from and credits
     ///      `msg.sender` (the account), so the collateral is posted on behalf of the account. The
     ///      `value` field is always 0 (Comet is non-payable).

@@ -49,4 +49,45 @@ contract MarketRegistryTest is Test {
         assertTrue(registry.isSupported(m));
         assertEq(registry.resolve(m).lltv, lltv);
     }
+
+    function test_count_and_page_trackRegisteredPairs() public {
+        assertEq(registry.count(), 0);
+        registry.register(_mp(address(1), address(2), 0.8e18));
+        registry.register(_mp(address(3), address(4), 0.7e18));
+        assertEq(registry.count(), 2);
+
+        Market[] memory all = registry.page(0, 10);
+        assertEq(all.length, 2);
+        assertEq(Currency.unwrap(all[0].collateral), address(1));
+        assertEq(Currency.unwrap(all[1].collateral), address(3));
+    }
+
+    function test_reRegister_replacesParams_withoutDuplicatingKey() public {
+        registry.register(_mp(address(1), address(2), 0.8e18));
+        // replacing the same pair updates MarketParams but must not append a second key
+        registry.register(_mp(address(1), address(2), 0.9e18));
+        assertEq(registry.count(), 1);
+        assertEq(
+            registry.resolve(Market({collateral: Currency.wrap(address(1)), debt: Currency.wrap(address(2))})).lltv,
+            0.9e18
+        );
+    }
+
+    function test_register_allZeroPair_isNoOp_keepsEnumerationConsistent() public {
+        registry.register(_mp(address(0), address(0), 0.8e18));
+        // the all-zero pair reads as unregistered, so it must never appear in the enumerable set
+        assertEq(registry.count(), 0);
+        assertEq(registry.page(0, 10).length, 0);
+        Market memory zero = Market({collateral: Currency.wrap(address(0)), debt: Currency.wrap(address(0))});
+        assertFalse(registry.isSupported(zero));
+    }
+
+    function test_page_bounds() public {
+        registry.register(_mp(address(1), address(2), 0.8e18));
+        registry.register(_mp(address(3), address(4), 0.7e18));
+        assertEq(registry.page(2, 10).length, 0);
+        assertEq(registry.page(1, 10).length, 1);
+        assertEq(registry.page(0, 1).length, 1);
+        assertEq(registry.page(0, type(uint256).max).length, 2);
+    }
 }

@@ -2,7 +2,7 @@
 pragma solidity 0.8.26;
 
 import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
-import {Market} from "../../src/types/Market.sol";
+import {Market, paginate} from "../../src/types/Market.sol";
 import {Ltv, toLtv} from "../../src/types/Ltv.sol";
 import {PositionData} from "../../src/types/PositionData.sol";
 import {MockLendingProtocol} from "./MockLendingProtocol.sol";
@@ -15,6 +15,10 @@ contract MockLendingAdapter is ILendingAdapter {
     Ltv internal _maxLtv = toLtv(0.86e18);
 
     mapping(bytes32 pairKey => bool supported) internal _supported;
+
+    // enumerable mirror of the supported set, so tests can exercise supportedMarkets/Length
+    Market[] internal _supportedList;
+    mapping(bytes32 pairKey => uint256 indexPlusOne) internal _supportedIndex;
 
     // when set non-zero, encode* returns this instead of lendingProtocol (to exercise the
     // account's target == lendingProtocol() check)
@@ -50,10 +54,30 @@ contract MockLendingAdapter is ILendingAdapter {
         return keccak256(abi.encode(m.collateral, m.debt));
     }
 
+    function _pairKeyMem(Market memory m) internal pure returns (bytes32) {
+        return keccak256(abi.encode(m.collateral, m.debt));
+    }
+
     // --- test configuration ---
 
     function setSupported(Market calldata m, bool supported) external {
-        _supported[_pairKey(m)] = supported;
+        bytes32 k = _pairKey(m);
+        bool was = _supported[k];
+        if (supported && !was) {
+            _supportedList.push(m);
+            _supportedIndex[k] = _supportedList.length; // 1-based
+        } else if (!supported && was) {
+            uint256 idx = _supportedIndex[k];
+            uint256 last = _supportedList.length;
+            if (idx != last) {
+                Market memory moved = _supportedList[last - 1];
+                _supportedList[idx - 1] = moved;
+                _supportedIndex[_pairKeyMem(moved)] = idx;
+            }
+            _supportedList.pop();
+            delete _supportedIndex[k];
+        }
+        _supported[k] = supported;
     }
 
     function setMaxLtv(Ltv v) external {
@@ -64,6 +88,14 @@ contract MockLendingAdapter is ILendingAdapter {
 
     function isSupportedMarket(Market calldata m) external view returns (bool) {
         return _supported[_pairKey(m)];
+    }
+
+    function supportedMarketsLength() external view returns (uint256) {
+        return _supportedList.length;
+    }
+
+    function supportedMarkets(uint256 offset, uint256 limit) external view returns (Market[] memory) {
+        return paginate(_supportedList, offset, limit);
     }
 
     function encodeSupplyCollateral(address account, Market calldata, uint256 amount)

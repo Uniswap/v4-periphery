@@ -32,6 +32,26 @@ interface ILendingAdapter {
     /// @return True if the pair has a registered market; false otherwise.
     function isSupportedMarket(Market calldata market) external view returns (bool);
 
+    /// @notice The number of `(collateral, debt)` markets this adapter currently routes.
+    /// @dev Paired with `supportedMarkets` for onchain enumeration, so an offchain market picker can
+    ///      list an adapter's curated pairs directly instead of replaying its `MarketSet` logs (which,
+    ///      because registration is re-callable, would require a full-history replay taking the latest
+    ///      per pair). The count reflects live state and shrinks when a pair is un-registered.
+    /// @return The number of routable markets.
+    function supportedMarketsLength() external view returns (uint256);
+
+    /// @notice A bounded page of the `(collateral, debt)` markets this adapter currently routes.
+    /// @dev Returns up to `limit` markets starting at `offset`; an `offset` at or beyond
+    ///      `supportedMarketsLength()` yields an empty array, and the tail is clamped. Ordering is the
+    ///      adapter's internal storage order and is NOT stable across un-registrations (a removal
+    ///      swaps the last entry into the freed slot), so treat a page as a point-in-time snapshot
+    ///      rather than a stable index. The full set is small (curated pairs), so a single call with a
+    ///      large `limit` typically suffices.
+    /// @param offset The index of the first market to return.
+    /// @param limit The maximum number of markets to return.
+    /// @return An array of the routable `(collateral, debt)` markets in the requested range.
+    function supportedMarkets(uint256 offset, uint256 limit) external view returns (Market[] memory);
+
     /// @notice Encode the call to supply `amount` of `market.collateral` with `onBehalf = account`.
     /// @param account The MarginAccount supplying collateral; used as the `onBehalf` argument.
     /// @param market The (collateral, debt) pair identifying the target lending market.

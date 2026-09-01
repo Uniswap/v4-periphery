@@ -83,6 +83,16 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmount
     }
 
     /// @inheritdoc ILendingAdapter
+    function supportedMarketsLength() external view returns (uint256) {
+        return _markets.count();
+    }
+
+    /// @inheritdoc ILendingAdapter
+    function supportedMarkets(uint256 offset, uint256 limit) external view returns (Market[] memory) {
+        return _markets.page(offset, limit);
+    }
+
+    /// @inheritdoc ILendingAdapter
     /// @dev Resolves the market pair to `MarketParams`, then encodes `IMorphoBase.supplyCollateral`
     ///      with `onBehalf = account` and no callback data. The `value` field is always 0 because
     ///      Morpho Blue is non-payable.

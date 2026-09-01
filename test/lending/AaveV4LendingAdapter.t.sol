@@ -119,6 +119,37 @@ contract AaveV4LendingAdapterTest is Test {
         assertEq(adapter.owner(), gov);
     }
 
+    function test_supportedMarkets_enumeratesRegisteredRoutes() public {
+        // setUp registered `market` (usdc/weth) then `longMarket` (weth/usdc)
+        assertEq(adapter.supportedMarketsLength(), 2);
+        Market[] memory all = adapter.supportedMarkets(0, 10);
+        assertEq(all.length, 2);
+        assertEq(Currency.unwrap(all[0].collateral), address(usdc));
+        assertEq(Currency.unwrap(all[1].collateral), address(weth));
+
+        // un-registering swap-pops: the last route (longMarket) moves into the freed slot
+        vm.prank(gov);
+        adapter.setMarket(market.collateral, market.debt, USDC_RESERVE_ID, WETH_RESERVE_ID, false);
+
+        assertEq(adapter.supportedMarketsLength(), 1);
+        assertFalse(adapter.isSupportedMarket(market));
+        assertTrue(adapter.isSupportedMarket(longMarket));
+        Market[] memory one = adapter.supportedMarkets(0, 10);
+        assertEq(one.length, 1);
+        assertEq(Currency.unwrap(one[0].collateral), address(weth));
+
+        // re-registering appends again
+        vm.prank(gov);
+        adapter.setMarket(market.collateral, market.debt, USDC_RESERVE_ID, WETH_RESERVE_ID, true);
+        assertEq(adapter.supportedMarketsLength(), 2);
+    }
+
+    function test_supportedMarkets_pageBounds() public view {
+        assertEq(adapter.supportedMarkets(2, 10).length, 0);
+        assertEq(adapter.supportedMarkets(1, 10).length, 1);
+        assertEq(adapter.supportedMarkets(0, type(uint256).max).length, 2);
+    }
+
     function test_encodeSupplyCollateral_encodesPlainSupply() public view {
         (address target, uint256 value, bytes memory data) = adapter.encodeSupplyCollateral(account, market, 1_000e6);
         assertEq(target, address(spoke));

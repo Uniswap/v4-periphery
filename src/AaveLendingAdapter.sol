@@ -124,6 +124,16 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
     }
 
     /// @inheritdoc ILendingAdapter
+    function supportedMarketsLength() external view returns (uint256) {
+        return _markets.count();
+    }
+
+    /// @inheritdoc ILendingAdapter
+    function supportedMarkets(uint256 offset, uint256 limit) external view returns (Market[] memory) {
+        return _markets.page(offset, limit);
+    }
+
+    /// @inheritdoc ILendingAdapter
     /// @dev Encodes `IPool.supply` with `onBehalfOf = account` and referral code 0. The `value`
     ///      field is always 0 because the Aave Pool entrypoints used here are non-payable.
     function encodeSupplyCollateral(address account, Market calldata market, uint256 amount)
