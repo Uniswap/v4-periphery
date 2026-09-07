@@ -627,6 +627,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         permit2.approve(token, address(universalRouter), type(uint160).max, ALLOWANCE_EXPIRATION);
     }
 
+    /// @dev Sweeps the full contract's balance of a given currency to the recipient.
     function _sweep(Currency currency, address to) internal {
         uint256 bal = currency.balanceOfSelf();
         if (bal > 0) currency.transfer(to, bal);

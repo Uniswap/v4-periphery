@@ -13,6 +13,7 @@ import {ProtocolFeeLibrary} from "@uniswap/v4-core/src/libraries/ProtocolFeeLibr
 library SwapAndAddMath {
     using SafeCast for uint256;
 
+    /// @dev Pip scale (1e6 = 100%).
     uint256 internal constant PIPS_DENOMINATOR = 1e6;
     /// @dev Reference position used to price liquidity. Maximal, so the scale-down rounding error
     ///      is negligible.
