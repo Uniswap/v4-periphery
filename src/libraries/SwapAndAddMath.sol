@@ -21,6 +21,14 @@ library SwapAndAddMath {
     /// @notice Sizes liquidity while accounting for the swap fee on the surplus token.
     /// @dev Sizes at the mid price to find the surplus token, then discounts that token's value by
     ///      the combined pool fee. This nets to charging the fee on exactly the swapped amount.
+    /// @param sqrtPriceX96 Current pool sqrt price, used to size the position.
+    /// @param sqrtPriceLowerX96 Sqrt price at the position's lower tick.
+    /// @param sqrtPriceUpperX96 Sqrt price at the position's upper tick.
+    /// @param budget0 Currency0 available to put into the range.
+    /// @param budget1 Currency1 available to put into the range.
+    /// @param protocolFee Packed protocol fee from slot0; the surplus-side direction is used.
+    /// @param lpFee LP fee from slot0, combined with protocolFee on the surplus token.
+    /// @return Liquidity that fits the budgets after discounting the surplus-side swap fee.
     function getLiquidityFeeAware(
         uint160 sqrtPriceX96,
         uint160 sqrtPriceLowerX96,
@@ -67,8 +75,14 @@ library SwapAndAddMath {
     }
 
     /// @notice Computes liquidity as REFERENCE_LIQUIDITY scaled by budget value over reference value.
-    /// @param pipsWeight0 Value weight applied to token0, in pips.
-    /// @param pipsWeight1 Value weight applied to token1, in pips.
+    /// @param sqrtPriceX96 Current pool sqrt price.
+    /// @param sqrtPriceLowerX96 Sqrt price at the position's lower tick.
+    /// @param sqrtPriceUpperX96 Sqrt price at the position's upper tick.
+    /// @param amount0 Currency0 to value.
+    /// @param amount1 Currency1 to value.
+    /// @param pipsWeight0 Value weight on currency0, in pips of 1e6 (1e6 = no discount).
+    /// @param pipsWeight1 Value weight on currency1, in pips of 1e6 (1e6 = no discount).
+    /// @return Liquidity implied by those weighted amounts at this price and range.
     function getLiquidityForAmountsWeighted(
         uint160 sqrtPriceX96,
         uint160 sqrtPriceLowerX96,
@@ -107,6 +121,12 @@ library SwapAndAddMath {
     /// @dev Rounds UP to mirror POSM's MINT_POSITION, so funding from these amounts is never a wei
     ///      short. Not interchangeable with LiquidityAmounts, which rounds down. The A/B bounds may
     ///      be passed in either order.
+    /// @param sqrtPriceX96 Current pool sqrt price.
+    /// @param sqrtPriceAX96 One range endpoint as a sqrt price. Order with B does not matter.
+    /// @param sqrtPriceBX96 The other range endpoint as a sqrt price.
+    /// @param liquidity Liquidity to convert into token amounts.
+    /// @return amount0 Currency0 required for `liquidity` in this range, rounded up.
+    /// @return amount1 Currency1 required for `liquidity` in this range, rounded up.
     function getAmountsForLiquidityRoundingUp(
         uint160 sqrtPriceX96,
         uint160 sqrtPriceAX96,
@@ -130,8 +150,12 @@ library SwapAndAddMath {
     ///         `amountToCover` of the deficit token.
     /// @dev Ceiling inverse over `amountToCover + 1`, so the freed amount is always sufficient.
     ///      Assumes the price is not past the range's far side for the deficit token.
-    /// @return liquidityToTrim The liquidity to burn, uncapped. Callers must cap it against the
-    ///         liquidity they added.
+    /// @param sqrtPriceX96 Current pool sqrt price.
+    /// @param sqrtPriceLowerX96 Sqrt price at the position's lower tick.
+    /// @param sqrtPriceUpperX96 Sqrt price at the position's upper tick.
+    /// @param deficitIsCurrency1 True if the remaining debt is currency1; false if currency0.
+    /// @param amountToCover How many deficit tokens the burn must free.
+    /// @return liquidityToTrim Liquidity to burn, uncapped. Callers must cap it against what they added.
     function getLiquidityToTrim(
         uint160 sqrtPriceX96,
         uint160 sqrtPriceLowerX96,
