@@ -692,6 +692,44 @@ contract SwapAndAddTest is PosmTestSetup {
         plantedZap.add(p);
     }
 
+    /// @dev Route stand-in: credits the zap through PoolManager, as a route-pool incentive hook can.
+    function execute(bytes calldata, bytes[] calldata) external payable {
+        require(msg.sender == address(zap), "unexpected route caller");
+        manager.sync(currency0);
+        currency0.transfer(address(manager), 1e12);
+        manager.settleFor(msg.sender);
+        manager.sync(currency1);
+        currency1.transfer(address(manager), 2e12);
+        manager.settleFor(msg.sender);
+    }
+
+    function test_add_balanced_hooklessPool_sweepsRouteCredits() public {
+        vm.deal(address(this), 0); // no unrelated ETH on the route stand-in to trigger the router sweep
+        zap = ISwapAndAdd(
+            deployCode("SwapAndAdd.sol:SwapAndAdd", abi.encode(manager, permit2, lpm, IUniversalRouter(address(this))))
+        );
+        _approveZap(currency0);
+        _approveZap(currency1);
+
+        ISwapAndAdd.AddParams memory p = _addParams(10e18, 10e18);
+        p.route = ROUTE_PAYLOAD;
+        p.recipient = makeAddr("incentiveRecipient");
+        assertEq(address(p.poolKey.hooks), address(0), "target pool has no hook");
+
+        (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1) = zap.add(p);
+
+        assertGt(liq, 0, "liquidity minted");
+        assertLe(a0, p.amount0In, "token0 budget covers deploy");
+        assertLe(a1, p.amount1In, "token1 budget covers deploy");
+        (uint160 price,,,) = manager.getSlot0(key.toId());
+        assertEq(price, SQRT_PRICE_1_1, "balanced deposit needs no reconcile swap");
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), p.recipient);
+        assertEq(currency0.balanceOf(p.recipient), p.amount0In - a0 + 1e12, "token0 dust plus route credit");
+        assertEq(currency1.balanceOf(p.recipient), p.amount1In - a1 + 2e12, "token1 dust plus route credit");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 swept");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 swept");
+    }
+
     function test_rebalance_revertsIfNotAuthorized() public {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         // stranger, zap not approved

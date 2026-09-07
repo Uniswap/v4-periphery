@@ -394,10 +394,16 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         uint160 sqrtUpper
     ) internal returns (uint128 trimmed) {
         bool deficitIsCurrency1;
-        if (a0opt > cp.budget0) deficitIsCurrency1 = false; // short token0
-        else if (a1opt > cp.budget1) deficitIsCurrency1 = true; // short token1
-        else return 0; // the budget covered the deploy, no swap or trim needed
-
+        if (a0opt > cp.budget0) {
+            deficitIsCurrency1 = false; // short token0
+        } else if (a1opt > cp.budget1) {
+            deficitIsCurrency1 = true; // short token1
+        } else {
+            // the budget covered the deploy, no swap or trim needed. Defensively take currencies first.
+            _takeCredit(cp.key.currency0);
+            _takeCredit(cp.key.currency1);
+            return 0;
+        }
         Currency deficit = deficitIsCurrency1 ? cp.key.currency1 : cp.key.currency0;
         Currency surplus = deficitIsCurrency1 ? cp.key.currency0 : cp.key.currency1;
         bool zeroForOne = deficitIsCurrency1; // sell the surplus to buy the deficit
