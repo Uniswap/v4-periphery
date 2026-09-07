@@ -304,7 +304,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         uint256 toReturn = uint256(-int256(delta));
         if (toReturn > held) revert ReturnExceedsWithdrawn(toReturn, held);
         currency.transfer(recipient, toReturn);
-        return held - toReturn;
+        budget = held - toReturn;
     }
 
     /// @dev Shared execution core.
