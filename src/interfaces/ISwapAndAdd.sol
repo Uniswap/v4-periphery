@@ -18,7 +18,8 @@ import {IMulticall_v4} from "./IMulticall_v4.sol";
 ///      - Routes must use explicit input amounts. Balance-relative commands are unsafe because the
 ///        zap forwards its full native balance to the router.
 ///      - Non-pool route outputs must appear in `routeFunding` to be swept. A zero amount is enough.
-///      - `minLiquidity` / `minLiquidityAdded` is the only slippage check, applied post-trim.
+///      - `minLiquidity` / `minLiquidityAdded` is the liquidity floor, applied post-trim.
+///        The sqrt price band bounds the price we size at (checked after the route).
 ///      - rebalance / increase / compound: the caller must be the owner or an approved operator,
 ///        and this contract needs ERC-721 approval on the position in POSM. Operator calls send
 ///        all output to the owner, though operators remain trusted since they set the `route` and
@@ -85,6 +86,9 @@ interface ISwapAndAdd is IMulticall_v4 {
     /// @notice Thrown when the final position liquidity is below the caller's minimum.
     error InsufficientLiquidity(uint256 minLiquidity, uint128 liquidity);
 
+    /// @notice Thrown when the pool's sqrt price at sizing time is outside the caller's band.
+    error PriceOutOfBand(uint160 sqrtPriceX96, uint160 sqrtPriceMinX96, uint160 sqrtPriceMaxX96);
+
     /// @notice Thrown when the recipient is address(0) or this contract.
     error InvalidRecipient(address recipient);
 
@@ -122,6 +126,8 @@ interface ISwapAndAdd is IMulticall_v4 {
     /// @param amount0In Token0 to pull from the caller. Can be 0.
     /// @param amount1In Token1 to pull from the caller. Can be 0.
     /// @param minLiquidity Minimum liquidity of the minted position (slippage floor).
+    /// @param sqrtPriceMinX96 Lowest sqrt price at sizing. Pass 0 to disable.
+    /// @param sqrtPriceMaxX96 Highest sqrt price at sizing. Pass type(uint160).max to disable.
     /// @param recipient Receives the position NFT and dust.
     /// @param deadline Timestamp after which the transaction reverts.
     /// @param route Encoded Universal Router commands and inputs. Empty for a same-pool zap.
@@ -134,6 +140,8 @@ interface ISwapAndAdd is IMulticall_v4 {
         uint256 amount0In;
         uint256 amount1In;
         uint256 minLiquidity;
+        uint160 sqrtPriceMinX96;
+        uint160 sqrtPriceMaxX96;
         address recipient;
         uint256 deadline;
         bytes route;
@@ -157,6 +165,8 @@ interface ISwapAndAdd is IMulticall_v4 {
     /// @param amount0In Token0 to pull from the caller. Can be 0.
     /// @param amount1In Token1 to pull from the caller. Can be 0.
     /// @param minLiquidityAdded Minimum liquidity the operation must add (slippage floor).
+    /// @param sqrtPriceMinX96 Lowest sqrt price at sizing. Pass 0 to disable.
+    /// @param sqrtPriceMaxX96 Highest sqrt price at sizing. Pass type(uint160).max to disable.
     /// @param recipient Receives dust. Forced to the owner if the caller is an operator.
     /// @param deadline Timestamp after which the transaction reverts.
     /// @param route Encoded Universal Router commands and inputs. Can be empty.
@@ -167,6 +177,8 @@ interface ISwapAndAdd is IMulticall_v4 {
         uint256 amount0In;
         uint256 amount1In;
         uint256 minLiquidityAdded;
+        uint160 sqrtPriceMinX96;
+        uint160 sqrtPriceMaxX96;
         address recipient;
         uint256 deadline;
         bytes route;
@@ -193,6 +205,8 @@ interface ISwapAndAdd is IMulticall_v4 {
     /// @param newTickLower Lower tick of the new range.
     /// @param newTickUpper Upper tick of the new range.
     /// @param minLiquidity Minimum liquidity of the new position (slippage floor).
+    /// @param sqrtPriceMinX96 Lowest sqrt price at sizing. Pass 0 to disable.
+    /// @param sqrtPriceMaxX96 Highest sqrt price at sizing. Pass type(uint160).max to disable.
     /// @param recipient Receives the new NFT, cash-out, and dust. Forced to the owner if the
     ///                  caller is an operator.
     /// @param deadline Timestamp after which the transaction reverts.
@@ -206,6 +220,8 @@ interface ISwapAndAdd is IMulticall_v4 {
         int24 newTickLower;
         int24 newTickUpper;
         uint256 minLiquidity;
+        uint160 sqrtPriceMinX96;
+        uint160 sqrtPriceMaxX96;
         address recipient;
         uint256 deadline;
         bytes route;
@@ -228,6 +244,8 @@ interface ISwapAndAdd is IMulticall_v4 {
     /// @notice Parameters for `compound`.
     /// @param tokenId Position ID whose fees are collected and reinvested.
     /// @param minLiquidityAdded Minimum liquidity the reinvested fees must add (slippage floor).
+    /// @param sqrtPriceMinX96 Lowest sqrt price at sizing. Pass 0 to disable.
+    /// @param sqrtPriceMaxX96 Highest sqrt price at sizing. Pass type(uint160).max to disable.
     /// @param recipient Receives dust. Forced to the owner if the caller is an operator.
     /// @param deadline Timestamp after which the transaction reverts.
     /// @param route Encoded Universal Router commands and inputs. Can be empty.
@@ -235,6 +253,8 @@ interface ISwapAndAdd is IMulticall_v4 {
     struct CompoundParams {
         uint256 tokenId;
         uint256 minLiquidityAdded;
+        uint160 sqrtPriceMinX96;
+        uint160 sqrtPriceMaxX96;
         address recipient;
         uint256 deadline;
         bytes route;

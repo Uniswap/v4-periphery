@@ -69,6 +69,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         uint256 budget1;
         bytes route;
         uint256 minLiquidity;
+        uint160 sqrtPriceMinX96;
+        uint160 sqrtPriceMaxX96;
         address recipient;
         bytes hookData;
     }
@@ -124,6 +126,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             budget1: params.amount1In,
             route: params.route,
             minLiquidity: params.minLiquidity,
+            sqrtPriceMinX96: params.sqrtPriceMinX96,
+            sqrtPriceMaxX96: params.sqrtPriceMaxX96,
             recipient: params.recipient,
             hookData: params.hookData
         });
@@ -167,6 +171,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             budget1: _resolveBudget(key.currency1, params.additional1, recipient),
             route: params.route,
             minLiquidity: params.minLiquidity,
+            sqrtPriceMinX96: params.sqrtPriceMinX96,
+            sqrtPriceMaxX96: params.sqrtPriceMaxX96,
             recipient: recipient,
             hookData: params.hookData
         });
@@ -187,8 +193,15 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     {
         address recipient = _authAndResolveRecipient(params.tokenId, params.recipient);
         _validateRecipient(recipient);
-        CoreParams memory cp =
-            _growCore(params.tokenId, params.route, params.minLiquidityAdded, recipient, params.hookData);
+        CoreParams memory cp = _growCore(
+            params.tokenId,
+            params.route,
+            params.minLiquidityAdded,
+            params.sqrtPriceMinX96,
+            params.sqrtPriceMaxX96,
+            recipient,
+            params.hookData
+        );
 
         // accrued fees are collected inside the unlock callback
         _pull(cp.key, params.amount0In, params.amount1In, params.routeFunding, params.route);
@@ -209,8 +222,15 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         _validateRecipient(recipient);
 
         // compound is an increase where the collected fees are the entire budget
-        CoreParams memory cp =
-            _growCore(params.tokenId, params.route, params.minLiquidityAdded, recipient, params.hookData);
+        CoreParams memory cp = _growCore(
+            params.tokenId,
+            params.route,
+            params.minLiquidityAdded,
+            params.sqrtPriceMinX96,
+            params.sqrtPriceMaxX96,
+            recipient,
+            params.hookData
+        );
         (, liquidityAdded, amount0, amount1) = _run(cp);
         emit Compounded(recipient, params.tokenId, msg.sender, liquidityAdded, amount0, amount1);
     }
@@ -221,6 +241,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         uint256 tokenId,
         bytes calldata route,
         uint256 minLiquidity,
+        uint160 sqrtPriceMinX96,
+        uint160 sqrtPriceMaxX96,
         address recipient,
         bytes calldata hookData
     ) internal view returns (CoreParams memory cp) {
@@ -234,6 +256,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             budget1: 0, // Populated after fee collection in callback
             route: route,
             minLiquidity: minLiquidity,
+            sqrtPriceMinX96: sqrtPriceMinX96,
+            sqrtPriceMaxX96: sqrtPriceMaxX96,
             recipient: recipient,
             hookData: hookData
         });
@@ -310,7 +334,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             revert InsufficientLiquidity(cp.minLiquidity, 0);
         }
         _flashTakeDeficit(cp, amount0optimistic, amount1optimistic);
-        tokenId = _deployLiquidity(cp, liquidityOptimistic, amount0optimistic);
+        tokenId =
+            _deployLiquidity(cp, liquidityOptimistic, amount0optimistic.toUint128(), amount1optimistic.toUint128());
 
         // 3. Settle the flash-take debt, trimming the new liquidity if a debt remains.
         uint128 trimmed =
@@ -336,6 +361,9 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     {
         (uint160 sqrtPriceX96,, uint24 protocolFee, uint24 lpFee) = poolManager.getSlot0(cp.key.toId());
         if (sqrtPriceX96 == 0) revert IPoolManager.PoolNotInitialized();
+        if (sqrtPriceX96 < cp.sqrtPriceMinX96 || sqrtPriceX96 > cp.sqrtPriceMaxX96) {
+            revert PriceOutOfBand(sqrtPriceX96, cp.sqrtPriceMinX96, cp.sqrtPriceMaxX96);
+        }
         liquidity = SwapAndAddMath.getLiquidityFeeAware(
             sqrtPriceX96, sqrtLower, sqrtUpper, cp.budget0, cp.budget1, protocolFee, lpFee
         );
@@ -419,9 +447,9 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     }
 
     /// @dev Deploys via POSM MINT_POSITION or INCREASE_LIQUIDITY, with CLOSE_CURRENCY on both
-    ///      tokens so positive deltas credit instead of reverting SETTLE_PAIR. Per-amount slippage
-    ///      limits are maxed, `minLiquidity` is the single slippage gate.
-    function _deployLiquidity(CoreParams memory cp, uint128 liquidity, uint256 amount0)
+    ///      tokens so positive deltas credit instead of reverting SETTLE_PAIR. The planned amounts
+    ///      are the amount caps, so a price move between sizing and the mint reverts.
+    function _deployLiquidity(CoreParams memory cp, uint128 liquidity, uint128 amount0, uint128 amount1)
         internal
         returns (uint256 tokenId)
     {
@@ -430,17 +458,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
         uint8 deployAction = uint8(isMint ? Actions.MINT_POSITION : Actions.INCREASE_LIQUIDITY);
         bytes memory deployData = isMint
-            ? abi.encode(
-                cp.key,
-                cp.tickLower,
-                cp.tickUpper,
-                liquidity,
-                type(uint128).max,
-                type(uint128).max,
-                address(this),
-                cp.hookData
-            )
-            : abi.encode(tokenId, uint256(liquidity), type(uint128).max, type(uint128).max, cp.hookData);
+            ? abi.encode(cp.key, cp.tickLower, cp.tickUpper, liquidity, amount0, amount1, address(this), cp.hookData)
+            : abi.encode(tokenId, uint256(liquidity), amount0, amount1, cp.hookData);
 
         // native pools carry a trailing SWEEP to return unconsumed wei of the forwarded ETH
         Currency c0 = cp.key.currency0;

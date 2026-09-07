@@ -140,6 +140,8 @@ contract SwapAndAddForkMainnetTest is Test {
             route: route,
             routeFunding: new ISwapAndAdd.TokenAmount[](0),
             minLiquidity: 0,
+            sqrtPriceMinX96: 0,
+            sqrtPriceMaxX96: type(uint160).max,
             recipient: address(this),
             hookData: "",
             deadline: block.timestamp + 1
@@ -228,6 +230,8 @@ contract SwapAndAddForkMainnetTest is Test {
             route: "",
             routeFunding: new ISwapAndAdd.TokenAmount[](0),
             minLiquidity: 0,
+            sqrtPriceMinX96: 0,
+            sqrtPriceMaxX96: type(uint160).max,
             recipient: address(this),
             hookData: "",
             deadline: block.timestamp + 1
@@ -347,6 +351,8 @@ contract SwapAndAddForkMainnetTest is Test {
             tokenId: tokenId,
             route: "",
             minLiquidityAdded: minLiquidityAdded,
+            sqrtPriceMinX96: 0,
+            sqrtPriceMaxX96: type(uint160).max,
             recipient: address(this),
             hookData: "",
             deadline: block.timestamp + 1

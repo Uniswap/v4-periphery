@@ -87,6 +87,8 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
             route: routeBytes,
             routeFunding: funding,
             minLiquidity: 1,
+            sqrtPriceMinX96: 0,
+            sqrtPriceMaxX96: type(uint160).max,
             recipient: recipient,
             hookData: "",
             deadline: block.timestamp + 1
@@ -219,6 +221,8 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
                 route: ROUTE_PAYLOAD,
                 routeFunding: _funding(address(tokenX), 5e18),
                 minLiquidityAdded: 1,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: address(this),
                 hookData: "",
                 deadline: block.timestamp + 1
@@ -249,6 +253,8 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
                 route: ROUTE_PAYLOAD,
                 routeFunding: _funding(address(tokenX), 3e18),
                 minLiquidityAdded: 1,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: operator, // ignored: caller is an operator
                 hookData: "",
                 deadline: block.timestamp + 1
@@ -276,6 +282,8 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
                 route: ROUTE_PAYLOAD,
                 routeFunding: _funding(address(tokenX), 2e18),
                 minLiquidity: 1,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: address(this),
                 hookData: "",
                 deadline: block.timestamp + 1

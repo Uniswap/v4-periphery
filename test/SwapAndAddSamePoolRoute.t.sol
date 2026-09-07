@@ -123,6 +123,73 @@ contract SwapAndAddSamePoolRouteTest is PosmTestSetup {
         return abi.encode(bytes(hex"00"), inputs);
     }
 
+    function _priceBandRouteParams() internal returns (ISwapAndAdd.IncreaseParams memory p, uint160 routedPrice) {
+        PositionConfig memory cfg = PositionConfig({poolKey: targetKey, tickLower: TL, tickUpper: TU});
+        uint256 tokenId = lpm.nextTokenId();
+        mint(cfg, L_POS, address(this), "");
+        uint256 routeIn = 5.4e20;
+        route.config(targetKey, true, routeIn);
+
+        // Quote the real pool swap, then restore state so the zap executes that same route leg.
+        uint256 snap = vm.snapshotState();
+        swap(targetKey, true, -int256(routeIn), "");
+        (routedPrice,,,) = manager.getSlot0(targetKey.toId());
+        vm.revertToState(snap);
+
+        p = ISwapAndAdd.IncreaseParams({
+            tokenId: tokenId,
+            amount0In: routeIn,
+            amount1In: 0,
+            route: _encodedRoute(),
+            routeFunding: new ISwapAndAdd.TokenAmount[](0),
+            minLiquidityAdded: 1,
+            sqrtPriceMinX96: TickMath.getSqrtPriceAtTick(1100),
+            sqrtPriceMaxX96: TickMath.getSqrtPriceAtTick(1300),
+            recipient: address(this),
+            hookData: "",
+            deadline: block.timestamp + 1
+        });
+    }
+
+    function test_increase_priceBand_rejectsRouteMovingPriceOutsideBand() public {
+        (ISwapAndAdd.IncreaseParams memory p, uint160 routedPrice) = _priceBandRouteParams();
+        (uint160 beforePrice,,,) = manager.getSlot0(targetKey.toId());
+        assertGe(beforePrice, p.sqrtPriceMinX96);
+        assertLe(beforePrice, p.sqrtPriceMaxX96);
+        assertLt(routedPrice, p.sqrtPriceMinX96);
+        uint256 before0 = currency0.balanceOf(address(this));
+        uint256 before1 = currency1.balanceOf(address(this));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ISwapAndAdd.PriceOutOfBand.selector, routedPrice, p.sqrtPriceMinX96, p.sqrtPriceMaxX96
+            )
+        );
+        zap.increase(p);
+
+        (uint160 afterPrice,,,) = manager.getSlot0(targetKey.toId());
+        assertEq(afterPrice, beforePrice, "route swap rolled back");
+        assertEq(lpm.getPositionLiquidity(p.tokenId), L_POS, "position unchanged");
+        assertEq(currency0.balanceOf(address(this)), before0, "token0 pull rolled back");
+        assertEq(currency1.balanceOf(address(this)), before1, "token1 balance unchanged");
+    }
+
+    function test_increase_priceBand_acceptsRouteMovingPriceIntoBand() public {
+        (ISwapAndAdd.IncreaseParams memory p, uint160 routedPrice) = _priceBandRouteParams();
+        // An exact band also verifies that both endpoints are inclusive.
+        p.sqrtPriceMinX96 = routedPrice;
+        p.sqrtPriceMaxX96 = routedPrice;
+        (uint160 beforePrice,,,) = manager.getSlot0(targetKey.toId());
+        assertGt(beforePrice, p.sqrtPriceMaxX96, "initial price is outside the band");
+
+        (uint128 added,,) = zap.increase(p);
+
+        assertGt(added, 0, "band accepts the post-route sizing price");
+        assertEq(lpm.getPositionLiquidity(p.tokenId), L_POS + added);
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 swept");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 swept");
+    }
+
     /// @dev A same-pool route leg drives spot into the range of the position and accrues fees ~13x the
     ///      deficit-side principal. The deploy takes the credit and the surplus is refunded.
     function test_increase_samePoolRouteLeg_completesAndRefundsFeeCredit() public {
@@ -147,6 +214,8 @@ contract SwapAndAddSamePoolRouteTest is PosmTestSetup {
                 route: _encodedRoute(),
                 routeFunding: new ISwapAndAdd.TokenAmount[](0),
                 minLiquidityAdded: 1,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: address(this),
                 hookData: "",
                 deadline: block.timestamp + 1
@@ -187,6 +256,8 @@ contract SwapAndAddSamePoolRouteTest is PosmTestSetup {
                 route: _encodedRoute(),
                 routeFunding: new ISwapAndAdd.TokenAmount[](0),
                 minLiquidityAdded: 1,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: address(this),
                 hookData: "",
                 deadline: block.timestamp + 1

@@ -54,6 +54,8 @@ contract SwapAndAddEventsTest is PosmTestSetup {
             route: "",
             routeFunding: new ISwapAndAdd.TokenAmount[](0),
             minLiquidity: 1,
+            sqrtPriceMinX96: 0,
+            sqrtPriceMaxX96: type(uint160).max,
             recipient: recipient,
             hookData: "",
             deadline: block.timestamp + 1
@@ -113,6 +115,8 @@ contract SwapAndAddEventsTest is PosmTestSetup {
                 route: "",
                 routeFunding: new ISwapAndAdd.TokenAmount[](0),
                 minLiquidity: 1,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: recipient,
                 hookData: "",
                 deadline: block.timestamp + 1
@@ -144,6 +148,8 @@ contract SwapAndAddEventsTest is PosmTestSetup {
                 route: "",
                 routeFunding: new ISwapAndAdd.TokenAmount[](0),
                 minLiquidityAdded: 1,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: recipient,
                 hookData: "",
                 deadline: block.timestamp + 1
@@ -171,6 +177,8 @@ contract SwapAndAddEventsTest is PosmTestSetup {
                 tokenId: tokenId,
                 route: "",
                 minLiquidityAdded: 1,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: recipient,
                 hookData: "",
                 deadline: block.timestamp + 1
@@ -210,6 +218,8 @@ contract SwapAndAddEventsTest is PosmTestSetup {
                 route: "",
                 routeFunding: new ISwapAndAdd.TokenAmount[](0),
                 minLiquidityAdded: 1,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: operator, // ignored, resolved to the owner
                 hookData: "",
                 deadline: block.timestamp + 1
