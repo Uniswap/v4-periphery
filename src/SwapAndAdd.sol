@@ -568,7 +568,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
         if (funding.length != 0) {
             if (route.length == 0) revert RouteFundingRequiresRoute();
-            for (uint256 i = 0; i < funding.length; i++) {
+            for (uint256 i; i < funding.length; i++) {
                 Currency token = funding[i].token;
                 if (token == key.currency0 || token == key.currency1) revert InvalidFundingToken(token);
                 if (token.isAddressZero()) {
@@ -602,7 +602,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
     /// @dev Sweeps unconsumed route funding tokens to the recipient.
     function _sweepFunding(TokenAmount[] calldata funding, address to) internal {
-        for (uint256 i = 0; i < funding.length; i++) {
+        for (uint256 i; i < funding.length; i++) {
             _sweep(funding[i].token, to);
         }
     }
