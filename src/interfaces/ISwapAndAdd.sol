@@ -24,8 +24,8 @@ import {IMulticall_v4} from "./IMulticall_v4.sol";
 ///        and this contract needs ERC-721 approval on the position in POSM. Operator calls send
 ///        all output to the owner, though operators remain trusted since they set the `route` and
 ///        `minLiquidity` (and already have full custody on POSM).
-///      - Hooks with returns-delta permissions are rejected. Fee-on-transfer and rebasing tokens
-///        are unsupported. The same `hookData` goes to every hook callback.
+///      - Hooks with returns-delta permissions are rejected. Fee-on-transfer, rebasing, and
+///        transfer-callback tokens are unsupported. The same `hookData` goes to every hook callback.
 ///      - Multicall batches carry at most one native-ETH operation because all subcalls share
 ///        `msg.value`; adding further operations reverts. Zero-value batches compose freely. Batch
 ///        native operations using WETH or separate transactions.
@@ -109,6 +109,9 @@ interface ISwapAndAdd is IMulticall_v4 {
 
     /// @notice Thrown when the pool's hook carries a returns-delta permission.
     error UnsupportedHookPermissions(IHooks hooks);
+
+    /// @notice Thrown when POSM is in debt to the PoolManager.
+    error PositionManagerInDebt(Currency currency);
 
     /// @notice A non-pool token amount pulled to fund the route.
     /// @param token The token address, or address(0) for native ETH.

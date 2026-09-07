@@ -29,6 +29,8 @@ import {MockERC20ApproveNoReturn} from "./mocks/MockERC20ApproveNoReturn.sol";
 import {MockERC20Permit2Native} from "./mocks/MockERC20Permit2Native.sol";
 import {MockERC20ApproveRace} from "./mocks/MockERC20ApproveRace.sol";
 import {MockDynamicFeeHook} from "./mocks/MockDynamicFeeHook.sol";
+import {MockPosmDebtHook} from "./mocks/MockPosmDebtHook.sol";
+import {MockDebtPlantingRoute} from "./mocks/MockDebtPlantingRoute.sol";
 import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
 
@@ -634,6 +636,60 @@ contract SwapAndAddTest is PosmTestSetup {
         p.poolKey.hooks = IHooks(address(uint160(Hooks.BEFORE_SWAP_FLAG)));
         vm.expectRevert(IPoolManager.PoolNotInitialized.selector);
         zap.add(p);
+    }
+
+    /// @dev A beforeSwap hook drives POSM's PoolManager delta negative during the reconcile swap.
+    ///      The trim's TAKE_PAIR would net it against the burn proceeds.
+    function test_add_hookPlantsPosmDebt_reverts() public {
+        address hookAddress = address(uint160(Hooks.BEFORE_SWAP_FLAG));
+        vm.etch(hookAddress, address(new MockPosmDebtHook()).code);
+        MockPosmDebtHook debtHook = MockPosmDebtHook(hookAddress);
+        (PoolKey memory hookKey,) =
+            initPoolAndAddLiquidity(currency0, currency1, IHooks(hookAddress), 3000, SQRT_PRICE_1_1);
+        seedMoreLiquidity(hookKey, 1_000e18, 1_000e18);
+
+        ISwapAndAdd.AddParams memory p = _addParams(0, 10e18);
+        p.poolKey = hookKey;
+
+        uint256 snap = vm.snapshotState();
+        (, uint128 liq,,) = zap.add(p);
+        assertGt(liq, 0, "unarmed hook passes");
+        vm.revertToState(snap);
+
+        // surplus side: netted silently against the trim proceeds without the check
+        debtHook.arm(lpm, currency1, 1e14);
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.PositionManagerInDebt.selector, currency1));
+        zap.add(p);
+
+        // deficit side: a settlement failure without the check
+        debtHook.arm(lpm, currency0, 1e14);
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.PositionManagerInDebt.selector, currency0));
+        zap.add(p);
+    }
+
+    /// @dev A hook on a route-leg pool plants the debt during the route. The deploy's CLOSE_CURRENCY
+    ///      would settle it from the surplus budget.
+    function test_add_routePlantsPosmDebt_reverts() public {
+        MockDebtPlantingRoute plantingRoute = new MockDebtPlantingRoute();
+        ISwapAndAdd plantedZap = ISwapAndAdd(
+            deployCode(
+                "SwapAndAdd.sol:SwapAndAdd", abi.encode(manager, permit2, lpm, IUniversalRouter(address(plantingRoute)))
+            )
+        );
+        permit2.approve(Currency.unwrap(currency0), address(plantedZap), type(uint160).max, type(uint48).max);
+        permit2.approve(Currency.unwrap(currency1), address(plantedZap), type(uint160).max, type(uint48).max);
+
+        ISwapAndAdd.AddParams memory p = _addParams(10e18, 20e18);
+        p.route = ROUTE_PAYLOAD;
+
+        uint256 snap = vm.snapshotState();
+        (, uint128 liq,,) = plantedZap.add(p);
+        assertGt(liq, 0, "inert route passes");
+        vm.revertToState(snap);
+
+        plantingRoute.arm(lpm, currency1, 1e14);
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.PositionManagerInDebt.selector, currency1));
+        plantedZap.add(p);
     }
 
     function test_rebalance_revertsIfNotAuthorized() public {

@@ -53,6 +53,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     uint160 private constant UNSUPPORTED_HOOK_FLAGS = Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
         | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG | Hooks.AFTER_ADD_LIQUIDITY_RETURNS_DELTA_FLAG
         | Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG;
+    /// @dev Permissions that run the hook during the reconcile swap.
+    uint160 private constant SWAP_HOOK_FLAGS = Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG;
     /// @dev Standing Permit2 allowance expiration timestamp.
     uint48 private constant ALLOWANCE_EXPIRATION = type(uint48).max;
     /// @dev Universal Router command to sweep unspent native ETH.
@@ -334,6 +336,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             revert InsufficientLiquidity(cp.minLiquidity, 0);
         }
         _flashTakeDeficit(cp, amount0optimistic, amount1optimistic);
+        if (cp.route.length != 0) _checkPositionManagerDebt(cp.key);
         tokenId =
             _deployLiquidity(cp, liquidityOptimistic, amount0optimistic.toUint128(), amount1optimistic.toUint128());
 
@@ -443,6 +446,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             SwapAndAddMath.getLiquidityToTrim(sqrtPriceX96, sqrtLower, sqrtUpper, deficitIsCurrency1, amountOut);
         // cap the trim at the liquidity added in this transaction
         dl = liquidityToTrim >= lopt ? lopt : uint128(liquidityToTrim);
+        if (cp.key.hooks.hasPermission(SWAP_HOOK_FLAGS)) _checkPositionManagerDebt(cp.key);
         _decrease(cp.key, tokenId, dl, cp.hookData);
     }
 
@@ -512,6 +516,14 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         params[0] = abi.encode(tokenId, uint256(dl), uint128(0), uint128(0), hookData);
         params[1] = abi.encode(key.currency0, key.currency1, ActionConstants.MSG_SENDER);
         positionManager.modifyLiquiditiesWithoutUnlock(actions, params);
+    }
+
+    /// @dev POSM's batches net its PoolManager deltas, so debt planted on POSM while its lock is
+    ///      free would be settled from this operation's funds.
+    function _checkPositionManagerDebt(PoolKey memory key) internal view {
+        address posm = address(positionManager);
+        if (poolManager.currencyDelta(posm, key.currency0) < 0) revert PositionManagerInDebt(key.currency0);
+        if (poolManager.currencyDelta(posm, key.currency1) < 0) revert PositionManagerInDebt(key.currency1);
     }
 
     /// @dev Swaps without a price limit. Max slippage is fine because callers enforce
