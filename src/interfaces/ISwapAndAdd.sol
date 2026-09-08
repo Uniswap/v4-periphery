@@ -83,7 +83,8 @@ interface ISwapAndAdd is IMulticall_v4 {
     /// @notice Thrown when ETH arrives from a sender other than PoolManager, POSM, or Universal Router.
     error InvalidEthSender();
 
-    /// @notice Thrown when the final position liquidity is below the caller's minimum.
+    /// @notice Thrown when the sized liquidity is zero or the final liquidity is below the caller's
+    ///         minimum.
     error InsufficientLiquidity(uint256 minLiquidity, uint128 liquidity);
 
     /// @notice Thrown when the pool's sqrt price at sizing time is outside the caller's band.

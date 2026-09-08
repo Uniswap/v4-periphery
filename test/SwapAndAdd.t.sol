@@ -308,6 +308,20 @@ contract SwapAndAddTest is PosmTestSetup {
         zap.compound(_compoundParams(tokenId, 0));
     }
 
+    /// @dev A budget too small for one unit of liquidity reverts with the typed floor error, on a live
+    ///      position and on an emptied one (where v4 would otherwise reject the zero update).
+    function test_increase_weiBudget_revertsInsufficientLiquidity() public {
+        (uint256 tokenId,,,) = zap.add(_addParams(-887_220, 887_220, 10e18, 10e18));
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InsufficientLiquidity.selector, 0, 0));
+        zap.increase(_increaseParams(tokenId, 0, 1));
+
+        _emptyPosition(tokenId);
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InsufficientLiquidity.selector, 0, 0));
+        zap.increase(_increaseParams(tokenId, 0, 1));
+    }
+
     function test_increase_revertsOnMinLiquidity() public {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);

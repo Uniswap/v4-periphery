@@ -332,10 +332,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(cp.tickUpper);
         (uint128 liquidityOptimistic, uint256 amount0optimistic, uint256 amount1optimistic) =
             _planLiquidity(cp, sqrtLower, sqrtUpper);
-        // revert with the floor error instead of POSM's opaque CannotUpdateEmptyPosition
-        if (liquidityOptimistic == 0 && cp.deployTokenId == 0) {
-            revert InsufficientLiquidity(cp.minLiquidity, 0);
-        }
+        // nothing to deploy, and an empty position would surface POSM's opaque CannotUpdateEmptyPosition
+        if (liquidityOptimistic == 0) revert InsufficientLiquidity(cp.minLiquidity, 0);
         _flashTakeDeficit(cp, amount0optimistic, amount1optimistic);
         // Approve the currency tokens, if they were not max approved in the route branch.
         if (!maxAllowance0) _ensureApproved(cp.key.currency0, amount0optimistic);
