@@ -17,7 +17,7 @@ contract SwapAndAddMathTest is Test {
 
     // getAmountsForLiquidity: round-up amounts
 
-    /// @dev Below range is token0 only, above is token1 only, in range is both, unsorted bounds normalize.
+    /// @dev Below range is token0 only, above is token1 only, in range is both.
     function test_getAmountsForLiquidity_branches() public pure {
         uint160 sl = TickMath.getSqrtPriceAtTick(-600);
         uint160 su = TickMath.getSqrtPriceAtTick(600);
@@ -34,11 +34,6 @@ contract SwapAndAddMathTest is Test {
         (a0, a1) = SwapAndAddMath.getAmountsForLiquidityRoundingUp(TickMath.getSqrtPriceAtTick(0), sl, su, liq);
         assertGt(a0, 0, "in range: token0");
         assertGt(a1, 0, "in range: token1");
-
-        (uint256 a0s, uint256 a1s) =
-            SwapAndAddMath.getAmountsForLiquidityRoundingUp(TickMath.getSqrtPriceAtTick(0), su, sl, liq);
-        assertEq(a0s, a0, "unsorted bounds normalized (amount0)");
-        assertEq(a1s, a1, "unsorted bounds normalized (amount1)");
     }
 
     /// @dev The round-up amounts must sit within one wei above a clamp-formulated round-down oracle:

@@ -119,31 +119,27 @@ library SwapAndAddMath {
     }
 
     /// @notice Calculates the token amounts required for a liquidity amount at the given price and range.
-    /// @dev Rounds UP to mirror POSM's MINT_POSITION, so funding from these amounts is never a wei
-    ///      short. Not interchangeable with LiquidityAmounts, which rounds down. The A/B bounds may
-    ///      be passed in either order.
+    /// @dev Rounds UP to mirror POSM's MINT_POSITION and INCREASE_LIQUIDITY, so funding from these
+    ///      amounts is never a wei short. Not interchangeable with LiquidityAmounts, which rounds down.
     /// @param sqrtPriceX96 Current pool sqrt price.
-    /// @param sqrtPriceAX96 One range endpoint as a sqrt price. Order with B does not matter.
-    /// @param sqrtPriceBX96 The other range endpoint as a sqrt price.
+    /// @param sqrtPriceLowerX96 Sqrt price at the position's lower tick.
+    /// @param sqrtPriceUpperX96 Sqrt price at the position's upper tick.
     /// @param liquidity Liquidity to convert into token amounts.
     /// @return amount0 Currency0 required for `liquidity` in this range, rounded up.
     /// @return amount1 Currency1 required for `liquidity` in this range, rounded up.
     function getAmountsForLiquidityRoundingUp(
         uint160 sqrtPriceX96,
-        uint160 sqrtPriceAX96,
-        uint160 sqrtPriceBX96,
+        uint160 sqrtPriceLowerX96,
+        uint160 sqrtPriceUpperX96,
         uint128 liquidity
     ) internal pure returns (uint256 amount0, uint256 amount1) {
-        if (sqrtPriceAX96 > sqrtPriceBX96) {
-            (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
-        }
-        if (sqrtPriceX96 <= sqrtPriceAX96) {
-            amount0 = SqrtPriceMath.getAmount0Delta(sqrtPriceAX96, sqrtPriceBX96, liquidity, true);
-        } else if (sqrtPriceX96 < sqrtPriceBX96) {
-            amount0 = SqrtPriceMath.getAmount0Delta(sqrtPriceX96, sqrtPriceBX96, liquidity, true);
-            amount1 = SqrtPriceMath.getAmount1Delta(sqrtPriceAX96, sqrtPriceX96, liquidity, true);
+        if (sqrtPriceX96 <= sqrtPriceLowerX96) {
+            amount0 = SqrtPriceMath.getAmount0Delta(sqrtPriceLowerX96, sqrtPriceUpperX96, liquidity, true);
+        } else if (sqrtPriceX96 < sqrtPriceUpperX96) {
+            amount0 = SqrtPriceMath.getAmount0Delta(sqrtPriceX96, sqrtPriceUpperX96, liquidity, true);
+            amount1 = SqrtPriceMath.getAmount1Delta(sqrtPriceLowerX96, sqrtPriceX96, liquidity, true);
         } else {
-            amount1 = SqrtPriceMath.getAmount1Delta(sqrtPriceAX96, sqrtPriceBX96, liquidity, true);
+            amount1 = SqrtPriceMath.getAmount1Delta(sqrtPriceLowerX96, sqrtPriceUpperX96, liquidity, true);
         }
     }
 
