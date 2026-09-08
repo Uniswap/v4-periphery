@@ -28,6 +28,7 @@ import {MockSwapRoute} from "./mocks/MockSwapRoute.sol";
 import {MockERC20ApproveNoReturn} from "./mocks/MockERC20ApproveNoReturn.sol";
 import {MockERC20Permit2Native} from "./mocks/MockERC20Permit2Native.sol";
 import {MockERC20ApproveRace} from "./mocks/MockERC20ApproveRace.sol";
+import {MockERC20CappedAllowance} from "./mocks/MockERC20CappedAllowance.sol";
 import {MockDynamicFeeHook} from "./mocks/MockDynamicFeeHook.sol";
 import {MockPosmDebtHook} from "./mocks/MockPosmDebtHook.sol";
 import {MockDebtPlantingRoute} from "./mocks/MockDebtPlantingRoute.sol";
@@ -1247,6 +1248,75 @@ contract SwapAndAddTest is PosmTestSetup {
 
         assertGt(liq, 0, "add succeeded after self-heal");
         assertEq(token.allowance(address(zap), address(permit2)), type(uint256).max, "allowance healed to max");
+    }
+
+    function test_add_cappedAllowance_skipsRepeatedApprovals() public {
+        MockERC20CappedAllowance token = new MockERC20CappedAllowance();
+        token.mint(address(this), 1_000e18);
+        token.approve(address(permit2), type(uint256).max);
+        permit2.approve(address(token), address(zap), type(uint160).max, type(uint48).max);
+        token.approve(address(modifyLiquidityRouter), type(uint256).max);
+        PoolKey memory k = _initWeirdTokenPool(address(token));
+        ISwapAndAdd.AddParams memory p = _addParams(0, 5e18);
+        p.poolKey = k;
+        zap.add(p);
+        assertEq(token.allowance(address(zap), address(permit2)), type(uint96).max);
+
+        vm.expectCall(address(token), abi.encodeWithSelector(token.approve.selector), uint64(0));
+        vm.expectCall(address(permit2), abi.encodeWithSelector(IAllowanceTransfer.approve.selector), uint64(0));
+        (, uint128 liq,,) = zap.add(p);
+        assertGt(liq, 0, "second add succeeds without repeating approvals");
+    }
+
+    function _seedLargeAllowancePool() internal {
+        zap.add(_addParams(1e18, 1e18)); // initialize standing allowances
+        MockERC20(Currency.unwrap(currency0)).mint(address(this), 1e33);
+        MockERC20(Currency.unwrap(currency1)).mint(address(this), 1e33);
+        seedMoreLiquidity(key, 1e31, 1e31);
+    }
+
+    function test_add_amountAboveUint96_refreshesInsufficientAllowance() public {
+        _seedLargeAllowancePool();
+        vm.prank(address(zap));
+        MockERC20(Currency.unwrap(currency0)).approve(address(permit2), type(uint96).max);
+
+        uint256 budget = uint256(type(uint96).max) * 2;
+        (, uint128 liq, uint256 a0,) = zap.add(_addParams(budget, budget));
+
+        assertGt(liq, 0);
+        assertGt(a0, type(uint96).max, "large deployment supported");
+        assertEq(MockERC20(Currency.unwrap(currency0)).allowance(address(zap), address(permit2)), type(uint256).max);
+    }
+
+    function test_add_flashTakeAboveUint96_checksDeployAmount() public {
+        _seedLargeAllowancePool();
+        vm.prank(address(zap));
+        MockERC20(Currency.unwrap(currency0)).approve(address(permit2), type(uint96).max);
+
+        (, uint128 liq, uint256 a0,) = zap.add(_addParams(0, uint256(type(uint96).max) * 4));
+
+        assertGt(liq, 0);
+        assertGt(a0, type(uint96).max, "token0 deploy exceeds its zero input budget");
+        assertEq(MockERC20(Currency.unwrap(currency0)).allowance(address(zap), address(permit2)), type(uint256).max);
+    }
+
+    function test_add_routeConsumesAllowance_refreshesBeforeDeploy() public {
+        _seedLargeAllowancePool();
+        uint256 budget = uint256(type(uint96).max) * 2;
+        vm.prank(address(zap));
+        MockERC20(Currency.unwrap(currency0)).approve(address(permit2), budget);
+        MockERC20(Currency.unwrap(currency1)).mint(address(route), budget);
+        route.config(Currency.unwrap(currency0), Currency.unwrap(currency1), FixedPoint96.Q96, 10000, budget, true);
+        ISwapAndAdd.AddParams memory p = _addParams(budget, 0);
+        p.route = ROUTE_PAYLOAD;
+
+        (, uint128 liq, uint256 a0,) = zap.add(p);
+
+        assertGt(liq, 0);
+        assertGt(a0, 0, "POSM pulls token0 after route exhausts its allowance");
+        assertEq(MockERC20(Currency.unwrap(currency0)).allowance(address(zap), address(permit2)), type(uint256).max);
+        assertEq(currency0.balanceOf(address(zap)), 0);
+        assertEq(currency1.balanceOf(address(zap)), 0);
     }
 
     /// @dev Extreme-tick regressions: a single-sided token0 range with no swap must deploy the full

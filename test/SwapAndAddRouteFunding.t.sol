@@ -137,6 +137,28 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         assertEq(tokenX.balanceOf(address(zap)), 0, "no X at rest");
     }
 
+    function test_add_funding_allowanceCoversAggregateAboveUint128() public {
+        _configXRoute(0);
+        zap.add(_addP(1e18, 1e18, ROUTE_PAYLOAD, _funding(address(tokenX), 0)));
+
+        uint256 total = uint256(1) << 129;
+        tokenX.mint(address(this), total);
+        vm.prank(address(zap));
+        tokenX.approve(address(permit2), total * 3 / 4); // enough per entry, insufficient for their sum
+        ISwapAndAdd.TokenAmount[] memory funding = new ISwapAndAdd.TokenAmount[](2);
+        funding[0] = ISwapAndAdd.TokenAmount({token: Currency.wrap(address(tokenX)), amount: total / 2});
+        funding[1] = ISwapAndAdd.TokenAmount({token: Currency.wrap(address(tokenX)), amount: total / 2});
+        // Keep the pool-token output small while exercising a large route input.
+        route.config(address(tokenX), Currency.unwrap(currency1), 1, 10000, total, true);
+
+        (, uint128 liq,,) = zap.add(_addP(0, 0, ROUTE_PAYLOAD, funding));
+
+        assertGt(liq, 0);
+        assertEq(tokenX.allowance(address(zap), address(permit2)), type(uint256).max);
+        assertEq(tokenX.balanceOf(address(route)), total, "route consumed both entries");
+        assertEq(tokenX.balanceOf(address(zap)), 0);
+    }
+
     /// @dev a zero-amount entry pulls nothing but wires and sweeps the token (donation claim)
     function test_add_funding_zeroAmountEntry_claimsDonation() public {
         tokenX.transfer(address(zap), 5e18); // donation / stuck tokens

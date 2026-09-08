@@ -315,11 +315,12 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // pure bitmask check, the capability is rejected regardless of observed behavior
         if (cp.key.hooks.hasPermission(UNSUPPORTED_HOOK_FLAGS)) revert UnsupportedHookPermissions(cp.key.hooks);
 
-        _ensureApproved(cp.key.currency0);
-        _ensureApproved(cp.key.currency1);
-
         // 1. Execute the optional route and re-read the held budgets.
+        bool maxAllowance0;
+        bool maxAllowance1;
         if (cp.route.length != 0) {
+            maxAllowance0 = _ensureApproved(cp.key.currency0, cp.budget0);
+            maxAllowance1 = _ensureApproved(cp.key.currency1, cp.budget1);
             _executeRoute(cp);
             cp.budget0 = cp.key.currency0.balanceOfSelf();
             cp.budget1 = cp.key.currency1.balanceOfSelf();
@@ -336,6 +337,9 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             revert InsufficientLiquidity(cp.minLiquidity, 0);
         }
         _flashTakeDeficit(cp, amount0optimistic, amount1optimistic);
+        // Approve the currency tokens, if they were not max approved in the route branch.
+        if (!maxAllowance0) _ensureApproved(cp.key.currency0, amount0optimistic);
+        if (!maxAllowance1) _ensureApproved(cp.key.currency1, amount1optimistic);
         if (cp.route.length != 0) _checkPositionManagerDebt(cp.key);
         tokenId =
             _deployLiquidity(cp, liquidityOptimistic, amount0optimistic.toUint128(), amount1optimistic.toUint128());
@@ -585,7 +589,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
                             msg.sender, address(this), funding[i].amount.toUint160(), Currency.unwrap(token)
                         );
                     }
-                    _ensureApproved(token);
+                    // Approve the funding token.
+                    _ensureApproved(token, token.balanceOfSelf());
                 }
             }
         }
@@ -613,24 +618,31 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         }
     }
 
-    /// @dev Grants standing max Permit2 allowances to POSM and the Universal Router. Safe because
-    ///      the contract holds no funds at rest.
-    function _ensureApproved(Currency currency) internal {
-        if (currency.isAddressZero()) return;
+    /// @dev Grants standing max allowances to the trusted POSM and Universal Router. Keeps at least
+    ///      uint96.max ERC20 allowance where supported, or enough for this phase if it needs more.
+    /// @return maxAllowance True when the allowance to permit2 for the token is at max after this function.
+    function _ensureApproved(Currency currency, uint256 amount) internal returns (bool maxAllowance) {
+        if (currency.isAddressZero()) return true;
 
         address token = Currency.unwrap(currency);
         // Permit2 never decrements a uint160.max allowance, so `permitted` doubles as the init marker
         (uint160 permitted,,) = permit2.allowance(address(this), token, address(positionManager));
         uint256 tokenAllowance = ERC20(token).allowance(address(this), address(permit2));
-        if (permitted == type(uint160).max && tokenAllowance >= type(uint160).max) return;
 
-        if (tokenAllowance != type(uint256).max) {
+        maxAllowance = tokenAllowance == type(uint256).max;
+        uint256 requiredAllowance = amount > type(uint96).max ? amount : type(uint96).max;
+
+        if (tokenAllowance < requiredAllowance) {
             // reset to 0 first for approve-race tokens like USDT
             if (tokenAllowance != 0) SafeTransferLib.safeApprove(ERC20(token), address(permit2), 0);
             SafeTransferLib.safeApprove(ERC20(token), address(permit2), type(uint256).max);
+            maxAllowance = true;
         }
-        permit2.approve(token, address(positionManager), type(uint160).max, ALLOWANCE_EXPIRATION);
-        permit2.approve(token, address(universalRouter), type(uint160).max, ALLOWANCE_EXPIRATION);
+        if (permitted != type(uint160).max) {
+            permit2.approve(token, address(positionManager), type(uint160).max, ALLOWANCE_EXPIRATION);
+            permit2.approve(token, address(universalRouter), type(uint160).max, ALLOWANCE_EXPIRATION);
+        }
+        return maxAllowance;
     }
 
     /// @dev Sweeps the full contract's balance of a given currency to the recipient.
