@@ -78,6 +78,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     }
 
     IPositionManager public immutable positionManager;
+    /// @dev Routes run inside this contract's PoolManager unlock, so the router must execute V4_SWAP
+    ///      within an existing unlock. Release routers open their own and revert with AlreadyUnlocked.
     IUniversalRouter public immutable universalRouter;
 
     modifier checkDeadline(uint256 deadline) {
@@ -278,7 +280,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
         CoreParams memory cp = abi.decode(data, (CoreParams));
 
-        // for grow operations, fees collected via a 0-liquidity decrease become the budget
+        // grow operations: collected fees join the held balance, which becomes the budget
         if (cp.deployTokenId != 0) {
             // POSM reverts on a decrease of an empty position
             if (positionManager.getPositionLiquidity(cp.deployTokenId) != 0) {
@@ -535,7 +537,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     }
 
     /// @dev Swaps without a price limit. Max slippage is fine because callers enforce
-    ///      `minLiquidity` on the final position. Callers MUST check minimum amounts.
+    ///      `minLiquidity` on the final position.
     function _swap(PoolKey memory key, bool zeroForOne, int256 amountSpecified, bytes memory hookData) internal {
         poolManager.swap(
             key,
@@ -650,6 +652,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     }
 
     /// @inheritdoc DeltaResolver
+    /// @dev The `payer` argument is unused; this contract always pays.
     function _pay(Currency currency, address, uint256 amount) internal override {
         currency.transfer(address(poolManager), amount);
     }

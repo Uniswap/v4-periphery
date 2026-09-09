@@ -10,9 +10,10 @@ import {IMulticall_v4} from "./IMulticall_v4.sol";
 /// @title ISwapAndAdd
 /// @notice Turns a token budget in any ratio into a POSM position in one transaction.
 ///         Operations: add, rebalance, increase, compound.
-/// @dev Flow: execute the optional Universal Router `route`, size liquidity from held balances,
-///      flash-take any deficit, deploy through POSM, settle via a same-pool swap, trim the new
-///      liquidity for any remaining debt, check `minLiquidity`, sweep dust to `recipient`.
+/// @dev Flow: execute the optional Universal Router `route`, size liquidity from the budgets
+///      (re-read from held balances after a route), flash-take any deficit, deploy through POSM,
+///      settle via a same-pool swap, trim the new liquidity for any remaining debt, check
+///      `minLiquidity`, sweep dust to `recipient`.
 ///
 ///      Integration surface:
 ///      - Routes must use explicit input amounts. Balance-relative commands are unsafe because the
@@ -77,7 +78,7 @@ interface ISwapAndAdd is IMulticall_v4 {
     /// @notice Thrown when the transaction executes after the deadline.
     error DeadlinePassed(uint256 deadline);
 
-    /// @notice Thrown when `msg.value` does not match the expected native amount.
+    /// @notice Thrown when `msg.value` or the held native balance does not cover the expected native amount.
     error InvalidEthValue();
 
     /// @notice Thrown when ETH arrives from a sender other than PoolManager, POSM, or Universal Router.
@@ -99,7 +100,7 @@ interface ISwapAndAdd is IMulticall_v4 {
     /// @notice Thrown when a negative delta in `rebalance` requests more than the withdrawn amount.
     error ReturnExceedsWithdrawn(uint256 requested, uint256 withdrawn);
 
-    /// @notice Thrown when a compound or fee-only increase has no fees and no budget to deploy.
+    /// @notice Thrown when a compound or fee-only increase has no fees, no budget, and no route.
     error NoFeesToCompound();
 
     /// @notice Thrown when `routeFunding` is provided without a `route`.
