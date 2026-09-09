@@ -431,6 +431,33 @@ contract SwapAndAddTest is PosmTestSetup {
         zap.add(p);
     }
 
+    /// @dev Both amounts one wei over budget (inputs pinned to the wei, OZ N-08): the plan steps the
+    ///      liquidity down by one, both budgets deploy exactly, and no reconcile runs.
+    function test_add_bothTokensOneWeiShort_stepsDown() public {
+        uint160 sp = 79229262514264337593543964551;
+        uint256 b0 = 1481158881979609612901196;
+        uint256 b1 = 569452233024260127727281;
+        uint128 sized = 41015140056506187942291134627;
+        (PoolKey memory k,) = initPool(currency0, currency1, IHooks(address(0)), 100, int24(1), sp);
+        modifyLiquidityRouter.modifyLiquidity(
+            k, ModifyLiquidityParams({tickLower: -100, tickUpper: 100, liquidityDelta: 1e24, salt: 0}), ""
+        );
+        ISwapAndAdd.AddParams memory p = _addParams(0, 1, b0, b1);
+        p.poolKey = k;
+
+        p.minLiquidity = sized;
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InsufficientLiquidity.selector, sized, sized - 1));
+        zap.add(p);
+
+        p.minLiquidity = sized - 1;
+        (, uint128 liquidity, uint256 a0, uint256 a1) = zap.add(p);
+        assertEq(liquidity, sized - 1, "stepped down by one");
+        assertEq(a0, b0, "token0 budget fully deployed");
+        assertEq(a1, b1, "token1 budget fully deployed");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+    }
+
     function test_add_revertsOnMinLiquidity() public {
         ISwapAndAdd.AddParams memory p = _addParams(0, 10e18);
         p.minLiquidity = type(uint128).max; // impossible floor

@@ -36,6 +36,26 @@ contract SwapAndAddMathTest is Test {
         assertGt(a1, 0, "in range: token1");
     }
 
+    /// @dev The sizer's two rounding floors can return a liquidity whose round-up amounts exceed BOTH
+    ///      budgets by one wei. Inputs pinned to the wei (OZ N-08): one-tick 0.01% range, budgets equal
+    ///      to the exact amounts for `sized - 1`. `_planLiquidity` steps down one unit for this case.
+    function test_getLiquidityFeeAware_canOvershootBothBudgets() public pure {
+        uint160 sp = 79229262514264337593543964551;
+        uint160 sl = TickMath.getSqrtPriceAtTick(0);
+        uint160 su = TickMath.getSqrtPriceAtTick(1);
+        uint256 b0 = 1481158881979609612901196;
+        uint256 b1 = 569452233024260127727281;
+
+        uint128 sized = SwapAndAddMath.getLiquidityFeeAware(sp, sl, su, b0, b1, 0, 100);
+        (uint256 a0, uint256 a1) = SwapAndAddMath.getAmountsForLiquidityRoundingUp(sp, sl, su, sized);
+        assertEq(a0, b0 + 1, "token0 one wei over budget");
+        assertEq(a1, b1 + 1, "token1 one wei over budget");
+
+        (a0, a1) = SwapAndAddMath.getAmountsForLiquidityRoundingUp(sp, sl, su, sized - 1);
+        assertEq(a0, b0, "sized - 1 fits budget0 exactly");
+        assertEq(a1, b1, "sized - 1 fits budget1 exactly");
+    }
+
     /// @dev The round-up amounts must sit within one wei above a clamp-formulated round-down oracle:
     ///      token0 spans [max(sp,sa), sb], token1 spans [sa, min(sp,sb)].
     function testFuzz_getAmountsForLiquidity_withinOneWeiAboveRoundDown(

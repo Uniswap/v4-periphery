@@ -376,6 +376,13 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         );
         (amount0, amount1) =
             SwapAndAddMath.getAmountsForLiquidityRoundingUp(sqrtPriceX96, sqrtLower, sqrtUpper, liquidity);
+        // the sizer's two rounding floors can leave both amounts one wei over budget, which the
+        // reconcile cannot settle. Step down one unit so at most one token is short.
+        if (amount0 > cp.budget0 && amount1 > cp.budget1) {
+            liquidity -= 1;
+            (amount0, amount1) =
+                SwapAndAddMath.getAmountsForLiquidityRoundingUp(sqrtPriceX96, sqrtLower, sqrtUpper, liquidity);
+        }
     }
 
     /// @dev Flash-takes deficit tokens so the POSM deploy is fully funded. The rounded-up amounts
