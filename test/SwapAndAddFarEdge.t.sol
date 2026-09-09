@@ -135,9 +135,14 @@ contract SwapAndAddFarEdgeTest is PosmTestSetup {
     }
 
     /// @dev fuzzed budgets, widths, and fees. A far-edge landing shows up as a raw revert.
-    function testFuzz_farEdge_neverRawReverts(uint256 b0, uint256 b1, uint8 widthMul, uint8 feeIdx, bool ext, bool thin)
-        public
-    {
+    function testFuzz_farEdge_neverRawReverts(
+        uint256 b0,
+        uint256 b1,
+        uint8 widthMul,
+        uint8 feeIdx,
+        bool ext,
+        bool thin
+    ) public {
         uint24[4] memory fees = [uint24(0), 100, 3000, 100_000];
         int24 spacing = thin ? int24(1) : int24(10);
         int24 width = spacing * int24(uint24(bound(widthMul, 1, 200))); // down to a single tick each side

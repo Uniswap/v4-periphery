@@ -1056,19 +1056,21 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         return _countModifyPositionEvents(vm.getRecordedLogs());
     }
 
-    function _countModifyPositionEventsDuring_increase(uint256 tokenId, PositionConfig memory config, uint256 liquidity)
-        private
-        returns (uint256)
-    {
+    function _countModifyPositionEventsDuring_increase(
+        uint256 tokenId,
+        PositionConfig memory config,
+        uint256 liquidity
+    ) private returns (uint256) {
         vm.recordLogs();
         increaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
         return _countModifyPositionEvents(vm.getRecordedLogs());
     }
 
-    function _countModifyPositionEventsDuring_decrease(uint256 tokenId, PositionConfig memory config, uint256 liquidity)
-        private
-        returns (uint256)
-    {
+    function _countModifyPositionEventsDuring_decrease(
+        uint256 tokenId,
+        PositionConfig memory config,
+        uint256 liquidity
+    ) private returns (uint256) {
         vm.recordLogs();
         decreaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
         return _countModifyPositionEvents(vm.getRecordedLogs());
