@@ -145,8 +145,9 @@ library SwapAndAddMath {
 
     /// @notice Computes the liquidity to burn so that v4's rounded-down burn output covers
     ///         `amountToCover` of the deficit token.
-    /// @dev Ceiling inverse over `amountToCover + 1`, so the freed amount is always sufficient.
-    ///      Assumes the price is not past the range's far side for the deficit token.
+    /// @dev Ceiling inverse over `amountToCover + 1`, so the freed amount is always sufficient. At or
+    ///      past the range's far side the position holds none of the deficit token, so no finite burn
+    ///      frees any: returns type(uint256).max for the caller's cap.
     /// @param sqrtPriceX96 Current pool sqrt price.
     /// @param sqrtPriceLowerX96 Sqrt price at the position's lower tick.
     /// @param sqrtPriceUpperX96 Sqrt price at the position's upper tick.
@@ -160,6 +161,9 @@ library SwapAndAddMath {
         bool deficitIsCurrency1,
         uint256 amountToCover
     ) internal pure returns (uint256 liquidityToTrim) {
+        if (deficitIsCurrency1 ? sqrtPriceX96 <= sqrtPriceLowerX96 : sqrtPriceX96 >= sqrtPriceUpperX96) {
+            return type(uint256).max;
+        }
         if (deficitIsCurrency1) {
             // token1 occupies [sqrtLower, min(price, sqrtUpper)]: amount1 = L * (hi - lo) / Q96
             uint160 clampedUpper = sqrtPriceX96 < sqrtPriceUpperX96 ? sqrtPriceX96 : sqrtPriceUpperX96;

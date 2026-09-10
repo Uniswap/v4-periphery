@@ -407,6 +407,21 @@ contract SwapAndAddMathTest is Test {
         assertGe(freed1(sl, hi, uint128(dl)), a, "token1 inverse under-freed");
     }
 
+    /// @dev At or past the far side the position holds none of the deficit token, so no finite burn
+    ///      frees any: the inverse returns type(uint256).max for the caller's cap to absorb.
+    function test_toFree_atOrPastFarSideReturnsMax() public pure {
+        uint160 sl = TickMath.getSqrtPriceAtTick(-600);
+        uint160 su = TickMath.getSqrtPriceAtTick(600);
+        // token1 deficit: far side is the lower edge
+        assertEq(SwapAndAddMath.getLiquidityToTrim(sl, sl, su, true, 1), type(uint256).max, "token1 at lower");
+        assertEq(SwapAndAddMath.getLiquidityToTrim(sl - 1, sl, su, true, 1), type(uint256).max, "token1 past lower");
+        assertLt(SwapAndAddMath.getLiquidityToTrim(sl + 1, sl, su, true, 1), type(uint256).max, "token1 inside");
+        // token0 deficit: far side is the upper edge
+        assertEq(SwapAndAddMath.getLiquidityToTrim(su, sl, su, false, 1), type(uint256).max, "token0 at upper");
+        assertEq(SwapAndAddMath.getLiquidityToTrim(su + 1, sl, su, false, 1), type(uint256).max, "token0 past upper");
+        assertLt(SwapAndAddMath.getLiquidityToTrim(su - 1, sl, su, false, 1), type(uint256).max, "token0 inside");
+    }
+
     /// @dev Documented limit: a price within sqrt-units of sqrtUpper plus an enormous token0 debt
     ///      overflows the inverse's final mulDiv and reverts.
     function test_toFree_revertsAtDocumentedFarEdge() public {

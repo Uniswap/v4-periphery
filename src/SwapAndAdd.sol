@@ -446,8 +446,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     }
 
     /// @dev Frees deficit tokens by decreasing the new liquidity, capped at `lopt` so existing
-    ///      principal is never touched. The price cannot be past the range's far side because the
-    ///      reconcile swap's untaxed output repays the debt within the range.
+    ///      principal is never touched. At or past the range's far side the inverse asks for everything
+    ///      and the cap binds.
     function _trim(
         CoreParams memory cp,
         uint256 tokenId,
