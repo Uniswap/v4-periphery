@@ -172,8 +172,17 @@ library SwapAndAddMath {
         } else {
             // token0 occupies [max(price, sqrtLower), sqrtUpper]: amount0 = L * Q96 * (hi - lo) / (hi * lo)
             uint160 clampedLower = sqrtPriceX96 > sqrtPriceLowerX96 ? sqrtPriceX96 : sqrtPriceLowerX96;
-            // below tick ~-665k this quotient rounds up from below 1 and over-trims by a factor of
-            // up to ~2^32 (potentially the caller's entire cap), safely absorbed without fund loss
+
+            // If the product fits below Q96, divide once. The split's intermediate would round up from below 1 and over-trim
+            if (sqrtPriceUpperX96 <= FixedPoint96.Q96) {
+                liquidityToTrim = FullMath.mulDivRoundingUp(
+                    amountToCover + 1,
+                    uint256(clampedLower) * sqrtPriceUpperX96,
+                    uint256(sqrtPriceUpperX96 - clampedLower) * FixedPoint96.Q96
+                );
+                return liquidityToTrim;
+            }
+
             uint256 intermediate = FullMath.mulDivRoundingUp(clampedLower, sqrtPriceUpperX96, FixedPoint96.Q96);
             // can overflow and revert when the price is within sqrt units of sqrtUpper with a large
             // deficit (self-inflicted and atomic, a safe known limit)

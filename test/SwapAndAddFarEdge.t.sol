@@ -16,9 +16,10 @@ import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol"
 import {PosmTestSetup} from "./shared/PosmTestSetup.sol";
 
 /// @notice Worse-than-spot execution on a spot-sized surplus keeps the reconcile sell inside the range's
-///         far edge, except at wei scale: on a fee-0 pool with the price a hair from the edge, rounding
-///         can land the sell exactly on it with a wei still owed. The trim then burns everything and the
-///         floor surfaces `InsufficientLiquidity` instead of raw revert data.
+///         far edge, except at wei scale: mint rounds the debt up and the sell rounds its output down, so
+///         a wei can stay owed with the price on or past the edge. Reachable on a fee-0 pool with the
+///         price a hair from the edge, and on any fee at extreme ticks with wei budgets. The trim then
+///         burns everything and the floor surfaces `InsufficientLiquidity` instead of raw revert data.
 contract SwapAndAddFarEdgeTest is PosmTestSetup {
     using StateLibrary for IPoolManager;
     using CurrencyLibrary for Currency;
@@ -113,6 +114,22 @@ contract SwapAndAddFarEdgeTest is PosmTestSetup {
 
         vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InsufficientLiquidity.selector, 1, 0));
         zap.add(_addP(k, 1, 2, 1e18, 0));
+    }
+
+    /// @dev 0.3% pool at tick -200,000, where one liquidity unit costs (66, 1): selling the token0 surplus
+    ///      for the single token1 wei owed reaches the lower edge (134 wei budget) or crosses it through
+    ///      empty ticks (135 wei) with the wei still owed, since the sell output rounds down to zero.
+    function test_farEdge_extremeTickWeiBudget_onAndPastEdge_revertInsufficientLiquidity() public {
+        PoolKey memory k = PoolKey({
+            currency0: currency0, currency1: currency1, fee: 3000, tickSpacing: 10, hooks: IHooks(address(0))
+        });
+        manager.initialize(k, TickMath.getSqrtPriceAtTick(-200_000));
+
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InsufficientLiquidity.selector, 1, 0));
+        zap.add(_addP(k, -200_060, -199_940, 134, 0));
+
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InsufficientLiquidity.selector, 1, 0));
+        zap.add(_addP(k, -200_060, -199_940, 135, 0));
     }
 
     uint24 private feeNonce;

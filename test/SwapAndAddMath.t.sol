@@ -422,6 +422,18 @@ contract SwapAndAddMathTest is Test {
         assertLt(SwapAndAddMath.getLiquidityToTrim(su - 1, sl, su, false, 1), type(uint256).max, "token0 inside");
     }
 
+    /// @dev Below tick ~-665k the split inverse's intermediate rounded up from below 1 and over-trimmed by
+    ///      up to ~2^32. The undivided path is exact: the minimal sufficient burn, and one less under-frees.
+    function test_toFree_lowPriceToken0_isTight() public pure {
+        uint160 sl = TickMath.getSqrtPriceAtTick(-800_000);
+        uint160 su = TickMath.getSqrtPriceAtTick(-799_940);
+        uint256 debt = 1e18;
+        uint256 dl = SwapAndAddMath.getLiquidityToTrim(sl, sl, su, false, debt);
+        assertEq(dl, 1422, "minimal sufficient burn");
+        assertGe(SqrtPriceMath.getAmount0Delta(sl, su, uint128(dl), false), debt, "frees the debt");
+        assertLt(SqrtPriceMath.getAmount0Delta(sl, su, uint128(dl - 1), false), debt, "one less under-frees");
+    }
+
     /// @dev Documented limit: a price within sqrt-units of sqrtUpper plus an enormous token0 debt
     ///      overflows the inverse's final mulDiv and reverts.
     function test_toFree_revertsAtDocumentedFarEdge() public {
