@@ -87,6 +87,8 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
             route: routeBytes,
             routeFunding: funding,
             minLiquidity: 1,
+            sqrtPriceMinX96: 0,
+            sqrtPriceMaxX96: type(uint160).max,
             recipient: recipient,
             hookData: "",
             deadline: block.timestamp + 1
@@ -133,6 +135,28 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         assertEq(tokenX.balanceOf(address(this)), xBefore - 3e18, "both entries pulled");
         assertGt(liq, 0);
         assertEq(tokenX.balanceOf(address(zap)), 0, "no X at rest");
+    }
+
+    function test_add_funding_allowanceCoversAggregateAboveUint128() public {
+        _configXRoute(0);
+        zap.add(_addP(1e18, 1e18, ROUTE_PAYLOAD, _funding(address(tokenX), 0)));
+
+        uint256 total = uint256(1) << 129;
+        tokenX.mint(address(this), total);
+        vm.prank(address(zap));
+        tokenX.approve(address(permit2), total * 3 / 4); // enough per entry, insufficient for their sum
+        ISwapAndAdd.TokenAmount[] memory funding = new ISwapAndAdd.TokenAmount[](2);
+        funding[0] = ISwapAndAdd.TokenAmount({token: Currency.wrap(address(tokenX)), amount: total / 2});
+        funding[1] = ISwapAndAdd.TokenAmount({token: Currency.wrap(address(tokenX)), amount: total / 2});
+        // Keep the pool-token output small while exercising a large route input.
+        route.config(address(tokenX), Currency.unwrap(currency1), 1, 10000, total, true);
+
+        (, uint128 liq,,) = zap.add(_addP(0, 0, ROUTE_PAYLOAD, funding));
+
+        assertGt(liq, 0);
+        assertEq(tokenX.allowance(address(zap), address(permit2)), type(uint256).max);
+        assertEq(tokenX.balanceOf(address(route)), total, "route consumed both entries");
+        assertEq(tokenX.balanceOf(address(zap)), 0);
     }
 
     /// @dev a zero-amount entry pulls nothing but wires and sweeps the token (donation claim)
@@ -219,6 +243,8 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
                 route: ROUTE_PAYLOAD,
                 routeFunding: _funding(address(tokenX), 5e18),
                 minLiquidityAdded: 1,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: address(this),
                 hookData: "",
                 deadline: block.timestamp + 1
@@ -249,6 +275,8 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
                 route: ROUTE_PAYLOAD,
                 routeFunding: _funding(address(tokenX), 3e18),
                 minLiquidityAdded: 1,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: operator, // ignored: caller is an operator
                 hookData: "",
                 deadline: block.timestamp + 1
@@ -276,6 +304,8 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
                 route: ROUTE_PAYLOAD,
                 routeFunding: _funding(address(tokenX), 2e18),
                 minLiquidity: 1,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: address(this),
                 hookData: "",
                 deadline: block.timestamp + 1

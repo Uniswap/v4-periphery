@@ -28,7 +28,10 @@ import {MockSwapRoute} from "./mocks/MockSwapRoute.sol";
 import {MockERC20ApproveNoReturn} from "./mocks/MockERC20ApproveNoReturn.sol";
 import {MockERC20Permit2Native} from "./mocks/MockERC20Permit2Native.sol";
 import {MockERC20ApproveRace} from "./mocks/MockERC20ApproveRace.sol";
+import {MockERC20CappedAllowance} from "./mocks/MockERC20CappedAllowance.sol";
 import {MockDynamicFeeHook} from "./mocks/MockDynamicFeeHook.sol";
+import {MockPosmDebtHook} from "./mocks/MockPosmDebtHook.sol";
+import {MockDebtPlantingRoute} from "./mocks/MockDebtPlantingRoute.sol";
 import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
 
@@ -93,6 +96,8 @@ contract SwapAndAddTest is PosmTestSetup {
             route: "",
             routeFunding: new ISwapAndAdd.TokenAmount[](0),
             minLiquidity: 0,
+            sqrtPriceMinX96: 0,
+            sqrtPriceMaxX96: type(uint160).max,
             recipient: address(this),
             hookData: "",
             deadline: block.timestamp + 1
@@ -211,6 +216,8 @@ contract SwapAndAddTest is PosmTestSetup {
             route: "",
             routeFunding: new ISwapAndAdd.TokenAmount[](0),
             minLiquidityAdded: 0,
+            sqrtPriceMinX96: 0,
+            sqrtPriceMaxX96: type(uint160).max,
             recipient: address(this),
             hookData: "",
             deadline: block.timestamp + 1
@@ -299,6 +306,20 @@ contract SwapAndAddTest is PosmTestSetup {
 
         vm.expectRevert(ISwapAndAdd.NoFeesToCompound.selector);
         zap.compound(_compoundParams(tokenId, 0));
+    }
+
+    /// @dev A budget too small for one unit of liquidity reverts with the typed floor error, on a live
+    ///      position and on an emptied one (where v4 would otherwise reject the zero update).
+    function test_increase_weiBudget_revertsInsufficientLiquidity() public {
+        (uint256 tokenId,,,) = zap.add(_addParams(-887_220, 887_220, 10e18, 10e18));
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InsufficientLiquidity.selector, 0, 0));
+        zap.increase(_increaseParams(tokenId, 0, 1));
+
+        _emptyPosition(tokenId);
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InsufficientLiquidity.selector, 0, 0));
+        zap.increase(_increaseParams(tokenId, 0, 1));
     }
 
     function test_increase_revertsOnMinLiquidity() public {
@@ -410,6 +431,33 @@ contract SwapAndAddTest is PosmTestSetup {
         zap.add(p);
     }
 
+    /// @dev Both amounts one wei over budget (inputs pinned to the wei, OZ N-08): the plan steps the
+    ///      liquidity down by one, both budgets deploy exactly, and no reconcile runs.
+    function test_add_bothTokensOneWeiShort_stepsDown() public {
+        uint160 sp = 79229262514264337593543964551;
+        uint256 b0 = 1481158881979609612901196;
+        uint256 b1 = 569452233024260127727281;
+        uint128 sized = 41015140056506187942291134627;
+        (PoolKey memory k,) = initPool(currency0, currency1, IHooks(address(0)), 100, int24(1), sp);
+        modifyLiquidityRouter.modifyLiquidity(
+            k, ModifyLiquidityParams({tickLower: -100, tickUpper: 100, liquidityDelta: 1e24, salt: 0}), ""
+        );
+        ISwapAndAdd.AddParams memory p = _addParams(0, 1, b0, b1);
+        p.poolKey = k;
+
+        p.minLiquidity = sized;
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InsufficientLiquidity.selector, sized, sized - 1));
+        zap.add(p);
+
+        p.minLiquidity = sized - 1;
+        (, uint128 liquidity, uint256 a0, uint256 a1) = zap.add(p);
+        assertEq(liquidity, sized - 1, "stepped down by one");
+        assertEq(a0, b0, "token0 budget fully deployed");
+        assertEq(a1, b1, "token1 budget fully deployed");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+    }
+
     function test_add_revertsOnMinLiquidity() public {
         ISwapAndAdd.AddParams memory p = _addParams(0, 10e18);
         p.minLiquidity = type(uint128).max; // impossible floor
@@ -431,6 +479,8 @@ contract SwapAndAddTest is PosmTestSetup {
             route: "",
             routeFunding: new ISwapAndAdd.TokenAmount[](0),
             minLiquidity: 0,
+            sqrtPriceMinX96: 0,
+            sqrtPriceMaxX96: type(uint160).max,
             recipient: address(this),
             hookData: "",
             deadline: block.timestamp + 1
@@ -525,6 +575,8 @@ contract SwapAndAddTest is PosmTestSetup {
             route: "",
             routeFunding: new ISwapAndAdd.TokenAmount[](0),
             minLiquidity: 0,
+            sqrtPriceMinX96: 0,
+            sqrtPriceMaxX96: type(uint160).max,
             recipient: address(this),
             hookData: "",
             deadline: block.timestamp + 1
@@ -626,6 +678,98 @@ contract SwapAndAddTest is PosmTestSetup {
         p.poolKey.hooks = IHooks(address(uint160(Hooks.BEFORE_SWAP_FLAG)));
         vm.expectRevert(IPoolManager.PoolNotInitialized.selector);
         zap.add(p);
+    }
+
+    /// @dev A beforeSwap hook drives POSM's PoolManager delta negative during the reconcile swap.
+    ///      The trim's TAKE_PAIR would net it against the burn proceeds.
+    function test_add_hookPlantsPosmDebt_reverts() public {
+        address hookAddress = address(uint160(Hooks.BEFORE_SWAP_FLAG));
+        vm.etch(hookAddress, address(new MockPosmDebtHook()).code);
+        MockPosmDebtHook debtHook = MockPosmDebtHook(hookAddress);
+        (PoolKey memory hookKey,) =
+            initPoolAndAddLiquidity(currency0, currency1, IHooks(hookAddress), 3000, SQRT_PRICE_1_1);
+        seedMoreLiquidity(hookKey, 1_000e18, 1_000e18);
+
+        ISwapAndAdd.AddParams memory p = _addParams(0, 10e18);
+        p.poolKey = hookKey;
+
+        uint256 snap = vm.snapshotState();
+        (, uint128 liq,,) = zap.add(p);
+        assertGt(liq, 0, "unarmed hook passes");
+        vm.revertToState(snap);
+
+        // surplus side: netted silently against the trim proceeds without the check
+        debtHook.arm(lpm, currency1, 1e14);
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.PositionManagerInDebt.selector, currency1));
+        zap.add(p);
+
+        // deficit side: a settlement failure without the check
+        debtHook.arm(lpm, currency0, 1e14);
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.PositionManagerInDebt.selector, currency0));
+        zap.add(p);
+    }
+
+    /// @dev A hook on a route-leg pool plants the debt during the route. The deploy's CLOSE_CURRENCY
+    ///      would settle it from the surplus budget.
+    function test_add_routePlantsPosmDebt_reverts() public {
+        MockDebtPlantingRoute plantingRoute = new MockDebtPlantingRoute();
+        ISwapAndAdd plantedZap = ISwapAndAdd(
+            deployCode(
+                "SwapAndAdd.sol:SwapAndAdd", abi.encode(manager, permit2, lpm, IUniversalRouter(address(plantingRoute)))
+            )
+        );
+        permit2.approve(Currency.unwrap(currency0), address(plantedZap), type(uint160).max, type(uint48).max);
+        permit2.approve(Currency.unwrap(currency1), address(plantedZap), type(uint160).max, type(uint48).max);
+
+        ISwapAndAdd.AddParams memory p = _addParams(10e18, 20e18);
+        p.route = ROUTE_PAYLOAD;
+
+        uint256 snap = vm.snapshotState();
+        (, uint128 liq,,) = plantedZap.add(p);
+        assertGt(liq, 0, "inert route passes");
+        vm.revertToState(snap);
+
+        plantingRoute.arm(lpm, currency1, 1e14);
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.PositionManagerInDebt.selector, currency1));
+        plantedZap.add(p);
+    }
+
+    /// @dev Route stand-in: credits the zap through PoolManager, as a route-pool incentive hook can.
+    function execute(bytes calldata, bytes[] calldata) external payable {
+        require(msg.sender == address(zap), "unexpected route caller");
+        manager.sync(currency0);
+        currency0.transfer(address(manager), 1e12);
+        manager.settleFor(msg.sender);
+        manager.sync(currency1);
+        currency1.transfer(address(manager), 2e12);
+        manager.settleFor(msg.sender);
+    }
+
+    function test_add_balanced_hooklessPool_sweepsRouteCredits() public {
+        vm.deal(address(this), 0); // no unrelated ETH on the route stand-in to trigger the router sweep
+        zap = ISwapAndAdd(
+            deployCode("SwapAndAdd.sol:SwapAndAdd", abi.encode(manager, permit2, lpm, IUniversalRouter(address(this))))
+        );
+        _approveZap(currency0);
+        _approveZap(currency1);
+
+        ISwapAndAdd.AddParams memory p = _addParams(10e18, 10e18);
+        p.route = ROUTE_PAYLOAD;
+        p.recipient = makeAddr("incentiveRecipient");
+        assertEq(address(p.poolKey.hooks), address(0), "target pool has no hook");
+
+        (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1) = zap.add(p);
+
+        assertGt(liq, 0, "liquidity minted");
+        assertLe(a0, p.amount0In, "token0 budget covers deploy");
+        assertLe(a1, p.amount1In, "token1 budget covers deploy");
+        (uint160 price,,,) = manager.getSlot0(key.toId());
+        assertEq(price, SQRT_PRICE_1_1, "balanced deposit needs no reconcile swap");
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), p.recipient);
+        assertEq(currency0.balanceOf(p.recipient), p.amount0In - a0 + 1e12, "token0 dust plus route credit");
+        assertEq(currency1.balanceOf(p.recipient), p.amount1In - a1 + 2e12, "token1 dust plus route credit");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 swept");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 swept");
     }
 
     function test_rebalance_revertsIfNotAuthorized() public {
@@ -793,6 +937,8 @@ contract SwapAndAddTest is PosmTestSetup {
             route: "",
             routeFunding: new ISwapAndAdd.TokenAmount[](0),
             minLiquidity: 0,
+            sqrtPriceMinX96: 0,
+            sqrtPriceMaxX96: type(uint160).max,
             recipient: address(this),
             hookData: "",
             deadline: block.timestamp + 1
@@ -858,6 +1004,8 @@ contract SwapAndAddTest is PosmTestSetup {
             tokenId: tokenId,
             route: "",
             minLiquidityAdded: minLiquidityAdded,
+            sqrtPriceMinX96: 0,
+            sqrtPriceMaxX96: type(uint160).max,
             recipient: address(this),
             hookData: "",
             deadline: block.timestamp + 1
@@ -1141,6 +1289,75 @@ contract SwapAndAddTest is PosmTestSetup {
 
         assertGt(liq, 0, "add succeeded after self-heal");
         assertEq(token.allowance(address(zap), address(permit2)), type(uint256).max, "allowance healed to max");
+    }
+
+    function test_add_cappedAllowance_skipsRepeatedApprovals() public {
+        MockERC20CappedAllowance token = new MockERC20CappedAllowance();
+        token.mint(address(this), 1_000e18);
+        token.approve(address(permit2), type(uint256).max);
+        permit2.approve(address(token), address(zap), type(uint160).max, type(uint48).max);
+        token.approve(address(modifyLiquidityRouter), type(uint256).max);
+        PoolKey memory k = _initWeirdTokenPool(address(token));
+        ISwapAndAdd.AddParams memory p = _addParams(0, 5e18);
+        p.poolKey = k;
+        zap.add(p);
+        assertEq(token.allowance(address(zap), address(permit2)), type(uint96).max);
+
+        vm.expectCall(address(token), abi.encodeWithSelector(token.approve.selector), uint64(0));
+        vm.expectCall(address(permit2), abi.encodeWithSelector(IAllowanceTransfer.approve.selector), uint64(0));
+        (, uint128 liq,,) = zap.add(p);
+        assertGt(liq, 0, "second add succeeds without repeating approvals");
+    }
+
+    function _seedLargeAllowancePool() internal {
+        zap.add(_addParams(1e18, 1e18)); // initialize standing allowances
+        MockERC20(Currency.unwrap(currency0)).mint(address(this), 1e33);
+        MockERC20(Currency.unwrap(currency1)).mint(address(this), 1e33);
+        seedMoreLiquidity(key, 1e31, 1e31);
+    }
+
+    function test_add_amountAboveUint96_refreshesInsufficientAllowance() public {
+        _seedLargeAllowancePool();
+        vm.prank(address(zap));
+        MockERC20(Currency.unwrap(currency0)).approve(address(permit2), type(uint96).max);
+
+        uint256 budget = uint256(type(uint96).max) * 2;
+        (, uint128 liq, uint256 a0,) = zap.add(_addParams(budget, budget));
+
+        assertGt(liq, 0);
+        assertGt(a0, type(uint96).max, "large deployment supported");
+        assertEq(MockERC20(Currency.unwrap(currency0)).allowance(address(zap), address(permit2)), type(uint256).max);
+    }
+
+    function test_add_flashTakeAboveUint96_checksDeployAmount() public {
+        _seedLargeAllowancePool();
+        vm.prank(address(zap));
+        MockERC20(Currency.unwrap(currency0)).approve(address(permit2), type(uint96).max);
+
+        (, uint128 liq, uint256 a0,) = zap.add(_addParams(0, uint256(type(uint96).max) * 4));
+
+        assertGt(liq, 0);
+        assertGt(a0, type(uint96).max, "token0 deploy exceeds its zero input budget");
+        assertEq(MockERC20(Currency.unwrap(currency0)).allowance(address(zap), address(permit2)), type(uint256).max);
+    }
+
+    function test_add_routeConsumesAllowance_refreshesBeforeDeploy() public {
+        _seedLargeAllowancePool();
+        uint256 budget = uint256(type(uint96).max) * 2;
+        vm.prank(address(zap));
+        MockERC20(Currency.unwrap(currency0)).approve(address(permit2), budget);
+        MockERC20(Currency.unwrap(currency1)).mint(address(route), budget);
+        route.config(Currency.unwrap(currency0), Currency.unwrap(currency1), FixedPoint96.Q96, 10000, budget, true);
+        ISwapAndAdd.AddParams memory p = _addParams(budget, 0);
+        p.route = ROUTE_PAYLOAD;
+
+        (, uint128 liq, uint256 a0,) = zap.add(p);
+
+        assertGt(liq, 0);
+        assertGt(a0, 0, "POSM pulls token0 after route exhausts its allowance");
+        assertEq(MockERC20(Currency.unwrap(currency0)).allowance(address(zap), address(permit2)), type(uint256).max);
+        assertEq(currency0.balanceOf(address(zap)), 0);
+        assertEq(currency1.balanceOf(address(zap)), 0);
     }
 
     /// @dev Extreme-tick regressions: a single-sided token0 range with no swap must deploy the full
