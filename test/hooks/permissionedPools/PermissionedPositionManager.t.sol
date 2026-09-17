@@ -771,6 +771,97 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         lpm.modifyLiquidities(calls, block.timestamp + 1);
     }
 
+    /// @dev Creates a factory adapter over a fresh token and returns it, WITHOUT verifying it. Loops until the
+    ///      adapter address sorts below `permissionsAdapter0` so it can be used as currency0 (validated first).
+    function _createUnverifiedAdapterBelow(address ceiling) internal returns (PermissionsAdapter unverified) {
+        Currency ordinary = deployMintAndApproveCurrency(false);
+        while (true) {
+            unverified = PermissionsAdapter(
+                permissionsAdapterFactory.createPermissionsAdapter(
+                    IERC20(Currency.unwrap(ordinary)), address(this), mockAllowListChecker
+                )
+            );
+            if (address(unverified) < ceiling) break;
+        }
+        // Sanity: created in the factory but not verified.
+        assertEq(permissionsAdapterFactory.permissionsAdapterOf(address(unverified)), Currency.unwrap(ordinary));
+        assertEq(permissionsAdapterFactory.verifiedPermissionsAdapterOf(address(unverified)), address(0));
+    }
+
+    /// @dev A pool pairing a verified adapter with a factory-created-but-unverified adapter must reject the mint:
+    ///      an unverified adapter is not an ordinary token and cannot skip its LIQUIDITY_ALLOWED and hook checks.
+    function test_mint_reverts_when_paired_with_unverified_adapter() public {
+        PermissionsAdapter unverified = _createUnverifiedAdapterBelow(address(permissionsAdapter0));
+
+        // unverified adapter is currency0 (sorts lower), so it is validated first.
+        PoolKey memory k = PoolKey({
+            currency0: Currency.wrap(address(unverified)),
+            currency1: Currency.wrap(address(permissionsAdapter0)),
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(address(0))
+        });
+        manager.initialize(k, SQRT_PRICE_1_1);
+
+        PositionConfig memory config = PositionConfig({poolKey: k, tickLower: -120, tickUpper: 120});
+        bytes memory calls = getMintEncoded(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        vm.expectRevert(bytes4(keccak256("NoVerifiedAdapter()")));
+        lpm.modifyLiquidities(calls, block.timestamp + 1);
+    }
+
+    function test_mint_reverts_when_paired_with_non_contract_currency() public {
+        // A code-less non-adapter address (a not-yet-deployed adapter address), sorted below the adapter so it
+        // is currency0 and is validated first.
+        address phantom = address(0xBEEF);
+        assertEq(phantom.code.length, 0);
+
+        PoolKey memory k = PoolKey({
+            currency0: Currency.wrap(phantom),
+            currency1: Currency.wrap(address(permissionsAdapter0)),
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(address(0))
+        });
+        manager.initialize(k, SQRT_PRICE_1_1);
+
+        PositionConfig memory config = PositionConfig({poolKey: k, tickLower: -120, tickUpper: 120});
+        bytes memory calls = getMintEncoded(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        vm.expectRevert(bytes4(keccak256("NonContractCurrency()")));
+        lpm.modifyLiquidities(calls, block.timestamp + 1);
+    }
+
+    /// @dev Once the adapter is verified it clears the NoVerifiedAdapter gate. The mint then reverts with
+    ///      InvalidHook instead (the zero-address hooks used here are not on the verified adapter's allowlist),
+    ///      confirming verification — not the hook check — was what blocked the mint above.
+    function test_mint_pastVerificationGate_after_adapter_is_verified() public {
+        PermissionsAdapter unverified = _createUnverifiedAdapterBelow(address(permissionsAdapter0));
+
+        // Verify it: the factory requires the adapter to hold a nonzero balance of its underlying.
+        IERC20 underlying = IERC20(permissionsAdapterFactory.permissionsAdapterOf(address(unverified)));
+        underlying.approve(address(unverified), 1);
+        unverified.depositForVerification(1);
+        permissionsAdapterFactory.verifyPermissionsAdapter(address(unverified));
+        assertEq(permissionsAdapterFactory.verifiedPermissionsAdapterOf(address(unverified)), address(underlying));
+
+        PoolKey memory k = PoolKey({
+            currency0: Currency.wrap(address(unverified)),
+            currency1: Currency.wrap(address(permissionsAdapter0)),
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(address(0))
+        });
+        manager.initialize(k, SQRT_PRICE_1_1);
+
+        PositionConfig memory config = PositionConfig({poolKey: k, tickLower: -120, tickUpper: 120});
+        bytes memory calls = getMintEncoded(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        // Past the NoVerifiedAdapter gate now; blocked only by the (unrelated) hook allowlist.
+        vm.expectRevert(InvalidHook.selector);
+        lpm.modifyLiquidities(calls, block.timestamp + 1);
+    }
+
     function test_permissioned_mint_increase_allowed_user() public {
         _test_permissioned_mint_increase_allowed_user(key0);
         _test_permissioned_mint_increase_allowed_user(key1);
@@ -1618,8 +1709,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     }
 
     function test_permissioned_increase_reverts_when_only_one_currency_hook_revoked() public {
-        // Use key2 (permissioned/permissioned) to exercise the `&&` short-circuit in _checkAllowedHooks.
-        // Each side's mapping entry must independently block an increase.
+        // Use key2 (permissioned/permissioned): each currency is validated independently, so either side's
+        // revoked hook allowlist must block the increase on its own.
         _test_permissioned_increase_reverts_when_only_one_currency_hook_revoked(key2, true);
         _test_permissioned_increase_reverts_when_only_one_currency_hook_revoked(key2, false);
     }
@@ -1647,12 +1738,12 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     }
 
     // =============================================================================
-    // Owner LIQUIDITY_ALLOWED enforcement on liquidity increases (ECO-347 / Cantina #17)
+    // Owner LIQUIDITY_ALLOWED enforcement on liquidity increases
     // =============================================================================
     //
     // An ERC-721-approved operator that retains LIQUIDITY_ALLOWED must not be able to grow
     // a delisted owner's position by paying with their own funds. `_increase` and
-    // `_increaseFromDeltas` re-check `_checkRecipientAllowed(currency, ownerOf(tokenId))`.
+    // `_increaseFromDeltas` re-check the owner's LIQUIDITY_ALLOWED via `_validateLiquidityCurrency`.
 
     function test_permissioned_increase_reverts_when_owner_liquidity_revoked_via_operator() public {
         _test_permissioned_increase_reverts_when_owner_liquidity_revoked_via_operator(key0);

@@ -37,6 +37,7 @@ contract PermissionedPositionManager is PositionManager {
     error InvalidHook();
     error TransferDisabled();
     error NoVerifiedAdapter();
+    error NonContractCurrency();
 
     /// @dev as this contract must know the hooks address in advance, it must be passed in as a constructor argument
     constructor(
@@ -146,15 +147,10 @@ contract PermissionedPositionManager is PositionManager {
         address owner,
         bytes calldata hookData
     ) internal override {
-        // require at least one currency to be a verified permissions adapter
-        if (
-            _verifiedPermissionedTokenOf(poolKey.currency0) == address(0)
-                && _verifiedPermissionedTokenOf(poolKey.currency1) == address(0)
-        ) revert NoVerifiedAdapter();
-        // allowlist is verified in the hook call
-        if (!_checkAllowedHooks(poolKey)) revert InvalidHook();
-        _checkRecipientAllowed(poolKey.currency0, owner);
-        _checkRecipientAllowed(poolKey.currency1, owner);
+        // Validate each currency; require at least one to be a verified permissions adapter.
+        bool verified0 = _validateLiquidityCurrency(poolKey.currency0, poolKey.hooks, owner);
+        bool verified1 = _validateLiquidityCurrency(poolKey.currency1, poolKey.hooks, owner);
+        if (!verified0 && !verified1) revert NoVerifiedAdapter();
         super._mint(poolKey, tickLower, tickUpper, liquidity, amount0Max, amount1Max, owner, hookData);
     }
 
@@ -171,10 +167,9 @@ contract PermissionedPositionManager is PositionManager {
         bytes calldata hookData
     ) internal override {
         (PoolKey memory poolKey,) = getPoolAndPositionInfo(tokenId);
-        if (!_checkAllowedHooks(poolKey)) revert InvalidHook();
         address owner = ownerOf(tokenId);
-        _checkRecipientAllowed(poolKey.currency0, owner);
-        _checkRecipientAllowed(poolKey.currency1, owner);
+        _validateLiquidityCurrency(poolKey.currency0, poolKey.hooks, owner);
+        _validateLiquidityCurrency(poolKey.currency1, poolKey.hooks, owner);
         super._increase(tokenId, liquidity, amount0Max, amount1Max, hookData);
     }
 
@@ -184,30 +179,34 @@ contract PermissionedPositionManager is PositionManager {
         override
     {
         (PoolKey memory poolKey,) = getPoolAndPositionInfo(tokenId);
-        if (!_checkAllowedHooks(poolKey)) revert InvalidHook();
         address owner = ownerOf(tokenId);
-        _checkRecipientAllowed(poolKey.currency0, owner);
-        _checkRecipientAllowed(poolKey.currency1, owner);
+        _validateLiquidityCurrency(poolKey.currency0, poolKey.hooks, owner);
+        _validateLiquidityCurrency(poolKey.currency1, poolKey.hooks, owner);
         super._increaseFromDeltas(tokenId, amount0Max, amount1Max, hookData);
     }
 
-    function _checkRecipientAllowed(Currency currency, address recipient) internal view {
-        address permissionedToken = _verifiedPermissionedTokenOf(currency);
-        if (permissionedToken == address(0)) return;
-        if (!IPermissionsAdapter(Currency.unwrap(currency)).isAllowed(recipient, PermissionFlags.LIQUIDITY_ALLOWED)) {
-            revert Unauthorized();
+    /// @notice Validate `currency` for a liquidity-adding action and report whether it is a verified adapter.
+    /// @dev Ordinary tokens pass. A factory-created adapter must be verified — otherwise it would be treated as
+    ///      ordinary here, skip its hook/`LIQUIDITY_ALLOWED` checks, and be activated later via verification. A
+    ///      verified adapter must allow `hooks` and clear the owner's `LIQUIDITY_ALLOWED`.
+    function _validateLiquidityCurrency(Currency currency, IHooks hooks, address owner)
+        internal
+        view
+        returns (bool isVerifiedAdapter)
+    {
+        address currencyAddress = Currency.unwrap(currency);
+        if (_verifiedPermissionedTokenOf(currency) == address(0)) {
+            if (PERMISSIONS_ADAPTER_FACTORY.permissionsAdapterOf(currencyAddress) != address(0)) {
+                revert NoVerifiedAdapter();
+            }
+            // a non-adapter currency must be a real contract (native ETH excepted)
+            if (currencyAddress != address(0) && currencyAddress.code.length == 0) revert NonContractCurrency();
+            return false;
         }
-    }
-
-    function _checkAllowedHooks(PoolKey memory poolKey) internal view returns (bool) {
-        return
-            _checkAllowedHook(poolKey.currency0, poolKey.hooks) && _checkAllowedHook(poolKey.currency1, poolKey.hooks);
-    }
-
-    function _checkAllowedHook(Currency currency, IHooks hooks) internal view returns (bool) {
-        address permissionedToken = _verifiedPermissionedTokenOf(currency);
-        if (permissionedToken == address(0)) return true;
-        return IPermissionsAdapter(Currency.unwrap(currency)).allowedHooks(hooks);
+        IPermissionsAdapter adapter = IPermissionsAdapter(currencyAddress);
+        if (!adapter.allowedHooks(hooks)) revert InvalidHook();
+        if (!adapter.isAllowed(owner, PermissionFlags.LIQUIDITY_ALLOWED)) revert Unauthorized();
+        return true;
     }
 
     /// @dev When paying to settle, if the currency is a permissioned token, wrap the token and transfer it to the pool manager.
