@@ -23,6 +23,10 @@ contract PermissionedPositionManager is PositionManager {
 
     IPermissionsAdapterFactory public immutable PERMISSIONS_ADAPTER_FACTORY;
 
+    /// @notice Gas forwarded to each real-asset delivery attempt in `_tryDeliverAsset`.
+    ///         Caps how much a malicious recipient can burn per attempt.
+    uint256 public immutable DELIVERY_GAS_LIMIT;
+
     event CurrencyUnwound(
         uint256 indexed tokenId,
         Currency indexed currency,
@@ -45,23 +49,29 @@ contract PermissionedPositionManager is PositionManager {
         uint256 _unsubscribeGasLimit,
         IPositionDescriptor _tokenDescriptor,
         IWETH9 _weth9,
-        IPermissionsAdapterFactory _permissionsAdapterFactory
+        IPermissionsAdapterFactory _permissionsAdapterFactory,
+        uint256 _deliveryGasLimit
     ) PositionManager(_poolManager, _permit2, _unsubscribeGasLimit, _tokenDescriptor, _weth9) {
         PERMISSIONS_ADAPTER_FACTORY = _permissionsAdapterFactory;
+        DELIVERY_GAS_LIMIT = _deliveryGasLimit;
         /// @dev The EIP712 domain separator still uses "Uniswap v4 Positions NFT" as the name
         name = "Uniswap v4 Permissioned Positions NFT";
         symbol = "UNI-V4-PERM-POSM";
     }
 
-    /// @notice Force-exit the LP from a position. Burns the NFT, unwinds liquidity, and routes each currency.
-    /// @dev Either PA admin may call. Per-currency fallback is derived on-chain via `_getOwner` (see
-    ///      `_unwindWithFallback`). The 6909 fallback never reverts, so routing cannot strand a currency.
-    ///      Emits one `CurrencyUnwound` event per leg.
+    /// @notice Force-exit the LP from a position. Burns the NFT, unwinds liquidity, and delivers each currency.
+    /// @dev Either PA admin may call. First burns the position and settles both currencies as ERC-6909 claims to
+    ///      this contract; minting a claim moves no token, so no LP-controlled code runs and this step cannot be
+    ///      bricked. Then delivers each claim as the real asset to the LP, falling back to the admin, each in its
+    ///      own isolated unlock capped at `DELIVERY_GAS_LIMIT`; a recipient that reverts, strands a delta, or burns
+    ///      its capped gas only fails its own delivery, and the LP (or admin) is handed the 6909 claim instead
+    ///      (see `_deliverCurrency`). Emits one `CurrencyUnwound` event per leg.
     /// @param tokenId The position to unwind
     /// @param amount0Min Minimum currency0 the burn must return; 0 disables the check
     /// @param amount1Min Minimum currency1 the burn must return; 0 disables the check
     /// @param hookData Forwarded to the pool's hook on removal, for hook extensions that require it
     /// @dev Non-zero bounds revert the burn instead of executing it below them.
+    /// @dev Unsubscribes before burning, so the subscriber gets notifyUnsubscribe but not notifyBurn.
     function unwindPosition(uint256 tokenId, uint128 amount0Min, uint128 amount1Min, bytes calldata hookData)
         external
         isNotLocked
@@ -73,30 +83,40 @@ contract PermissionedPositionManager is PositionManager {
 
         address lp = ownerOf(tokenId);
 
-        // Unsubscribe in its own unlock only when a subscriber is attached.
+        // Unsubscribe with the PoolManager locked so notifyUnsubscribe can't strand a delta and brick the unlock.
         if (positionInfo[tokenId].hasSubscriber()) {
-            // Approve so UNSUBSCRIBE passes its own _isApprovedOrOwner check.
-            getApproved[tokenId] = msg.sender;
-            bytes memory unsubscribeAction = abi.encodePacked(uint8(Actions.UNSUBSCRIBE));
-            bytes[] memory unsubscribeParams = new bytes[](1);
-            unsubscribeParams[0] = abi.encode(tokenId);
-            poolManager.unlock(abi.encode(unsubscribeAction, unsubscribeParams));
+            _unsubscribe(tokenId);
+            // The locked callback can still re-attach via subscribe; clear it so a reverting notifyBurn can't brick the burn.
+            // Its notifyUnsubscribe is deliberately not called (attacker-chosen), but emit Unsubscription so indexers stay balanced.
+            if (positionInfo[tokenId].hasSubscriber()) {
+                address reattached = address(subscriber[tokenId]);
+                delete subscriber[tokenId];
+                _setUnsubscribed(tokenId);
+                emit Unsubscription(tokenId, reattached);
+            }
         }
 
         // Approve so BURN_POSITION passes onlyIfApproved.
         // ERC-721 _burn clears getApproved as part of its teardown, so the approval is self-cleaning.
         getApproved[tokenId] = msg.sender;
 
-        // Unwind
-        bytes memory actions = abi.encodePacked(
-            uint8(Actions.BURN_POSITION), uint8(Actions.UNWIND_WITH_FALLBACK), uint8(Actions.UNWIND_WITH_FALLBACK)
-        );
+        // Burn the position; settle both currencies as 6909 claims to this contract.
+        bytes memory actions =
+            abi.encodePacked(uint8(Actions.BURN_POSITION), uint8(Actions.MINT_6909), uint8(Actions.MINT_6909));
         bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(tokenId, amount0Min, amount1Min, hookData);
-        // PoolKey is encoded into the unwind params because BURN_POSITION clears positionInfo[tokenId].
-        params[1] = abi.encode(poolKey, poolKey.currency0, lp, tokenId);
-        params[2] = abi.encode(poolKey, poolKey.currency1, lp, tokenId);
+        params[1] = abi.encode(poolKey.currency0);
+        params[2] = abi.encode(poolKey.currency1);
         poolManager.unlock(abi.encode(actions, params));
+
+        // Reads the full 6909 balance, not a burn delta: the burn output plus any stray MINT_6909 claims
+        // parked in this contract.
+        uint256 amount0 = poolManager.balanceOf(address(this), poolKey.currency0.toId());
+        uint256 amount1 = poolManager.balanceOf(address(this), poolKey.currency1.toId());
+
+        // Deliver the real asset to the LP, then the admin; on any grief, hand over the 6909 claim instead.
+        _deliverCurrency(poolKey.currency0, lp, tokenId, amount0);
+        _deliverCurrency(poolKey.currency1, lp, tokenId, amount1);
     }
 
     /// @notice Burn an ERC-6909 claim on the PoolManager and transfer the underlying currency to `to`.
@@ -267,24 +287,21 @@ contract PermissionedPositionManager is PositionManager {
         return IPermissionsAdapter(permissionsAdapter).owner();
     }
 
-    /// @dev Adds the cascade-routing action used by `unwindPosition` and the BURN_6909 primitive used by
-    ///      `withdrawClaim`. All other actions fall through to the base PositionManager dispatcher.
+    /// @dev Handles the two unwind actions dispatched by `unwindPosition` (MINT_6909 and UNWIND_WITH_FALLBACK),
+    ///      plus the BURN_6909 primitive used by `withdrawClaim`. All other actions fall through to the base
+    ///      PositionManager dispatcher.
     function _handleAction(uint256 action, bytes calldata params) internal override {
-        if (action == Actions.UNWIND_WITH_FALLBACK) {
-            (PoolKey memory poolKey, Currency currency, address lp, uint256 tokenId) =
-                abi.decode(params, (PoolKey, Currency, address, uint256));
-            // Caller must be an admin of a permissions adapter in the position.
-            address sender = msgSender();
-            if (!((currency == poolKey.currency0 || currency == poolKey.currency1)
-                        && (sender == _getOwner(poolKey.currency0) || sender == _getOwner(poolKey.currency1)))) revert Unauthorized();
-            _unwindWithFallback(currency, lp, tokenId);
+        if (action == Actions.MINT_6909) {
+            // Settle this contract's full positive delta for `currency` as a 6909 claim to itself.
+            Currency currency = params.decodeCurrency();
+            poolManager.mint(address(this), currency.toId(), _getFullCredit(currency));
             return;
         }
-        if (action == Actions.UNSUBSCRIBE) {
-            uint256 tokenId = abi.decode(params, (uint256));
-            // Caller must own or be approved on the position.
-            if (!_isApprovedOrOwner(msgSender(), tokenId)) revert NotApproved(msgSender());
-            if (positionInfo[tokenId].hasSubscriber()) _unsubscribe(tokenId);
+        if (action == Actions.UNWIND_WITH_FALLBACK) {
+            // Burn this contract's claim for `currency` and take the real asset to `to`.
+            (Currency currency, address to, uint256 amount) = params.decodeCurrencyAddressAndUint256();
+            poolManager.burn(address(this), currency.toId(), amount);
+            poolManager.take(currency, to, amount);
             return;
         }
         if (action == Actions.BURN_6909) {
@@ -297,35 +314,42 @@ contract PermissionedPositionManager is PositionManager {
         super._handleAction(action, params);
     }
 
-    /// @dev Permissioned currencies cascade `take → LP → admin → 6909 mint to admin`. Non-permissioned currencies
-    ///      cascade `take → LP → 6909 mint to LP` — admins cannot take regular ERC-20s, so the LP
-    ///      retains ownership as a transferable claim. Final mint never reverts. Emits `CurrencyUnwound` on the
-    ///      terminal branch with `recipient`/`asClaim` reflecting the actual destination.
-    function _unwindWithFallback(Currency currency, address lp, uint256 tokenId) internal {
-        uint256 amount = _getFullCredit(currency);
+    /// @notice Deliver `amount` of `currency` (held as a 6909 claim) to the LP, then the admin, else hand over the
+    ///         claim. Each attempt is an isolated unlock capped at `DELIVERY_GAS_LIMIT`, so a reverting or gas-burning
+    ///         recipient only fails its own leg. Emits one `CurrencyUnwound` per leg.
+    function _deliverCurrency(Currency currency, address lp, uint256 tokenId, uint256 amount) internal {
         if (amount == 0) return;
 
-        // Try to take to LP
-        try poolManager.take(currency, lp, amount) {
-            emit CurrencyUnwound(tokenId, currency, lp, msgSender(), lp, amount, false);
-            return;
-        } catch {}
-
-        // If LP is not allowed to receive the currency, try to take to admin
-        address admin = _getOwner(currency);
-        // If no admin, LP retains ownership as a 6909 claim
-        if (admin == address(0)) {
-            poolManager.mint(lp, currency.toId(), amount);
-            emit CurrencyUnwound(tokenId, currency, lp, msgSender(), lp, amount, true);
+        // Real asset to the LP.
+        if (_tryDeliverAsset(currency, lp, amount)) {
+            emit CurrencyUnwound(tokenId, currency, lp, msg.sender, lp, amount, false);
             return;
         }
-        // Try to take to admin
-        try poolManager.take(currency, admin, amount) {
-            emit CurrencyUnwound(tokenId, currency, admin, msgSender(), lp, amount, false);
+        // Then the admin (permissioned currencies only; renounce is disabled, so a permissioned admin is never zero).
+        address admin = _getOwner(currency);
+        if (admin != address(0) && _tryDeliverAsset(currency, admin, amount)) {
+            emit CurrencyUnwound(tokenId, currency, admin, msg.sender, lp, amount, false);
             return;
-        } catch {}
-        // If admin is not allowed to receive the currency, mint a 6909 claim to admin
-        poolManager.mint(admin, currency.toId(), amount);
-        emit CurrencyUnwound(tokenId, currency, admin, msgSender(), lp, amount, true);
+        }
+        // Both rejected: hand over the 6909 claim (no token code runs). Admin for a permissioned currency (the LP
+        // is non-compliant), else the LP.
+        address claimTo = admin == address(0) ? lp : admin;
+        poolManager.transfer(claimTo, currency.toId(), amount);
+        emit CurrencyUnwound(tokenId, currency, claimTo, msg.sender, lp, amount, true);
+    }
+
+    /// @notice Attempt to deliver the real asset for `amount` of `currency` to `to` in an isolated unlock (burn
+    ///         this contract's claim, take to `to`), forwarding at most `DELIVERY_GAS_LIMIT` gas. Returns false if
+    ///         `to` reverts, strands a delta, or exhausts the capped gas, in which case nothing was delivered and
+    ///         this contract still holds the claim.
+    function _tryDeliverAsset(Currency currency, address to, uint256 amount) internal returns (bool) {
+        bytes memory actions = abi.encodePacked(uint8(Actions.UNWIND_WITH_FALLBACK));
+        bytes[] memory params = new bytes[](1);
+        params[0] = abi.encode(currency, to, amount);
+        try poolManager.unlock{gas: DELIVERY_GAS_LIMIT}(abi.encode(actions, params)) {
+            return true;
+        } catch {
+            return false;
+        }
     }
 }

@@ -71,6 +71,7 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             address(proxyAsImplementation),
             address(_WETH9),
             permissionsAdapterFactory_,
+            100_000,
             abi.encode(salt)
         );
     }
@@ -86,6 +87,7 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             address(proxyAsImplementation),
             address(_WETH9),
             permissionsAdapterFactory_,
+            100_000,
             abi.encode(salt)
         );
         approvePosm();
