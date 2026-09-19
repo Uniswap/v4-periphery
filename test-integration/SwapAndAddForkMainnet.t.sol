@@ -1,0 +1,459 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+pragma solidity ^0.8.24;
+
+import "forge-std/Test.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {IERC721} from "forge-std/interfaces/IERC721.sol";
+import {IERC20} from "forge-std/interfaces/IERC20.sol";
+
+import {Plan, Planner} from "../test/shared/Planner.sol";
+import {Actions} from "../src/libraries/Actions.sol";
+import {ActionConstants} from "../src/libraries/ActionConstants.sol";
+import {IV4Router} from "../src/interfaces/IV4Router.sol";
+import {IPositionManager} from "../src/interfaces/IPositionManager.sol";
+import {SwapAndAdd} from "../src/SwapAndAdd.sol";
+import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
+import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
+
+import {UniversalRouter} from "universal-router/contracts/UniversalRouter.sol";
+import {RouterParameters} from "universal-router/contracts/types/RouterParameters.sol";
+import {Commands} from "universal-router/contracts/libraries/Commands.sol";
+
+/// @notice Mainnet fork test. Deploys the modified Universal Router and SwapAndAdd against the live
+///         PoolManager, POSM, and Permit2, then adds to the ETH/USDC pool (id 0xdce6...78d).
+///         Run: FOUNDRY_PROFILE=integration forge test --match-contract SwapAndAddForkMainnetTest
+contract SwapAndAddForkMainnetTest is Test {
+    using StateLibrary for IPoolManager;
+    using PoolIdLibrary for PoolKey;
+
+    // canonical mainnet addresses, from universal-router/script/deployParameters/DeployMainnet.s.sol
+    address constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
+    address constant POSM = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
+    address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+    address constant WETH9 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address constant V2_FACTORY = 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f;
+    address constant V3_FACTORY = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
+    bytes32 constant PAIR_HASH = 0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f;
+    bytes32 constant POOL_HASH = 0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54;
+    address constant V3_POSM = 0xC36442b4a4522E871399CD717aBDD847Ab11FE88;
+    address constant SPOKE = 0x5c7BCd6E7De5423a257D81B442095A1a6ced35C5;
+
+    address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    bytes32 constant TARGET_ID = 0xdce6394339af00981949f5f3baf27e3610c76326a700af57e4b3e3ae4977f78d;
+
+    IPoolManager manager = IPoolManager(POOL_MANAGER);
+    IPositionManager posm = IPositionManager(POSM);
+    IAllowanceTransfer permit2 = IAllowanceTransfer(PERMIT2);
+    UniversalRouter router;
+    SwapAndAdd zap;
+    PoolKey key;
+
+    function setUp() public {
+        // The public RPC has no archive state, so default to head.
+        // For a reproducible run, set an archive FORK_URL and pin FORK_BLOCK (for example 25_495_000, 2026-07-09).
+        uint256 forkBlock = vm.envOr("FORK_BLOCK", uint256(0));
+        string memory forkUrl = vm.envOr("FORK_URL", string(""));
+        if (bytes(forkUrl).length == 0) forkUrl = "https://ethereum-rpc.publicnode.com"; // empty env var = unset
+        if (forkBlock == 0) vm.createSelectFork(forkUrl);
+        else vm.createSelectFork(forkUrl, forkBlock);
+
+        key = _reconstructKey();
+        emit log_named_uint("pool fee", key.fee);
+        emit log_named_int("pool tickSpacing", key.tickSpacing);
+        emit log_named_address("currency0", Currency.unwrap(key.currency0));
+        emit log_named_address("currency1", Currency.unwrap(key.currency1));
+
+        router = new UniversalRouter(_routerParams());
+        zap = new SwapAndAdd(manager, permit2, posm, IUniversalRouter(address(router)));
+    }
+
+    function _routerParams() internal pure returns (RouterParameters memory) {
+        return RouterParameters({
+            permit2: PERMIT2,
+            weth9: WETH9,
+            v2Factory: V2_FACTORY,
+            v3Factory: V3_FACTORY,
+            pairInitCodeHash: PAIR_HASH,
+            poolInitCodeHash: POOL_HASH,
+            v4PoolManager: POOL_MANAGER,
+            permissionsAdapterFactory: address(0),
+            v3NFTPositionManager: V3_POSM,
+            v4PositionManager: POSM,
+            spokePool: SPOKE
+        });
+    }
+
+    /// @dev Find the hookless PoolKey whose id matches TARGET_ID.
+    function _reconstructKey() internal pure returns (PoolKey memory) {
+        (bool ok, PoolKey memory k) = _tryPair(Currency.wrap(address(0)), Currency.wrap(USDC));
+        if (ok) return k;
+        (ok, k) = _tryPair(Currency.wrap(USDC), Currency.wrap(WETH9));
+        if (ok) return k;
+        revert("pool key not found with hooks=0 (pool may use a hook or non-standard fee/tickSpacing)");
+    }
+
+    function _tryPair(Currency c0, Currency c1) internal pure returns (bool, PoolKey memory) {
+        uint24[7] memory fees = [uint24(100), 500, 3000, 10000, 500, 100, 3000];
+        int24[7] memory tss = [int24(1), 10, 60, 200, 60, 10, 200];
+        for (uint256 i; i < 7; i++) {
+            PoolKey memory k = PoolKey(c0, c1, fees[i], tss[i], IHooks(address(0)));
+            if (PoolId.unwrap(k.toId()) == TARGET_ID) return (true, k);
+        }
+        PoolKey memory empty;
+        return (false, empty);
+    }
+
+    function _ticks() internal view returns (int24 lower, int24 upper) {
+        (, int24 tick,,) = manager.getSlot0(key.toId());
+        int24 ts = key.tickSpacing;
+        int24 a = (tick / ts) * ts;
+        lower = a - 20 * ts;
+        upper = a + 20 * ts;
+    }
+
+    function _fundUsdc(uint256 amt) internal {
+        deal(USDC, address(this), amt);
+        IERC20(USDC).approve(PERMIT2, type(uint256).max);
+        permit2.approve(USDC, address(zap), type(uint160).max, type(uint48).max);
+    }
+
+    function _addParams(uint256 a0, uint256 a1, bytes memory route, int24 lo, int24 hi)
+        internal
+        view
+        returns (ISwapAndAdd.AddParams memory)
+    {
+        return ISwapAndAdd.AddParams({
+            poolKey: key,
+            tickLower: lo,
+            tickUpper: hi,
+            amount0In: a0,
+            amount1In: a1,
+            route: route,
+            routeFunding: new ISwapAndAdd.TokenAmount[](0),
+            minLiquidity: 0,
+            recipient: address(this),
+            hookData: "",
+            deadline: block.timestamp + 1
+        });
+    }
+
+    // empty-route (same-pool) adds against the real pool
+
+    function test_fork_add_usdcBudget_emptyRoute() public {
+        (int24 lo, int24 hi) = _ticks();
+        _fundUsdc(50_000e6);
+
+        (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
+
+        assertEq(IERC721(POSM).ownerOf(tokenId), address(this), "user owns NFT");
+        assertGt(liq, 0, "liquidity minted");
+        assertGt(a0, 0, "ETH deployed");
+        assertGt(a1, 0, "USDC deployed");
+        assertEq(address(zap).balance, 0, "zap eth == 0");
+        assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
+    }
+
+    function test_fork_add_ethBudget_emptyRoute() public {
+        (int24 lo, int24 hi) = _ticks();
+        vm.deal(address(this), 100 ether);
+
+        (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1) = zap.add{value: 5 ether}(_addParams(5 ether, 0, "", lo, hi));
+
+        assertEq(IERC721(POSM).ownerOf(tokenId), address(this), "user owns NFT");
+        assertGt(liq, 0, "liquidity minted");
+        assertGt(a0, 0, "ETH deployed");
+        assertGt(a1, 0, "USDC deployed");
+        assertEq(address(zap).balance, 0, "zap eth == 0");
+        assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
+    }
+
+    // real-UR route within the zap's unlock
+
+    function test_fork_add_usdcBudget_viaURRoute() public {
+        (int24 lo, int24 hi) = _ticks();
+        _fundUsdc(50_000e6);
+
+        // Sell 4_000 USDC for ETH through the real UR inside the zap's unlock.
+        bytes memory route = _v4SwapRoute(key, false, 4_000e6, key.currency1, key.currency0);
+
+        (uint256 tokenId, uint128 liq,,) = zap.add(_addParams(0, 10_000e6, route, lo, hi));
+
+        assertEq(IERC721(POSM).ownerOf(tokenId), address(this), "user owns NFT");
+        assertGt(liq, 0, "liquidity minted");
+        assertEq(address(zap).balance, 0, "zap eth == 0");
+        assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
+    }
+
+    /// @notice With a well-sized route, the zap deploys almost the whole budget and returns only dust.
+    function test_fork_add_usdcBudget_viaURRoute_lowDust() public {
+        (int24 lo, int24 hi) = _ticks();
+        _fundUsdc(50_000e6);
+
+        uint256 usdcBefore = IERC20(USDC).balanceOf(address(this));
+        uint256 ethBefore = address(this).balance;
+
+        // Route about half the budget USDC -> ETH.
+        bytes memory route = _v4SwapRoute(key, false, 5_000e6, key.currency1, key.currency0);
+        (uint256 tokenId, uint128 liq,,) = zap.add(_addParams(0, 10_000e6, route, lo, hi));
+
+        uint256 usdcReturned = IERC20(USDC).balanceOf(address(this)) + 10_000e6 - usdcBefore; // budget pulled was 10_000
+        assertEq(IERC721(POSM).ownerOf(tokenId), address(this), "user owns NFT");
+        assertGt(liq, 0, "liquidity minted");
+        assertLt(usdcReturned, 200e6, "returned USDC < 2% of budget");
+        assertApproxEqAbs(address(this).balance, ethBefore, 1e12, "no meaningful ETH dust to user");
+        assertEq(address(zap).balance, 0, "zap eth == 0");
+        assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
+    }
+
+    function _rebalanceParams(uint256 tokenId, int128 additional0, int128 additional1, int24 lo, int24 hi)
+        internal
+        view
+        returns (ISwapAndAdd.RebalanceParams memory)
+    {
+        return ISwapAndAdd.RebalanceParams({
+            tokenId: tokenId,
+            additional0: additional0,
+            additional1: additional1,
+            newTickLower: lo,
+            newTickUpper: hi,
+            route: "",
+            routeFunding: new ISwapAndAdd.TokenAmount[](0),
+            minLiquidity: 0,
+            recipient: address(this),
+            hookData: "",
+            deadline: block.timestamp + 1
+        });
+    }
+
+    // rebalance on the real pool
+
+    function test_fork_rebalance_full() public {
+        (int24 lo, int24 hi) = _ticks();
+        _fundUsdc(50_000e6);
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
+        IERC721(POSM).setApprovalForAll(address(zap), true);
+
+        int24 ts = key.tickSpacing;
+        (uint256 newTokenId, uint128 newLiq,,) =
+            zap.rebalance(_rebalanceParams(tokenId, 0, 0, lo - 10 * ts, hi + 10 * ts));
+
+        assertEq(IERC721(POSM).ownerOf(newTokenId), address(this), "user owns new NFT");
+        assertGt(newLiq, 0, "new liquidity minted");
+        assertEq(posm.getPositionLiquidity(tokenId), 0, "old position fully burned");
+        assertEq(address(zap).balance, 0, "zap eth == 0");
+        assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
+    }
+
+    // Cash-out rebalance: burn the old position, return the requested USDC, redeploy the remainder.
+    function test_fork_rebalance_cashOut() public {
+        (int24 lo, int24 hi) = _ticks();
+        _fundUsdc(50_000e6);
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
+        IERC721(POSM).setApprovalForAll(address(zap), true);
+        int24 ts = key.tickSpacing;
+
+        uint256 usdcBefore = IERC20(USDC).balanceOf(address(this));
+        (uint256 newTokenId, uint128 newLiq,,) =
+            zap.rebalance(_rebalanceParams(tokenId, 0, -2_000e6, lo - 10 * ts, hi + 10 * ts)); // return 2k USDC
+
+        assertEq(IERC721(POSM).ownerOf(newTokenId), address(this), "user owns new NFT");
+        assertGt(newLiq, 0, "new liquidity minted");
+        assertEq(posm.getPositionLiquidity(tokenId), 0, "old position fully burned");
+        assertGe(IERC20(USDC).balanceOf(address(this)), usdcBefore + 2_000e6, "cashed-out usdc returned");
+        assertEq(address(zap).balance, 0, "zap eth == 0");
+        assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
+    }
+
+    // Rebalance with extra USDC: the new position must exceed a plain full redeploy.
+    function test_fork_rebalance_addMore() public {
+        (int24 lo, int24 hi) = _ticks();
+        _fundUsdc(50_000e6);
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
+        IERC721(POSM).setApprovalForAll(address(zap), true);
+        int24 ts = key.tickSpacing;
+        int24 nlo = lo - 10 * ts;
+        int24 nhi = hi + 10 * ts;
+
+        uint256 snap = vm.snapshotState();
+        (, uint128 liqBase,,) = zap.rebalance(_rebalanceParams(tokenId, 0, 0, nlo, nhi));
+        vm.revertToState(snap);
+
+        (, uint128 liqMore,,) = zap.rebalance(_rebalanceParams(tokenId, 0, 5_000e6, nlo, nhi)); // add 5k USDC
+
+        assertGt(liqMore, liqBase, "adding USDC deploys more than a full redeploy");
+        assertEq(address(zap).balance, 0, "zap eth == 0");
+        assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
+    }
+
+    // Add more native ETH (msg.value) during a rebalance.
+    function test_fork_rebalance_native_addMore() public {
+        (int24 lo, int24 hi) = _ticks();
+        vm.deal(address(this), 100 ether);
+        (uint256 tokenId,,,) = zap.add{value: 1 ether}(_addParams(1 ether, 0, "", lo, hi));
+        IERC721(POSM).setApprovalForAll(address(zap), true);
+        int24 ts = key.tickSpacing;
+        int24 nlo = lo - 10 * ts;
+        int24 nhi = hi + 10 * ts;
+
+        uint256 snap = vm.snapshotState();
+        (, uint128 liqBase,,) = zap.rebalance(_rebalanceParams(tokenId, 0, 0, nlo, nhi));
+        vm.revertToState(snap);
+
+        int128 addNative = 0.5 ether;
+        (, uint128 liqMore,,) =
+            zap.rebalance{value: uint256(uint128(addNative))}(_rebalanceParams(tokenId, addNative, 0, nlo, nhi));
+
+        assertGt(liqMore, liqBase, "adding native ETH deploys more than a full redeploy");
+        assertEq(address(zap).balance, 0, "zap eth == 0");
+        assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
+    }
+
+    // Full rebalance into the same range (the UI default).
+    function test_fork_rebalance_sameRange_full() public {
+        (int24 lo, int24 hi) = _ticks();
+        _fundUsdc(50_000e6);
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
+        IERC721(POSM).setApprovalForAll(address(zap), true);
+
+        zap.rebalance(_rebalanceParams(tokenId, 0, 0, lo, hi)); // new range == old range
+    }
+
+    // Browser-flow repro: 0.5 ETH add, then same-range full rebalance.
+    function test_fork_rebalance_sameRange_full_halfEth() public {
+        (int24 lo, int24 hi) = _ticks();
+        vm.deal(address(this), 100 ether);
+        (uint256 tokenId,,,) = zap.add{value: 0.5 ether}(_addParams(0.5 ether, 0, "", lo, hi));
+        IERC721(POSM).setApprovalForAll(address(zap), true);
+        zap.rebalance(_rebalanceParams(tokenId, 0, 0, lo, hi));
+    }
+
+    // compound on the real pool
+
+    function _compoundParams(uint256 tokenId, uint256 minLiquidityAdded)
+        internal
+        view
+        returns (ISwapAndAdd.CompoundParams memory)
+    {
+        return ISwapAndAdd.CompoundParams({
+            tokenId: tokenId,
+            route: "",
+            minLiquidityAdded: minLiquidityAdded,
+            recipient: address(this),
+            hookData: "",
+            deadline: block.timestamp + 1
+        });
+    }
+
+    /// @dev Balanced round-trip swaps keep the price near its start while the position accrues fees.
+    function test_fork_compound_reinvestsFees() public {
+        (int24 lo, int24 hi) = _ticks();
+        int24 ts = key.tickSpacing;
+        lo = lo - 40 * ts; // widen so the position stays in range
+        hi = hi + 40 * ts;
+
+        _fundUsdc(5_000_000e6);
+        vm.deal(address(this), 10_000 ether);
+        // sizable position so it earns a meaningful share of the swap fees.
+        (uint256 tokenId,,,) = zap.add{value: 500 ether}(_addParams(500 ether, 2_000_000e6, "", lo, hi));
+        IERC721(POSM).setApprovalForAll(address(zap), true);
+
+        PoolSwapTest swapRouter = new PoolSwapTest(manager);
+        IERC20(USDC).approve(address(swapRouter), type(uint256).max);
+        PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false});
+        for (uint256 i = 0; i < 3; i++) {
+            swapRouter.swap{value: 300 ether}(
+                key,
+                SwapParams({zeroForOne: true, amountSpecified: -300 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+                settings,
+                ""
+            );
+            swapRouter.swap(
+                key,
+                SwapParams({zeroForOne: false, amountSpecified: -900_000e6, sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1}),
+                settings,
+                ""
+            );
+        }
+
+        uint128 liqBefore = posm.getPositionLiquidity(tokenId);
+        (uint128 added, uint256 a0, uint256 a1) = zap.compound(_compoundParams(tokenId, 0));
+
+        assertGt(added, 0, "fees reinvested as liquidity");
+        assertGt(a0 + a1, 0, "amounts reinvested");
+        assertEq(posm.getPositionLiquidity(tokenId), liqBefore + added, "position grew by exactly the added liquidity");
+        assertEq(IERC721(POSM).ownerOf(tokenId), address(this), "NFT still owned by user");
+        assertEq(address(zap).balance, 0, "zap eth == 0");
+        assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
+    }
+
+    function _v4SwapRoute(PoolKey memory poolKey, bool zeroForOne, uint128 amtIn, Currency inCcy, Currency outCcy)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        IV4Router.ExactInputSingleParams memory sp = IV4Router.ExactInputSingleParams({
+            poolKey: poolKey,
+            zeroForOne: zeroForOne,
+            amountIn: amtIn,
+            amountOutMinimum: 0,
+            minHopPriceX36: 0,
+            hookData: hex""
+        });
+        Plan memory plan = Planner.init();
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(sp));
+        plan = plan.add(Actions.SETTLE, abi.encode(inCcy, ActionConstants.OPEN_DELTA, true));
+        plan = plan.add(Actions.TAKE, abi.encode(outCcy, ActionConstants.MSG_SENDER, ActionConstants.OPEN_DELTA));
+        bytes memory commands = abi.encodePacked(bytes1(uint8(Commands.V4_SWAP)));
+        bytes[] memory inputs = new bytes[](1);
+        inputs[0] = plan.encode();
+        return abi.encode(commands, inputs);
+    }
+
+    // TAPI route fixture (mainnet): 2500e6 USDC -> native ETH, multi-hop v4 plus a native SWEEP, pinned to the quote's block.
+    // Generated by script/fetch-tapi-route.sh (chainId 1, SWAPPER=TAPI_ZAP), with the zap placed at the synthetic swapper address.
+    address constant TAPI_ZAP = 0x000000000000000000000000000000005a9B7a11;
+    uint256 constant TAPI_FIXTURE_BLOCK = 25789116;
+    bytes constant TAPI_EXECUTE_TAIL =
+        hex"000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000006a85a6850000000000000000000000000000000000000000000000000000000000000004101010040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000058000000000000000000000000000000000000000000000000000000000000009a00000000000000000000000000000000000000000000000000000000000000dc000000000000000000000000000000000000000000000000000000000000004e0000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000003070b0e000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000034000000000000000000000000000000000000000000000000000000000000003c000000000000000000000000000000000000000000000000000000000000002c00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb4800000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000280000000000000000000000000000000000000000000000000000000002cb417800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000100000000000000000000000000dac17f958d2ee523a2206206994597c13d831ec700000000000000000000000000000000000000000000000000000000000000070000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000640000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000060000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb480000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000003070b0e000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000026000000000000000000000000000000000000000000000000000000000000002e000000000000000000000000000000000000000000000000000000000000001e00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb4800000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000001a0000000000000000000000000000000000000000000000000000000001dcd6500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000640000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000060000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb480000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000003070b0e000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000026000000000000000000000000000000000000000000000000000000000000002e000000000000000000000000000000000000000000000000000000000000001e00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb4800000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000001a0000000000000000000000000000000000000000000000000000000004a817c80000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001f4000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000060000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb4800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005a9b7a1100000000000000000000000000000000000000000000000011f40bfc9f3bd934756e69780000d7ff01b6";
+
+    function test_fork_add_viaRealTapiRoute() public {
+        string memory forkUrl = vm.envOr("FORK_URL", string(""));
+        vm.skip(bytes(forkUrl).length == 0); // the pinned block needs archive state, so skip on the public RPC
+        vm.createSelectFork(forkUrl, TAPI_FIXTURE_BLOCK);
+
+        // fresh stack in the pinned fork, with the zap at the fixture's swapper address
+        router = new UniversalRouter(_routerParams());
+        deployCodeTo(
+            "SwapAndAdd.sol:SwapAndAdd",
+            abi.encode(manager, permit2, posm, IUniversalRouter(address(router))),
+            TAPI_ZAP
+        );
+
+        (bytes memory commands, bytes[] memory inputs,) = abi.decode(TAPI_EXECUTE_TAIL, (bytes, bytes[], uint256));
+        bytes memory route = abi.encode(commands, inputs); // the zap has its own deadline param
+
+        deal(USDC, address(this), 5_000e6);
+        IERC20(USDC).approve(PERMIT2, type(uint256).max);
+        permit2.approve(USDC, TAPI_ZAP, type(uint160).max, type(uint48).max);
+
+        (int24 lo, int24 hi) = _ticks();
+        ISwapAndAdd.AddParams memory p = _addParams(0, 5_000e6, route, lo, hi);
+        (uint256 tokenId, uint128 liq,,) = ISwapAndAdd(TAPI_ZAP).add(p);
+
+        assertEq(IERC721(POSM).ownerOf(tokenId), address(this), "user owns NFT");
+        assertGt(liq, 0, "TAPI v4 route deployed into the real pool");
+        assertEq(TAPI_ZAP.balance, 0, "zap eth == 0");
+        assertEq(IERC20(USDC).balanceOf(TAPI_ZAP), 0, "zap usdc == 0");
+    }
+
+    receive() external payable {}
+}
