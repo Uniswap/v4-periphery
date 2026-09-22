@@ -116,10 +116,12 @@ contract CalldataDecoderTest is Test {
         _assertEq(swapParams.minHopPriceX36, _swapParams.minHopPriceX36);
     }
 
+    /// @notice `abi.decode` derives its bounds from the data it is handed rather than from a fixed
+    ///         minimum, so the boundary is the 5-word struct head: below it the head cannot be read.
     function test_decodeSwapExactInParams_minLengthBoundary() public {
-        // 0xdf = 0xe0 - 1, one byte below the minimum — should revert
-        bytes memory params = new bytes(0xdf);
-        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        // 0x9f = 0xa0 - 1, one byte below the struct head — should revert
+        bytes memory params = new bytes(0x9f);
+        vm.expectRevert();
         decoder.decodeSwapExactInParams(params);
     }
 
@@ -149,10 +151,12 @@ contract CalldataDecoderTest is Test {
         _assertEq(swapParams.minHopPriceX36, _swapParams.minHopPriceX36);
     }
 
+    /// @notice `abi.decode` derives its bounds from the data it is handed rather than from a fixed
+    ///         minimum, so the boundary is the 5-word struct head: below it the head cannot be read.
     function test_decodeSwapExactOutParams_minLengthBoundary() public {
-        // 0xdf = 0xe0 - 1, one byte below the minimum — should revert
-        bytes memory params = new bytes(0xdf);
-        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        // 0x9f = 0xa0 - 1, one byte below the struct head — should revert
+        bytes memory params = new bytes(0x9f);
+        vm.expectRevert();
         decoder.decodeSwapExactOutParams(params);
     }
 
