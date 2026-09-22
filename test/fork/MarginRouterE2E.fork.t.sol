@@ -94,7 +94,9 @@ contract MarginRouterE2EForkTest is Test, MarginRouteHelpers {
 
         // the real Morpho Blue WETH/USDC market: WETH collateral, USDC debt
         marketParams = MarketParams({loanToken: USDC, collateralToken: WETH, oracle: ORACLE, irm: IRM, lltv: LLTV});
-        market = Market({collateral: Currency.wrap(WETH), debt: Currency.wrap(USDC)});
+        // Morpho keys a market by its full MarketParams, so the key carries (oracle, irm, lltv)
+        market =
+            Market({collateral: Currency.wrap(WETH), debt: Currency.wrap(USDC), data: abi.encode(ORACLE, IRM, LLTV)});
 
         // confirm the live contracts are what we expect rather than trusting the constants blindly
         assertEq(MORPHO.idToMarketParams(marketParams.id()).collateralToken, WETH, "market collateral");
@@ -108,8 +110,8 @@ contract MarginRouterE2EForkTest is Test, MarginRouteHelpers {
         _initAndSeedPool();
 
         // the full margin stack, wired to the live Morpho, Permit2, and WETH9
-        adapter = new MorphoLendingAdapter(MORPHO, address(this));
-        adapter.setMarket(marketParams);
+        adapter = new MorphoLendingAdapter(MORPHO);
+        assertTrue(adapter.isSupportedMarket(market), "market routable on Morpho adapter");
 
         address impl = address(new MarginAccount());
         // route position swaps through a Universal Router bound to the local flash-take PoolManager

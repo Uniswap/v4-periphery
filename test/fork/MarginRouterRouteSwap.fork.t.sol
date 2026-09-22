@@ -56,7 +56,8 @@ contract MarginRouterRouteSwapForkTest is Test, MarginRouteHelpers {
         if (bytes(rpc).length == 0) return;
         vm.createSelectFork(rpc, FORK_BLOCK);
 
-        market = Market({collateral: Currency.wrap(WETH), debt: Currency.wrap(USDC)});
+        // Compound keys a market by the Comet's base token and a listed collateral, so no data
+        market = Market({collateral: Currency.wrap(WETH), debt: Currency.wrap(USDC), data: ""});
 
         // local PoolManager as the flash-take source; seed it with USDC so ROUTE_SWAP can take
         manager = new PoolManager(address(this));
@@ -64,7 +65,7 @@ contract MarginRouterRouteSwapForkTest is Test, MarginRouteHelpers {
 
         universalRouter = _deployUniversalRouter();
 
-        adapter = new CompoundV3LendingAdapter(COMET, address(this));
+        adapter = new CompoundV3LendingAdapter(COMET);
         address impl = address(new MarginAccount());
         router = IMarginRouter(
             deployMarginRouter(
@@ -72,7 +73,7 @@ contract MarginRouterRouteSwapForkTest is Test, MarginRouteHelpers {
             )
         );
         router.setAdapterAllowed(adapter, true);
-        adapter.setMarket(Currency.wrap(WETH), Currency.wrap(USDC), true);
+        assertTrue(adapter.isSupportedMarket(market), "WETH/USDC routable on cUSDCv3");
     }
 
     function test_fork_routeSwap_opensLongWethViaV3() public {

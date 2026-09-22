@@ -39,6 +39,7 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
     struct OpenedData {
         address collateral;
         address debt;
+        bytes marketData;
         uint256 equity;
         uint256 collateralBought;
         uint256 debtDrawn;
@@ -55,7 +56,7 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
         collateral = currency0;
         debt = currency1;
         poolKey = key0; // (currency0, currency1) pool with deep 1:1 liquidity
-        market = Market({collateral: collateral, debt: debt});
+        market = Market({collateral: collateral, debt: debt, data: ""});
 
         protocol = new MockLendingProtocol(IERC20(Currency.unwrap(collateral)), IERC20(Currency.unwrap(debt)));
         adapter = new MockLendingAdapter(address(protocol));
@@ -532,10 +533,11 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
                 snapshotIndex = i;
                 assertEq(address(uint160(uint256(logs[i].topics[1]))), address(this), "owner topic");
                 assertEq(address(uint160(uint256(logs[i].topics[2]))), account, "account topic");
-                (address c, address d, uint256 collateralTotal, uint256 debtTotal,,,) =
-                    abi.decode(logs[i].data, (address, address, uint256, uint256, uint256, uint256, uint256));
+                (address c, address d, bytes memory marketData, uint256 collateralTotal, uint256 debtTotal,,,) =
+                    abi.decode(logs[i].data, (address, address, bytes, uint256, uint256, uint256, uint256, uint256));
                 assertEq(c, Currency.unwrap(collateral), "snapshot carries the collateral currency");
                 assertEq(d, Currency.unwrap(debt), "snapshot carries the debt currency");
+                assertEq(marketData, market.data, "snapshot carries the market data");
                 assertEq(collateralTotal, 3.5 ether, "collateralTotal reflects the top-up");
                 assertEq(debtTotal, debtBefore, "debt untouched by the top-up");
             } else if (logs[i].topics[0] == IMarginRouter.CollateralAdded.selector) {
@@ -616,10 +618,18 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
             count++;
             assertEq(address(uint160(uint256(logs[i].topics[1]))), address(this), "owner topic");
             assertEq(address(uint160(uint256(logs[i].topics[2]))), account, "account topic");
-            (address c, address d, uint256 collateralTotal, uint256 debtTotal, uint256 currentLtv,, uint256 hf) =
-                abi.decode(logs[i].data, (address, address, uint256, uint256, uint256, uint256, uint256));
+            (
+                address c,
+                address d,
+                bytes memory marketData,
+                uint256 collateralTotal,
+                uint256 debtTotal,
+                uint256 currentLtv,,
+                uint256 hf
+            ) = abi.decode(logs[i].data, (address, address, bytes, uint256, uint256, uint256, uint256, uint256));
             assertEq(c, Currency.unwrap(collateral), "collateral currency");
             assertEq(d, Currency.unwrap(debt), "debt currency");
+            assertEq(marketData, market.data, "terminal snapshot carries the market data");
             assertEq(collateralTotal, 0, "terminal snapshot: no collateral");
             assertEq(debtTotal, 0, "terminal snapshot: no debt");
             assertEq(currentLtv, 0, "terminal snapshot: zero LTV");
@@ -755,8 +765,9 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
 
         uint256 debtOwed = protocol.debtOf(account);
         bytes32 topic0 = keccak256(
-            "PositionIncreased(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256)"
+            "PositionIncreased(address,address,address,address,bytes,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256)"
         );
+        assertEq(topic0, IMarginRouter.PositionIncreased.selector, "event signature carries marketData");
         Vm.Log[] memory logs = vm.getRecordedLogs();
         bool found;
         for (uint256 i; i < logs.length; i++) {
@@ -764,9 +775,10 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
             found = true;
             assertEq(address(uint160(uint256(logs[i].topics[1]))), address(this), "owner topic");
             assertEq(address(uint160(uint256(logs[i].topics[2]))), account, "account topic");
-            OpenedData memory od = abi.decode(logs[i].data, (OpenedData));
+            OpenedData memory od = _decodeIncreased(logs[i].data);
             assertEq(od.collateral, Currency.unwrap(collateral), "collateral");
             assertEq(od.debt, Currency.unwrap(debt), "debt");
+            assertEq(od.marketData, market.data, "marketData");
             assertEq(od.equity, 0, "equity is router-pulled only (pre-funded here)");
             assertEq(od.collateralBought, 2 ether, "collateralBought");
             assertEq(od.debtDrawn, debtOwed, "debtDrawn equals resulting debt on a fresh open");
@@ -778,6 +790,61 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
             assertEq(od.healthFactorWad, 0.86e18 * 1e18 / expectedLtv, "healthFactor == maxLtv / currentLtv");
         }
         assertTrue(found, "PositionIncreased emitted");
+    }
+
+    function test_openLong_emitsPositionIncreased_carriesMarketData() public {
+        // a key that pins a specific venue market through `data`. The mock adapter ignores the bytes,
+        // which isolates the plumbing under test: they must travel from the params into both the
+        // delta-carrying event and every snapshot the open emits
+        Market memory keyed =
+            Market({collateral: collateral, debt: debt, data: abi.encode(address(0xBEEF), uint256(0.9e18))});
+        adapter.setSupported(keyed, true);
+
+        address account = marginRouter.accountOf(address(this), 0);
+        MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, debt, collateral, 2 ether, 5 ether, account);
+        vm.recordLogs();
+        marginRouter.increasePosition(
+            IMarginRouter.IncreaseParams({
+                adapter: adapter,
+                market: keyed,
+                equity: 0,
+                collateralToBuy: 2 ether,
+                maxDebtIn: 5 ether,
+                universalRouter: ur,
+                routeCommands: cmds,
+                routeInputs: ins,
+                maxLtvAfter: Ltv.wrap(0),
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bool foundIncreased;
+        uint256 snapshots;
+        for (uint256 i; i < logs.length; i++) {
+            if (logs[i].emitter != address(marginRouter)) continue;
+            if (logs[i].topics[0] == IMarginRouter.PositionIncreased.selector) {
+                foundIncreased = true;
+                assertEq(_decodeIncreased(logs[i].data).marketData, keyed.data, "PositionIncreased marketData");
+            } else if (logs[i].topics[0] == IMarginRouter.PositionUpdated.selector) {
+                snapshots++;
+                (,, bytes memory marketData,,,,,) =
+                    abi.decode(logs[i].data, (address, address, bytes, uint256, uint256, uint256, uint256, uint256));
+                assertEq(marketData, keyed.data, "PositionUpdated marketData");
+            }
+        }
+        assertTrue(foundIncreased, "PositionIncreased emitted");
+        assertEq(snapshots, 2, "PositionUpdated after supply and after borrow");
+    }
+
+    /// @dev `PositionIncreased`'s non-indexed tuple is dynamic now that it carries `bytes marketData`,
+    ///      so decoding the log data as one struct needs the head offset word `abi.encode(struct)`
+    ///      would have put in front of it.
+    function _decodeIncreased(bytes memory data) internal pure returns (OpenedData memory) {
+        return abi.decode(bytes.concat(abi.encode(uint256(0x20)), data), (OpenedData));
     }
 
     function test_increasePosition_addsLeverageToExistingPosition() public {

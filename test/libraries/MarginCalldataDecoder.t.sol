@@ -14,36 +14,42 @@ import {Ltv, toLtv} from "../../src/types/Ltv.sol";
 contract MarginCalldataDecoderTest is Test {
     Currency internal collateral = Currency.wrap(address(0xC0));
     Currency internal debt = Currency.wrap(address(0xDB));
+    // a Morpho-shaped `Market.data`: (oracle, irm, lltv), 96 bytes
+    bytes internal morphoShapedData = abi.encode(address(0x0A), address(0x1B), uint256(0.86e18));
 
     // external wrappers so the library's calldata decoders run on calldata
     function decAmount(bytes calldata p)
         external
         pure
-        returns (address adapter, Currency c, Currency d, uint256 amount)
+        returns (address adapter, Currency c, Currency d, bytes memory data, uint256 amount)
     {
         ILendingAdapter a;
         Market memory m;
         (a, m, amount) = MarginCalldataDecoder.decodeAdapterMarketAmount(p);
-        return (address(a), m.collateral, m.debt, amount);
+        return (address(a), m.collateral, m.debt, m.data, amount);
     }
 
-    function decReceiver(bytes calldata p) external pure returns (address adapter, uint256 amount, address to) {
+    function decReceiver(bytes calldata p)
+        external
+        pure
+        returns (address adapter, Currency c, Currency d, bytes memory data, uint256 amount, address to)
+    {
         ILendingAdapter a;
         Market memory m;
         (a, m, amount, to) = MarginCalldataDecoder.decodeAdapterMarketAmountReceiver(p);
-        return (address(a), amount, to);
+        return (address(a), m.collateral, m.debt, m.data, amount, to);
     }
 
     function decSweep(bytes calldata p) external pure returns (Currency c, uint256 amount, address to) {
         return MarginCalldataDecoder.decodeSweep(p);
     }
 
-    function decHealth(bytes calldata p) external pure returns (address adapter, uint256 maxLtv) {
+    function decHealth(bytes calldata p) external pure returns (address adapter, bytes memory data, uint256 maxLtv) {
         ILendingAdapter a;
         Market memory m;
         Ltv lim;
         (a, m, lim) = MarginCalldataDecoder.decodeHealthCheck(p);
-        return (address(a), Ltv.unwrap(lim));
+        return (address(a), m.data, Ltv.unwrap(lim));
     }
 
     function decSubId(bytes calldata p) external pure returns (uint256 subId) {
@@ -55,19 +61,35 @@ contract MarginCalldataDecoderTest is Test {
     }
 
     function test_decodeAdapterMarketAmount_roundTrips() public view {
-        Market memory m = Market({collateral: collateral, debt: debt});
+        // a Morpho-shaped key: the dynamic `data` tail must survive the trip alongside the pair
+        Market memory m = Market({collateral: collateral, debt: debt, data: morphoShapedData});
         bytes memory p = abi.encode(ILendingAdapter(address(0xAD)), m, 42e18);
-        (address adapter, Currency c, Currency d, uint256 amount) = this.decAmount(p);
+        (address adapter, Currency c, Currency d, bytes memory data, uint256 amount) = this.decAmount(p);
         assertEq(adapter, address(0xAD));
         assertTrue(c == collateral && d == debt);
+        assertEq(data, morphoShapedData);
+        assertEq(amount, 42e18);
+    }
+
+    function test_decodeAdapterMarketAmount_roundTripsEmptyData() public view {
+        // the Aave v3 / Compound shape: a pair with no data
+        Market memory m = Market({collateral: collateral, debt: debt, data: ""});
+        bytes memory p = abi.encode(ILendingAdapter(address(0xAD)), m, 42e18);
+        (address adapter, Currency c, Currency d, bytes memory data, uint256 amount) = this.decAmount(p);
+        assertEq(adapter, address(0xAD));
+        assertTrue(c == collateral && d == debt);
+        assertEq(data.length, 0);
         assertEq(amount, 42e18);
     }
 
     function test_decodeAdapterMarketAmountReceiver_roundTrips() public view {
-        Market memory m = Market({collateral: collateral, debt: debt});
+        // an Aave v4-shaped key: (collateralReserveId, debtReserveId)
+        Market memory m = Market({collateral: collateral, debt: debt, data: abi.encode(uint256(3), uint256(7))});
         bytes memory p = abi.encode(ILendingAdapter(address(0xAD)), m, 7e18, address(0xB0B));
-        (address adapter, uint256 amount, address to) = this.decReceiver(p);
+        (address adapter, Currency c, Currency d, bytes memory data, uint256 amount, address to) = this.decReceiver(p);
         assertEq(adapter, address(0xAD));
+        assertTrue(c == collateral && d == debt);
+        assertEq(data, abi.encode(uint256(3), uint256(7)));
         assertEq(amount, 7e18);
         assertEq(to, address(0xB0B));
     }
@@ -81,18 +103,25 @@ contract MarginCalldataDecoderTest is Test {
     }
 
     function test_decodeHealthCheck_roundTrips() public view {
-        Market memory m = Market({collateral: collateral, debt: debt});
+        Market memory m = Market({collateral: collateral, debt: debt, data: morphoShapedData});
         bytes memory p = abi.encode(ILendingAdapter(address(0xAD)), m, toLtv(0.8e18));
-        (address adapter, uint256 maxLtv) = this.decHealth(p);
+        (address adapter, bytes memory data, uint256 maxLtv) = this.decHealth(p);
         assertEq(adapter, address(0xAD));
+        assertEq(data, morphoShapedData);
         assertEq(maxLtv, 0.8e18);
     }
 
-    function testFuzz_decodeAdapterMarketAmountReceiver(address adapter, uint256 amount, address to) public view {
-        Market memory m = Market({collateral: collateral, debt: debt});
+    function testFuzz_decodeAdapterMarketAmountReceiver(address adapter, bytes memory data, uint256 amount, address to)
+        public
+        view
+    {
+        Market memory m = Market({collateral: collateral, debt: debt, data: data});
         bytes memory p = abi.encode(ILendingAdapter(adapter), m, amount, to);
-        (address gotAdapter, uint256 gotAmount, address gotTo) = this.decReceiver(p);
+        (address gotAdapter, Currency c, Currency d, bytes memory gotData, uint256 gotAmount, address gotTo) =
+            this.decReceiver(p);
         assertEq(gotAdapter, adapter);
+        assertTrue(c == collateral && d == debt);
+        assertEq(gotData, data);
         assertEq(gotAmount, amount);
         assertEq(gotTo, to);
     }

@@ -39,10 +39,14 @@ import {Owner} from "./types/Owner.sol";
 ///         from the authenticated caller (never from a caller-supplied address). The router is the
 ///         manager of every account it deploys, so it can drive their lending primitives.
 ///
-///         Supported markets are restricted to the governance allowlist of lending adapters, which
-///         curate standard ERC-20 markets only (no fee-on-transfer or rebasing tokens). Under that
-///         constraint every curated flow (`increasePosition`/`decreasePosition`/`addCollateral`)
-///         nets to zero with no router residual by construction.
+///         Governance allowlists lending ADAPTERS (venues); market selection within a venue is
+///         permissionless. The caller names the market through `Market` (the `(collateral, debt)`
+///         pair plus adapter-decoded `data`), the adapter validates it against the live venue, and
+///         the caller vets what it names. The supported venues list standard ERC-20 markets (no
+///         fee-on-transfer or rebasing tokens), under which every curated flow
+///         (`increasePosition`/`decreasePosition`/`addCollateral`) nets to zero with no router
+///         residual by construction; a non-standard token fails the flows' fill and settle assertions
+///         rather than leaving a residual.
 ///
 ///         The `execute` entry point runs an arbitrary caller-supplied plan of the same actions.
 ///         It does not guarantee zero residual: a plan MUST net the router itself (terminate with
@@ -151,6 +155,7 @@ contract MarginRouter is
                 account,
                 params.market.collateral,
                 params.market.debt,
+                params.market.data,
                 msg.value > 0 ? msg.value : params.equity,
                 params.collateralToBuy,
                 position.debtAmount > debtBefore ? position.debtAmount - debtBefore : 0,
@@ -205,27 +210,15 @@ contract MarginRouter is
             // emit the terminal PositionUpdated here so snapshot-only consumers see the close
             _emitPosition(params.adapter, params.market, account);
             // all collateral withdrawn straight to the caller; nothing left in the position
-            emit PositionDecreased(
-                msgSender(),
-                account,
-                params.market.collateral,
-                params.market.debt,
-                0,
-                collateralBefore,
-                collateralBefore,
-                0,
-                0,
-                Ltv.wrap(0),
-                type(uint256).max
-            );
+            _emitClosed(params, account, 0, collateralBefore, collateralBefore);
             return account;
         }
 
         // a partial decrease of a debt-free position has nothing to repay: the swap would buy debt
         // tokens no repay consumes, stranding them in the account (only a full close sweeps the
         // surplus) while the event reported a repay that never happened. Fail loudly instead; this
-        // also keeps a stale partial decrease against a re-pointed pair, whose reads see zero debt,
-        // a revert rather than a silent value leak.
+        // also keeps a partial decrease against a market key the account holds no position in, whose
+        // reads see zero debt, a revert rather than a silent value leak.
         if (debt == 0) revert NoDebtToRepay();
 
         // a swap runs from here (the debt-free full close returned above), so the input cap is mandatory
@@ -306,19 +299,7 @@ contract MarginRouter is
         // decrease). A full close ends empty by construction, so its resulting state is a known
         // zero and needs no position read; only a partial decrease reads back the shrunk position.
         if (fullClose) {
-            emit PositionDecreased(
-                msgSender(),
-                account,
-                params.market.collateral,
-                params.market.debt,
-                debt,
-                collateralBefore,
-                residual,
-                0,
-                0,
-                Ltv.wrap(0),
-                type(uint256).max
-            );
+            _emitClosed(params, account, debt, collateralBefore, residual);
         } else {
             // best-effort rich event: the read consults the venue oracle and must not roll back the
             // completed partial decrease if it reverts (the PositionUpdated snapshots emitted inside
@@ -333,6 +314,7 @@ contract MarginRouter is
                     account,
                     params.market.collateral,
                     params.market.debt,
+                    params.market.data,
                     params.debtToRepay,
                     collateralBefore > position.collateralAmount ? collateralBefore - position.collateralAmount : 0,
                     residual,
@@ -373,24 +355,15 @@ contract MarginRouter is
         // the router is the account manager, so it can supply directly without an unlock
         IMarginAccount(account).supplyCollateral(params.adapter, params.market, amount);
         // Best-effort events. addCollateral runs no unlock, so both the PositionUpdated snapshot and
-        // the curated CollateralAdded come from this describePosition read, which consults the venue
-        // oracle and can revert (e.g. oracle downtime; a debt-free Morpho position still triggers an
-        // oracle read). The supply has already completed, and this is a risk-REDUCING top-up, so a
-        // failing read must not roll it back: emit both on success, skip both on failure.
-        // PositionUpdated carries the full pair and maxLtv, which CollateralAdded does not, so
-        // snapshot-only consumers can attribute the supply without pair-resolution heuristics.
-        try params.adapter.describePosition(account, params.market) returns (PositionData memory position) {
-            emit PositionUpdated(
-                msgSender(),
-                account,
-                params.market.collateral,
-                params.market.debt,
-                position.collateralAmount,
-                position.debtAmount,
-                position.currentLtv,
-                position.maxLtv,
-                position.healthFactorWad
-            );
+        // the curated CollateralAdded come from the single describePosition read inside
+        // `_emitPosition`, which consults the venue oracle and can revert (e.g. oracle downtime; a
+        // debt-free Morpho position still triggers an oracle read). The supply has already completed,
+        // and this is a risk-REDUCING top-up, so a failing read must not roll it back: emit both on
+        // success, skip both on failure. PositionUpdated carries the full market key and maxLtv,
+        // which CollateralAdded does not, so snapshot-only consumers can attribute the supply
+        // without pair-resolution heuristics.
+        (bool read, PositionData memory position) = _emitPosition(params.adapter, params.market, account);
+        if (read) {
             emit CollateralAdded(
                 msgSender(),
                 account,
@@ -401,7 +374,7 @@ contract MarginRouter is
                 position.currentLtv,
                 position.healthFactorWad
             );
-        } catch {}
+        }
     }
 
     /// @inheritdoc IMarginRouter
@@ -780,29 +753,68 @@ contract MarginRouter is
         _emitPosition(adapter, market, account);
     }
 
-    /// @notice Emits a `PositionUpdated` snapshot for the account's `(collateral, debt)` market after a
-    ///         mutation, so an `execute` plan is as observable as the curated entry points. Called after
-    ///         every supply, withdraw, borrow, and repay dispatched through the unlock, and by the
-    ///         zero-debt swap-free close (`addCollateral` emits the snapshot inline, reusing the
-    ///         `describePosition` read it already makes).
-    /// @dev Best-effort: `describePosition` reverts for a de-registered market, but withdraw and repay
-    ///      are intentionally never market-gated (a position must always be exitable), so a failing read
-    ///      is swallowed rather than reverting the action. `describePosition` is `view`, so the call is a
-    ///      STATICCALL and a hostile adapter can neither reenter nor mutate state through it.
-    function _emitPosition(ILendingAdapter adapter, Market memory market, address account) private {
-        try adapter.describePosition(account, market) returns (PositionData memory position) {
+    /// @notice Emits a `PositionUpdated` snapshot for the account's market after a mutation, so an
+    ///         `execute` plan is as observable as the curated entry points. Called after every supply,
+    ///         withdraw, borrow, and repay dispatched through the unlock, by the zero-debt swap-free
+    ///         close, and by `addCollateral`, which reuses the returned read for its `CollateralAdded`.
+    /// @dev Best-effort: `describePosition` reverts for a market the venue no longer has, but withdraw
+    ///      and repay are intentionally never market-gated (a position must always be exitable), so a
+    ///      failing read is swallowed rather than reverting the action. `describePosition` is `view`, so
+    ///      the call is a STATICCALL and a hostile adapter can neither reenter nor mutate state through
+    ///      it.
+    /// @return read True if the snapshot was read and emitted; false if the venue read reverted.
+    /// @return position The snapshot that was emitted; zeroed when `read` is false.
+    function _emitPosition(ILendingAdapter adapter, Market memory market, address account)
+        private
+        returns (bool read, PositionData memory position)
+    {
+        try adapter.describePosition(account, market) returns (PositionData memory current) {
             emit PositionUpdated(
                 msgSender(),
                 account,
                 market.collateral,
                 market.debt,
-                position.collateralAmount,
-                position.debtAmount,
-                position.currentLtv,
-                position.maxLtv,
-                position.healthFactorWad
+                market.data,
+                current.collateralAmount,
+                current.debtAmount,
+                current.currentLtv,
+                current.maxLtv,
+                current.healthFactorWad
             );
+            return (true, current);
         } catch {}
+    }
+
+    /// @notice Emits the `PositionDecreased` for a full close, whose resulting state is a known empty
+    ///         position (zero collateral, zero debt, zero LTV, unbounded health) and so needs no venue
+    ///         read. Shared by the swap-free zero-debt close and the swap-based full close so the
+    ///         event is encoded in one place.
+    /// @param params The decrease parameters (the market key is read from them).
+    /// @param account The closed MarginAccount.
+    /// @param debtRepaid The debt the close repaid (zero for the swap-free path).
+    /// @param collateralWithdrawn All collateral the position held before the close.
+    /// @param collateralReturned The collateral delivered to the caller.
+    function _emitClosed(
+        DecreaseParams calldata params,
+        address account,
+        uint256 debtRepaid,
+        uint256 collateralWithdrawn,
+        uint256 collateralReturned
+    ) private {
+        emit PositionDecreased(
+            msgSender(),
+            account,
+            params.market.collateral,
+            params.market.debt,
+            params.market.data,
+            debtRepaid,
+            collateralWithdrawn,
+            collateralReturned,
+            0,
+            0,
+            Ltv.wrap(0),
+            type(uint256).max
+        );
     }
 
     /// @notice Sweeps a token from the account to `to` (owner/manager only, enforced by the account).

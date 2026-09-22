@@ -103,7 +103,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
 
         collateral = currency0;
         debt = currency1;
-        market = Market({collateral: collateral, debt: debt});
+        market = Market({collateral: collateral, debt: debt, data: ""});
 
         // key0 is the deep full-range (currency0, currency1, fee=3000) pool from the helper.
         deepPoolKey = key0;

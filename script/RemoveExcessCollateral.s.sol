@@ -29,7 +29,9 @@ import {Ltv} from "../src/types/Ltv.sol";
 ///        --broadcast --slow
 ///      Run without --broadcast first to dry-run. Optional env overrides:
 ///        MARGIN_ROUTER, LENDING_ADAPTER (default: mainnet deployment, Morpho adapter),
-///        COLLATERAL, DEBT (default: WETH collateral, USDC debt), SUB_ID (default 0),
+///        COLLATERAL, DEBT (default: WETH collateral, USDC debt), MARKET_DATA (the adapter-specific
+///        market key bytes; default: the canonical Morpho WETH/USDC market's abi.encode(oracle, irm,
+///        lltv); pass 0x for the Aave v3 and Compound adapters), SUB_ID (default 0),
 ///        TARGET_LTV_BPS (default 8000; the LTV the position is levered back up to),
 ///        WITHDRAW_WEI (default 0: size automatically from TARGET_LTV_BPS).
 contract RemoveExcessCollateral is Script {
@@ -40,6 +42,11 @@ contract RemoveExcessCollateral is Script {
 
     address internal constant MAINNET_WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address internal constant MAINNET_USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    // Canonical Morpho WETH/USDC market (id 0x94b823e6...36cd), verified against
+    // morpho.idToMarketParams; the default `Market.data` for the default Morpho adapter.
+    address internal constant MAINNET_MORPHO_WETH_USDC_ORACLE = 0x0F948CBa8231Db7898ef36A4212581Ad7b1B4580;
+    address internal constant MAINNET_MORPHO_WETH_USDC_IRM = 0x870aC11D48B15DB9a138Cf899d20F13F79Ba00BC;
+    uint256 internal constant MAINNET_MORPHO_WETH_USDC_LLTV = 0.86e18;
 
     uint256 internal constant WAD = 1e18;
     uint256 internal constant BPS = 10_000;
@@ -54,8 +61,13 @@ contract RemoveExcessCollateral is Script {
 
         Market memory market = Market({
             collateral: Currency.wrap(vm.envOr("COLLATERAL", MAINNET_WETH)),
-            debt: Currency.wrap(vm.envOr("DEBT", MAINNET_USDC))
+            debt: Currency.wrap(vm.envOr("DEBT", MAINNET_USDC)),
+            data: vm.envOr(
+                "MARKET_DATA",
+                abi.encode(MAINNET_MORPHO_WETH_USDC_ORACLE, MAINNET_MORPHO_WETH_USDC_IRM, MAINNET_MORPHO_WETH_USDC_LLTV)
+            )
         });
+        require(adapter.isSupportedMarket(market), "market key does not resolve on the adapter's venue");
 
         address account = router.accountOf(msg.sender, subId);
         require(account.code.length != 0, "margin account not deployed for (sender, SUB_ID)");

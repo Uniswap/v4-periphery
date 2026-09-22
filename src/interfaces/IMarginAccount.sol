@@ -90,7 +90,7 @@ interface IMarginAccount {
     /// @notice Supply `amount` of `market.collateral` to the lending protocol as this account.
     ///         Callable by the manager or owner.
     /// @param adapter The lending adapter that encodes the supply call and identifies the protocol.
-    /// @param market The (collateral, debt) pair identifying the target lending market.
+    /// @param market The market key identifying the target lending market.
     /// @param amount The amount of collateral to supply, in the collateral token's native decimals.
     /// @return supplied The amount actually supplied (equal to `amount`).
     function supplyCollateral(ILendingAdapter adapter, Market calldata market, uint256 amount)
@@ -100,7 +100,7 @@ interface IMarginAccount {
     /// @notice Withdraw `amount` of `market.collateral` to `to`, which must be the manager or owner.
     ///         Callable by the manager or owner.
     /// @param adapter The lending adapter that encodes the withdrawal call.
-    /// @param market The (collateral, debt) pair identifying the target lending market.
+    /// @param market The market key identifying the target lending market.
     /// @param amount The amount of collateral to withdraw, in the collateral token's native decimals.
     /// @param to The recipient address; must be the manager or owner.
     /// @return withdrawn The collateral delivered to the account and forwarded to `to`, measured as the
@@ -114,7 +114,7 @@ interface IMarginAccount {
     ///         account borrows to itself and forwards the proceeds to `to`. Callable by the manager
     ///         or owner.
     /// @param adapter The lending adapter that encodes the borrow call.
-    /// @param market The (collateral, debt) pair identifying the target lending market.
+    /// @param market The market key identifying the target lending market.
     /// @param amount The amount to borrow, in the debt token's native decimals.
     /// @param to The recipient address; must be the manager or owner.
     /// @return borrowed The assets actually borrowed, measured as the account's debt-token balance
@@ -128,7 +128,7 @@ interface IMarginAccount {
     ///         `ILendingAdapter.encodeRepay`), leaving no interest dust. Callable by the manager or
     ///         owner.
     /// @param adapter The lending adapter that encodes the repay call.
-    /// @param market The (collateral, debt) pair identifying the target lending market.
+    /// @param market The market key identifying the target lending market.
     /// @param amount The amount to repay in the debt token's native decimals, or `type(uint256).max`
     ///        for a full repay.
     /// @return repaid The assets actually repaid, measured as the account's debt-token balance

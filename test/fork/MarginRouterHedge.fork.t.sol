@@ -106,8 +106,9 @@ contract MarginRouterHedgeForkTest is Test, MarginRouteHelpers {
         owner = address(this);
 
         // both legs live on Aave; the long pairs WETH collateral / USDC debt, the short USDC / WETH
-        longMarket = Market({collateral: Currency.wrap(WETH), debt: Currency.wrap(USDC)});
-        shortMarket = Market({collateral: Currency.wrap(USDC), debt: Currency.wrap(WETH)});
+        // Aave keys a market by the pair alone, so neither key carries data
+        longMarket = Market({collateral: Currency.wrap(WETH), debt: Currency.wrap(USDC), data: ""});
+        shortMarket = Market({collateral: Currency.wrap(USDC), debt: Currency.wrap(WETH), data: ""});
 
         _deployAndVerifyAdapter();
         _readOraclePrices();
@@ -362,9 +363,9 @@ contract MarginRouterHedgeForkTest is Test, MarginRouteHelpers {
     // -------------------------------------------------------------------------
 
     /// @notice Deploys the adapter against the live provider, verifies it resolved the expected Pool,
-    ///         data provider, and reserve receipt tokens, and registers both market pairings.
+    ///         data provider, and reserve receipt tokens, and confirms both market pairings are routable.
     function _deployAndVerifyAdapter() internal {
-        adapter = new AaveLendingAdapter(AAVE_PROVIDER, address(this));
+        adapter = new AaveLendingAdapter(AAVE_PROVIDER);
         assertEq(address(adapter.pool()), EXPECTED_AAVE_POOL, "resolved Aave Pool");
         assertEq(address(adapter.dataProvider()), EXPECTED_AAVE_DATA_PROVIDER, "resolved Aave data provider");
 
@@ -376,11 +377,9 @@ contract MarginRouterHedgeForkTest is Test, MarginRouteHelpers {
         assertEq(aWeth, EXPECTED_A_WETH, "aWETH address");
         assertEq(vWeth, EXPECTED_V_DEBT_WETH, "variableDebtWETH address");
 
-        // register both legs on the one adapter: long (WETH/USDC) and short (USDC/WETH)
-        adapter.setMarket(longMarket.collateral, longMarket.debt, true);
-        adapter.setMarket(shortMarket.collateral, shortMarket.debt, true);
-        assertTrue(adapter.isSupportedMarket(longMarket), "long market registered");
-        assertTrue(adapter.isSupportedMarket(shortMarket), "short market registered");
+        // both legs route through the one adapter: long (WETH/USDC) and short (USDC/WETH)
+        assertTrue(adapter.isSupportedMarket(longMarket), "long market routable");
+        assertTrue(adapter.isSupportedMarket(shortMarket), "short market routable");
 
         // sanity on baseline addresses both legs share
         assertGt(PERMIT2.code.length, 0, "permit2 deployed");

@@ -85,10 +85,11 @@ contract MarginRouterShortInverseTest is Test, MarginRouteHelpers, DeployPermit2
         _deployAaveStack();
 
         MockAaveAddressesProvider provider = new MockAaveAddressesProvider(address(aavePool), address(_dataProvider));
-        adapter = new AaveLendingAdapter(provider, address(this));
-        // collateral USDC, debt WETH: long USDC, short WETH
-        market = Market({collateral: Currency.wrap(address(usdc)), debt: Currency.wrap(address(weth))});
-        adapter.setMarket(market.collateral, market.debt, true);
+        adapter = new AaveLendingAdapter(provider);
+        // collateral USDC, debt WETH: long USDC, short WETH. Aave keys a market by the pair alone,
+        // so the key carries no data; the adapter validates both reserves against the pool on use
+        market = Market({collateral: Currency.wrap(address(usdc)), debt: Currency.wrap(address(weth)), data: ""});
+        assertTrue(adapter.isSupportedMarket(market), "USDC/WETH routable on the mock pool");
 
         address permit2 = deployPermit2();
         address impl = address(new MarginAccount());

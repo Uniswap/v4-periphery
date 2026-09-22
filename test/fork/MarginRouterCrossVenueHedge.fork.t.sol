@@ -121,8 +121,14 @@ contract MarginRouterCrossVenueHedgeForkTest is Test, MarginRouteHelpers {
         owner = address(this);
 
         // the long lives on Morpho (WETH collateral / USDC debt); the short on Aave (USDC / WETH)
-        longMarket = Market({collateral: Currency.wrap(WETH), debt: Currency.wrap(USDC)});
-        shortMarket = Market({collateral: Currency.wrap(USDC), debt: Currency.wrap(WETH)});
+        // Morpho keys a market by its full MarketParams, so the long key carries (oracle, irm, lltv);
+        // Aave keys by the pair alone, so the short key carries no data
+        longMarket = Market({
+            collateral: Currency.wrap(WETH),
+            debt: Currency.wrap(USDC),
+            data: abi.encode(MORPHO_ORACLE, MORPHO_IRM, MORPHO_LLTV)
+        });
+        shortMarket = Market({collateral: Currency.wrap(USDC), debt: Currency.wrap(WETH), data: ""});
 
         _deployAndVerifyAdapters();
         _readOraclePrices();
@@ -378,8 +384,8 @@ contract MarginRouterCrossVenueHedgeForkTest is Test, MarginRouteHelpers {
 
     /// @notice Deploys both adapters against their live protocols and verifies each resolved/registered
     ///         correctly: the Morpho market exists and matches the expected tokens; the Aave adapter
-    ///         resolved the expected Pool, data provider, and reserve receipt tokens. Registers the
-    ///         long on Morpho and the short on Aave, and sanity-checks each leg's max LTV.
+    ///         resolved the expected Pool, data provider, and reserve receipt tokens. Confirms each
+    ///         leg's key is routable on its venue and sanity-checks each leg's max LTV.
     function _deployAndVerifyAdapters() internal {
         // long leg: live Morpho Blue WETH/USDC market (WETH collateral, USDC debt)
         morphoMarketParams = MarketParams({
@@ -388,13 +394,12 @@ contract MarginRouterCrossVenueHedgeForkTest is Test, MarginRouteHelpers {
         assertEq(MORPHO.idToMarketParams(morphoMarketParams.id()).collateralToken, WETH, "morpho market collateral");
         assertEq(MORPHO.idToMarketParams(morphoMarketParams.id()).loanToken, USDC, "morpho market loan token");
 
-        morphoAdapter = new MorphoLendingAdapter(MORPHO, address(this));
-        morphoAdapter.setMarket(morphoMarketParams);
-        assertTrue(morphoAdapter.isSupportedMarket(longMarket), "long market registered on Morpho adapter");
+        morphoAdapter = new MorphoLendingAdapter(MORPHO);
+        assertTrue(morphoAdapter.isSupportedMarket(longMarket), "long market routable on Morpho adapter");
         assertEq(Ltv.unwrap(morphoAdapter.maxLtvWad(longMarket)), MORPHO_LLTV, "long: maxLtv == Morpho LLTV");
 
         // short leg: live Aave v3 (USDC collateral, WETH debt)
-        aaveAdapter = new AaveLendingAdapter(AAVE_PROVIDER, address(this));
+        aaveAdapter = new AaveLendingAdapter(AAVE_PROVIDER);
         assertEq(address(aaveAdapter.pool()), EXPECTED_AAVE_POOL, "resolved Aave Pool");
         assertEq(address(aaveAdapter.dataProvider()), EXPECTED_AAVE_DATA_PROVIDER, "resolved Aave data provider");
 
@@ -403,8 +408,7 @@ contract MarginRouterCrossVenueHedgeForkTest is Test, MarginRouteHelpers {
         assertEq(aUsdc, EXPECTED_A_USDC, "aUSDC address");
         assertEq(vWeth, EXPECTED_V_DEBT_WETH, "variableDebtWETH address");
 
-        aaveAdapter.setMarket(shortMarket.collateral, shortMarket.debt, true);
-        assertTrue(aaveAdapter.isSupportedMarket(shortMarket), "short market registered on Aave adapter");
+        assertTrue(aaveAdapter.isSupportedMarket(shortMarket), "short market routable on Aave adapter");
         assertGt(Ltv.unwrap(aaveAdapter.maxLtvWad(shortMarket)), 0, "short: Aave maxLtv positive");
 
         // sanity on baseline addresses both legs share

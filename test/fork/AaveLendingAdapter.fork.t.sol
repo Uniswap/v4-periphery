@@ -99,7 +99,8 @@ contract AaveLendingAdapterForkTest is Test, MarginRouteHelpers {
         vm.createSelectFork(rpc, FORK_BLOCK);
 
         // the short market: USDC collateral, WETH debt (long USDC, short WETH)
-        market = Market({collateral: Currency.wrap(USDC), debt: Currency.wrap(WETH)});
+        // Aave v3 keys a market by the pair alone, so the key carries no data
+        market = Market({collateral: Currency.wrap(USDC), debt: Currency.wrap(WETH), data: ""});
 
         _deployAndVerifyAdapter();
         _readOraclePrices();
@@ -292,9 +293,10 @@ contract AaveLendingAdapterForkTest is Test, MarginRouteHelpers {
     /// @notice Deploys the adapter against the live provider and verifies on-chain that it resolved the
     ///         expected Pool and data provider, that the USDC/WETH reserve receipt tokens match the
     ///         expected addresses, and that `maxLtvWad` decodes the USDC liquidation threshold (not the
-    ///         `ltv` field). Cross-checks the threshold against the live reserve configuration.
+    ///         `ltv` field). Probes that the short market key routes with no registration step and
+    ///         cross-checks the threshold against the live reserve configuration.
     function _deployAndVerifyAdapter() internal {
-        adapter = new AaveLendingAdapter(PROVIDER, address(this));
+        adapter = new AaveLendingAdapter(PROVIDER);
 
         assertEq(address(adapter.pool()), EXPECTED_POOL, "resolved Aave Pool");
         assertEq(address(adapter.dataProvider()), EXPECTED_DATA_PROVIDER, "resolved Aave data provider");
@@ -307,7 +309,8 @@ contract AaveLendingAdapterForkTest is Test, MarginRouteHelpers {
         assertEq(aWeth, EXPECTED_A_WETH, "aWETH address");
         assertEq(vWeth, EXPECTED_V_DEBT_WETH, "variableDebtWETH address");
 
-        adapter.setMarket(market.collateral, market.debt, true);
+        // market selection is permissionless: the live pair routes with no registration step
+        assertTrue(adapter.isSupportedMarket(market), "live USDC/WETH pair is routable");
 
         // maxLtvWad must decode the liquidation threshold (Morpho's lltv analog), not the max-borrow
         // ltv. Cross-check against the live reserve configuration so a field mixup fails loudly.

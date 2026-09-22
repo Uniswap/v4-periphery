@@ -17,7 +17,7 @@ library MarginCalldataDecoder {
     /// @notice Decodes `(adapter, market, amount)`. Used by the supply-collateral and repay actions.
     /// @param params ABI-encoded `(ILendingAdapter, Market, uint256)`.
     /// @return adapter The lending adapter.
-    /// @return market The (collateral, debt) market descriptor.
+    /// @return market The market key (the (collateral, debt) pair plus adapter-specific data).
     /// @return amount The token amount in the token's native decimals.
     function decodeAdapterMarketAmount(bytes calldata params)
         internal
@@ -31,7 +31,7 @@ library MarginCalldataDecoder {
     ///         actions, which require a recipient address.
     /// @param params ABI-encoded `(ILendingAdapter, Market, uint256, address)`.
     /// @return adapter The lending adapter.
-    /// @return market The (collateral, debt) market descriptor.
+    /// @return market The market key (the (collateral, debt) pair plus adapter-specific data).
     /// @return amount The token amount in the token's native decimals.
     /// @return to The recipient address; must be the manager or owner (enforced by the account).
     function decodeAdapterMarketAmountReceiver(bytes calldata params)
@@ -56,7 +56,7 @@ library MarginCalldataDecoder {
     ///         account named in calldata.
     /// @param params ABI-encoded `(ILendingAdapter, Market, Ltv)`.
     /// @return adapter The lending adapter used to query the current LTV.
-    /// @return market The (collateral, debt) market descriptor.
+    /// @return market The market key (the (collateral, debt) pair plus adapter-specific data).
     /// @return maxLtv The maximum acceptable LTV (WAD, 1e18 == 100%); zero skips the check.
     function decodeHealthCheck(bytes calldata params) internal pure returns (ILendingAdapter, Market memory, Ltv) {
         return abi.decode(params, (ILendingAdapter, Market, Ltv));

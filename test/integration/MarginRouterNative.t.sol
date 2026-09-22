@@ -33,7 +33,7 @@ contract MarginRouterNativeTest is Test, MarginRouteHelpers {
         debtToken = new MockERC20("Debt", "DEBT", 18);
         protocol = new MockLendingProtocol(IERC20(address(weth)), IERC20(address(debtToken)));
         adapter = new MockLendingAdapter(address(protocol));
-        market = Market({collateral: Currency.wrap(address(weth)), debt: Currency.wrap(address(debtToken))});
+        market = Market({collateral: Currency.wrap(address(weth)), debt: Currency.wrap(address(debtToken)), data: ""});
         adapter.setSupported(market, true);
 
         address impl = address(new MarginAccount());
@@ -69,7 +69,7 @@ contract MarginRouterNativeTest is Test, MarginRouteHelpers {
 
     function test_addCollateral_native_revertsWhenCollateralNotWeth() public {
         Market memory wrongMarket =
-            Market({collateral: Currency.wrap(address(debtToken)), debt: Currency.wrap(address(weth))});
+            Market({collateral: Currency.wrap(address(debtToken)), debt: Currency.wrap(address(weth)), data: ""});
         adapter.setSupported(wrongMarket, true);
         vm.deal(address(this), 1 ether);
 

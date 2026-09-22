@@ -6,7 +6,7 @@ import {MarketParamsLib} from "morpho-blue/libraries/MarketParamsLib.sol";
 import {MorphoStorageLib} from "morpho-blue/libraries/periphery/MorphoStorageLib.sol";
 
 /// @notice Minimal Morpho Blue stand-in exposing the reads MorphoLendingAdapter needs:
-///         idToMarketParams (setMarket validation), position (shares-based full repay), and enough of
+///         idToMarketParams (market-key validation), position (shares-based full repay), and enough of
 ///         market()/extSloads for MorphoBalancesLib.expectedBorrowAssets to resolve the reported debt
 ///         the repay clamp compares against. Interest accrual is skipped when a market's `lastUpdate`
 ///         equals the current block timestamp (elapsed == 0), so no IRM is called; set it that way in

@@ -9,22 +9,21 @@ import {ILendingAdapter} from "./interfaces/ILendingAdapter.sol";
 import {IPool} from "./interfaces/external/aave/IPool.sol";
 import {IPoolAddressesProvider} from "./interfaces/external/aave/IPoolAddressesProvider.sol";
 import {IPoolDataProvider} from "./interfaces/external/aave/IPoolDataProvider.sol";
-import {OwnableAdapter} from "./base/OwnableAdapter.sol";
 import {PositionAmountResolver} from "./base/PositionAmountResolver.sol";
 import {Market} from "./types/Market.sol";
-import {MarketAllowlist, MarketNotSupported} from "./types/MarketAllowlist.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
 import {PositionData} from "./types/PositionData.sol";
 
 /// @title AaveLendingAdapter
 /// @author Uniswap Labs
-/// @notice A singleton `ILendingAdapter` over the Aave v3 Pool. The adapter is a thin shell composing
-///         a governed `(collateral, debt)` allowlist and an owner guard; encode and read logic
-///         delegates to the Aave Pool and the protocol data provider, except the current-LTV ratio,
-///         which is computed locally over Aave's account-level totals (max LTV and the health factor
-///         are read from the protocol). Each encoded call is executed by a `MarginAccount` as itself, so the Aave
-///         `onBehalfOf` is always the account and no delegated authorization is needed. The
-///         motivating use case is a short ETH position: supply USDC as collateral and borrow WETH.
+/// @notice A singleton, stateless `ILendingAdapter` over the Aave v3 Pool. Aave keys a market by the
+///         asset pair alone, so `Market.data` MUST be empty; any `(collateral, debt)` pair whose two
+///         assets are live Aave reserves is routable. Encode and read logic delegates to the Aave Pool
+///         and the protocol data provider, except the current-LTV ratio, which is computed locally over
+///         Aave's account-level totals (max LTV and the health factor are read from the protocol).
+///         Each encoded call is executed by a `MarginAccount` as itself, so the Aave `onBehalfOf` is
+///         always the account and no delegated authorization is needed. The motivating use case is a
+///         short ETH position: supply USDC as collateral and borrow WETH.
 /// @dev    Design and trust notes:
 ///         - The Pool is resolved once from the addresses provider and held immutably: it is a proxy
 ///           with a stable address across Aave upgrades. The protocol data provider is NOT cached; it
@@ -47,11 +46,12 @@ import {PositionData} from "./types/PositionData.sol";
 ///           router-enforced invariant: each Aave position must use its own `(owner, subId)` account.
 ///           Co-locating two of this Pool's markets under one `subId` blends the reads and can make a
 ///           close/decrease revert or withdraw collateral still backing another debt. Use a distinct
-///           `subId` per Aave position (Morpho markets are isolated and not subject to this).
-///         - Routing is curated: every `encode*` and read reverts `MarketNotSupported` for a pair the
-///           owner has not allowlisted, never returning a silent default market.
+///           `subId` per Aave position.
+///         - Market selection is permissionless but venue-validated: every `encode*` and read reverts
+///           `MarketNotSupported` for a pair whose collateral or debt is not a live Aave reserve, and
+///           `InvalidMarketData` for non-empty `data`, never returning a silent default market.
 /// @custom:security-contact security@uniswap.org
-contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountResolver {
+contract AaveLendingAdapter is ILendingAdapter, PositionAmountResolver {
     // WAD scale for loan-to-value ratios.
     uint256 private constant WAD = 1e18;
     // Aave expresses LTV and liquidation thresholds in basis points (1e4 == 100%).
@@ -69,10 +69,6 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
     ///         is tracked automatically.
     IPoolAddressesProvider public immutable addressesProvider;
 
-    /// @notice The governed allowlist of routable `(collateral, debt)` pairs. Managed via `setMarket`;
-    ///         the owner guard lives in `OwnableAdapter`.
-    MarketAllowlist internal _markets;
-
     /// @dev Thrown when the addresses provider resolves the Pool or the data provider to the zero
     ///      address at construction.
     error ZeroAddress();
@@ -84,18 +80,11 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
     /// @param caller The actual caller (`msg.sender`).
     error AccountMismatch(address account, address caller);
 
-    /// @notice Emitted when a market is enabled or disabled in the allowlist.
-    /// @param collateral The collateral token address of the market.
-    /// @param debt The debt token address of the market.
-    /// @param allowed Whether the pair is now routable.
-    event MarketSet(address indexed collateral, address indexed debt, bool allowed);
-
     /// @param provider The Aave v3 PoolAddressesProvider for the target market. The Pool (a proxy
     ///        with a stable address across Aave upgrades) is resolved from it and stored immutably.
     ///        The protocol data provider is a plain, replaceable address Aave can repoint, so it is
     ///        never stored: it is re-resolved from this provider on each use (see `dataProvider`).
-    /// @param owner_ The initial adapter owner (governance).
-    constructor(IPoolAddressesProvider provider, address owner_) OwnableAdapter(owner_) {
+    constructor(IPoolAddressesProvider provider) {
         address pool_ = provider.getPool();
         // resolve the data provider once only to sanity-check the provider is wired; it is re-resolved
         // on each use rather than cached (Aave can repoint it), see `dataProvider`
@@ -119,18 +108,11 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
     }
 
     /// @inheritdoc ILendingAdapter
+    /// @dev True when `data` is empty and both assets are live Aave reserves (non-zero receipt tokens).
     function isSupportedMarket(Market calldata market) external view returns (bool) {
-        return _markets.isAllowed(market);
-    }
-
-    /// @inheritdoc ILendingAdapter
-    function supportedMarketsLength() external view returns (uint256) {
-        return _markets.count();
-    }
-
-    /// @inheritdoc ILendingAdapter
-    function supportedMarkets(uint256 offset, uint256 limit) external view returns (Market[] memory) {
-        return _markets.page(offset, limit);
+        if (market.data.length != 0) return false;
+        (address aCollateral, address vDebt) = _reserveTokens(market);
+        return aCollateral != address(0) && vDebt != address(0);
     }
 
     /// @inheritdoc ILendingAdapter
@@ -141,7 +123,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
         view
         returns (address, uint256, bytes memory)
     {
-        _requireSupportedMarket(market);
+        _resolve(market);
         return
             (address(pool), 0, abi.encodeCall(IPool.supply, (Currency.unwrap(market.collateral), amount, account, 0)));
     }
@@ -159,7 +141,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
         view
         returns (address, uint256, bytes memory)
     {
-        _requireSupportedMarket(market);
+        _resolve(market);
         return (
             address(pool),
             0,
@@ -179,7 +161,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
         view
         returns (address, uint256, bytes memory)
     {
-        _requireSupportedMarket(market);
+        _resolve(market);
         if (account != msg.sender) revert AccountMismatch(account, msg.sender);
         return
             (address(pool), 0, abi.encodeCall(IPool.withdraw, (Currency.unwrap(market.collateral), amount, receiver)));
@@ -194,7 +176,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
         view
         returns (address, uint256, bytes memory)
     {
-        _requireSupportedMarket(market);
+        _resolve(market);
         return (
             address(pool),
             0,
@@ -214,8 +196,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
         view
         returns (address, uint256, bytes memory)
     {
-        _requireSupportedMarket(market);
-        (,, address vDebt) = dataProvider().getReserveTokensAddresses(Currency.unwrap(market.debt));
+        (, address vDebt) = _resolve(market);
         if (IERC20(vDebt).balanceOf(account) == 0) return (address(pool), 0, "");
         return
             (
@@ -236,8 +217,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
         override(ILendingAdapter, PositionAmountResolver)
         returns (uint256 collateralAmount, uint256 debtAmount)
     {
-        _requireSupportedMarket(market);
-        (address aCollateral, address vDebt) = _reserveTokens(market);
+        (address aCollateral, address vDebt) = _resolve(market);
         collateralAmount = IERC20(aCollateral).balanceOf(account);
         debtAmount = IERC20(vDebt).balanceOf(account);
     }
@@ -247,7 +227,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
     ///      `lltv`), in basis points, and converts it to a WAD-scaled `Ltv`. Uses the liquidation
     ///      threshold, not the `ltv` (max-borrow) field.
     function maxLtvWad(Market calldata market) external view returns (Ltv) {
-        _requireSupportedMarket(market);
+        _resolve(market);
         (,, uint256 liquidationThreshold,,,,,,,) =
             dataProvider().getReserveConfigurationData(Currency.unwrap(market.collateral));
         return _thresholdToLtv(liquidationThreshold);
@@ -263,10 +243,10 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
     ///      markets under one `(owner, subId)`, or supplying/borrowing extra reserves via the owner
     ///      escape hatch, blends every reserve into these totals. The router does NOT enforce one
     ///      position per account; callers must use a distinct `subId` per Aave position.
-    /// @param market Must be an allowlisted pair (only its currencies are read; the account's full
-    ///        Aave position determines the totals).
+    /// @param market Must name two live reserves (only the key is validated; the account's full Aave
+    ///        position determines the totals).
     function currentLtvWad(address account, Market calldata market) external view returns (Ltv) {
-        _requireSupportedMarket(market);
+        _resolve(market);
         (uint256 totalCollateralBase, uint256 totalDebtBase,,,,) = pool.getUserAccountData(account);
         return _currentLtv(totalDebtBase, totalCollateralBase);
     }
@@ -282,8 +262,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
         view
         returns (PositionData memory data)
     {
-        _requireSupportedMarket(market);
-        (address aCollateral, address vDebt) = _reserveTokens(market);
+        (address aCollateral, address vDebt) = _resolve(market);
         (uint256 totalCollateralBase, uint256 totalDebtBase,, uint256 liquidationThreshold,, uint256 healthFactor) =
             pool.getUserAccountData(account);
         data = PositionData({
@@ -297,8 +276,23 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
         });
     }
 
+    /// @notice Validates a market key against the live Pool and returns the reserves' receipt tokens
+    ///         for reuse. Reverts `InvalidMarketData` for non-empty `data` (Aave keys markets by the
+    ///         asset pair alone) and `MarketNotSupported` unless both assets are live reserves.
+    /// @param market The market key to validate.
+    /// @return aCollateral The collateral reserve's aToken.
+    /// @return vDebt The debt reserve's variable debt token.
+    function _resolve(Market memory market) internal view returns (address aCollateral, address vDebt) {
+        if (market.data.length != 0) revert InvalidMarketData(market.data.length);
+        (aCollateral, vDebt) = _reserveTokens(market);
+        if (aCollateral == address(0) || vDebt == address(0)) {
+            revert MarketNotSupported(market.collateral, market.debt);
+        }
+    }
+
     /// @notice The account's aToken (collateral) and variable-debt-token (debt) addresses for the
-    ///         market's reserves, read from the protocol data provider.
+    ///         market's reserves, read from the protocol data provider. Zero for an asset that is not
+    ///         an Aave reserve.
     /// @param market The market whose reserve receipt tokens are resolved.
     /// @return aCollateral The collateral reserve's aToken.
     /// @return vDebt The debt reserve's variable debt token.
@@ -323,28 +317,5 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
     /// @return The threshold as an `Ltv` (WAD, 1e18 == 100%).
     function _thresholdToLtv(uint256 thresholdBps) internal pure returns (Ltv) {
         return toLtv(thresholdBps * WAD / BPS);
-    }
-
-    /// @notice Enables or disables routing for a `(collateral, debt)` pair. When enabling, both
-    ///         assets must be live Aave reserves (their aToken addresses are non-zero). Owner-gated.
-    /// @param collateral The collateral token of the pair.
-    /// @param debt The debt token of the pair.
-    /// @param allowed Whether the pair should be routable.
-    function setMarket(Currency collateral, Currency debt, bool allowed) external {
-        _onlyOwner();
-        if (allowed) {
-            IPoolDataProvider dp = dataProvider();
-            (address aCollateral,,) = dp.getReserveTokensAddresses(Currency.unwrap(collateral));
-            (address aDebt,,) = dp.getReserveTokensAddresses(Currency.unwrap(debt));
-            if (aCollateral == address(0) || aDebt == address(0)) revert MarketNotSupported(collateral, debt);
-        }
-        _markets.set(collateral, debt, allowed);
-        emit MarketSet(Currency.unwrap(collateral), Currency.unwrap(debt), allowed);
-    }
-
-    /// @notice Reverts `MarketNotSupported` unless the `(collateral, debt)` pair is allowlisted.
-    /// @param market The market pair to check.
-    function _requireSupportedMarket(Market memory market) internal view {
-        _markets.requireAllowed(market);
     }
 }

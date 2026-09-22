@@ -49,7 +49,7 @@ contract MarginRouterTest is Test, MarginRouteHelpers {
     }
 
     function _openParams() internal view returns (IMarginRouter.IncreaseParams memory p) {
-        p.market = Market({collateral: c0, debt: c1});
+        p.market = Market({collateral: c0, debt: c1, data: ""});
         p.equity = 1e18;
         p.collateralToBuy = 2e18;
         p.maxDebtIn = 1;

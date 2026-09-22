@@ -42,14 +42,17 @@ contract MorphoLendingAdapterForkTest is Test {
         vm.createSelectFork(rpc, FORK_BLOCK);
 
         marketParams = MarketParams({loanToken: USDC, collateralToken: WETH, oracle: ORACLE, irm: IRM, lltv: LLTV});
-        market = Market({collateral: Currency.wrap(WETH), debt: Currency.wrap(USDC)});
+        // the adapter key: the pair plus abi.encode(oracle, irm, lltv), i.e. the full MarketParams
+        market =
+            Market({collateral: Currency.wrap(WETH), debt: Currency.wrap(USDC), data: abi.encode(ORACLE, IRM, LLTV)});
 
         // verify the market actually exists on Morpho with the expected tokens
         assertEq(MORPHO.idToMarketParams(_id()).collateralToken, WETH, "market collateral");
         assertEq(MORPHO.idToMarketParams(_id()).loanToken, USDC, "market loan token");
 
-        adapter = new MorphoLendingAdapter(MORPHO, address(this));
-        adapter.setMarket(marketParams);
+        // no registration step: any market Morpho has created is routable by its key
+        adapter = new MorphoLendingAdapter(MORPHO);
+        assertTrue(adapter.isSupportedMarket(market), "key routes to the live market");
 
         // an account owned and managed by this test, so it can drive the primitives directly
         address impl = address(new MarginAccount());

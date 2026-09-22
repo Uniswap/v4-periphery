@@ -59,14 +59,15 @@ contract CompoundV3LendingAdapterForkTest is Test, MarginRouteHelpers {
         if (bytes(rpc).length == 0) return;
         vm.createSelectFork(rpc, FORK_BLOCK);
 
-        market = Market({collateral: Currency.wrap(UNI), debt: Currency.wrap(USDC)});
+        // a Comet market is the collateral asset alone, so the key carries no data
+        market = Market({collateral: Currency.wrap(UNI), debt: Currency.wrap(USDC), data: ""});
         assertEq(COMET.baseToken(), USDC, "comet base is USDC");
 
         manager = new PoolManager(address(this));
         lpRouter = new PoolModifyLiquidityTest(IPoolManager(address(manager)));
         _initAndSeedPool();
 
-        adapter = new CompoundV3LendingAdapter(COMET, address(this));
+        adapter = new CompoundV3LendingAdapter(COMET);
         address impl = address(new MarginAccount());
         // route position swaps through a Universal Router bound to the local flash-take PoolManager
         ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
@@ -76,7 +77,8 @@ contract CompoundV3LendingAdapterForkTest is Test, MarginRouteHelpers {
             )
         );
         router.setAdapterAllowed(adapter, true);
-        adapter.setMarket(Currency.wrap(UNI), Currency.wrap(USDC), true);
+        // no adapter-side registration: UNI is a listed Comet collateral, so the key routes as-is
+        assertTrue(adapter.isSupportedMarket(market), "key routes to the live Comet market");
     }
 
     function test_fork_compound_longUni_lifecycle() public {

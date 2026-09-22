@@ -51,7 +51,7 @@ contract MarginRouterRouteSwapResidualTest is RoutingTestHelpers, MarginRouteHel
         collateral = currency0;
         debt = currency1;
         poolKey = key0;
-        market = Market({collateral: collateral, debt: debt});
+        market = Market({collateral: collateral, debt: debt, data: ""});
 
         protocol = new MockLendingProtocol(IERC20(Currency.unwrap(collateral)), IERC20(Currency.unwrap(debt)));
         adapter = new MockLendingAdapter(address(protocol));

@@ -92,7 +92,12 @@ contract AaveV4LendingAdapterForkTest is Test, MarginRouteHelpers {
         vm.createSelectFork(rpc, FORK_BLOCK);
 
         // the short market: USDC collateral, WETH debt (long USDC, short WETH)
-        market = Market({collateral: Currency.wrap(USDC), debt: Currency.wrap(WETH)});
+        // Aave v4 keys a market by per-Spoke reserve ids, carried in the key data
+        market = Market({
+            collateral: Currency.wrap(USDC),
+            debt: Currency.wrap(WETH),
+            data: abi.encode(USDC_RESERVE_ID, WETH_RESERVE_ID)
+        });
 
         _deployAndVerifyAdapter();
         _readOraclePrices();
@@ -294,9 +299,10 @@ contract AaveV4LendingAdapterForkTest is Test, MarginRouteHelpers {
 
     /// @notice Deploys the adapter against the live Main Spoke and verifies on-chain that the WETH and
     ///         USDC reserves resolve to the expected underlyings on the Core Hub, the oracle matches,
-    ///         and `maxLtvWad` decodes the USDC collateral factor. Registers the short market.
+    ///         and `maxLtvWad` decodes the USDC collateral factor. Probes that the short market key
+    ///         routes with no registration step.
     function _deployAndVerifyAdapter() internal {
-        adapter = new AaveV4LendingAdapter(ISpoke(MAIN_SPOKE), address(this));
+        adapter = new AaveV4LendingAdapter(ISpoke(MAIN_SPOKE));
         assertEq(adapter.lendingProtocol(), MAIN_SPOKE, "lendingProtocol == Main Spoke");
         assertEq(ISpoke(MAIN_SPOKE).ORACLE(), EXPECTED_ORACLE, "spoke oracle");
 
@@ -311,7 +317,8 @@ contract AaveV4LendingAdapterForkTest is Test, MarginRouteHelpers {
         assertTrue(ISpoke(MAIN_SPOKE).getReserveConfig(WETH_RESERVE_ID).borrowable, "WETH borrowable");
         assertFalse(ISpoke(MAIN_SPOKE).getReserveConfig(USDC_RESERVE_ID).paused, "USDC not paused");
 
-        adapter.setMarket(market.collateral, market.debt, USDC_RESERVE_ID, WETH_RESERVE_ID, true);
+        // market selection is permissionless: the live key routes with no registration step
+        assertTrue(adapter.isSupportedMarket(market), "live USDC/WETH key is routable");
 
         // maxLtvWad must decode the USDC collateral factor (78%)
         assertEq(Ltv.unwrap(adapter.maxLtvWad(market)), USDC_CF_BPS * WAD / BPS, "maxLtvWad uses collateral factor");

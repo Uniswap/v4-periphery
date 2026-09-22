@@ -50,7 +50,7 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers, MarginRoute
 
         collateral = currency0;
         debt = currency1;
-        market = Market({collateral: collateral, debt: debt});
+        market = Market({collateral: collateral, debt: debt, data: ""});
 
         // liquidity in a single tick-spacing band -> a 1 ETH exact-output request cannot fully fill
         thinOpenPoolKey = _createThinPool(3001, 0, 60);

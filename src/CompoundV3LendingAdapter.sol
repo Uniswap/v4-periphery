@@ -7,32 +7,33 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {ILendingAdapter} from "./interfaces/ILendingAdapter.sol";
 import {IComet} from "./interfaces/external/compound-v3/IComet.sol";
-import {OwnableAdapter} from "./base/OwnableAdapter.sol";
 import {PositionAmountResolver} from "./base/PositionAmountResolver.sol";
 import {Market} from "./types/Market.sol";
-import {MarketAllowlist, MarketNotSupported} from "./types/MarketAllowlist.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
 import {PositionData} from "./types/PositionData.sol";
 
 /// @title CompoundV3LendingAdapter
 /// @author Uniswap Labs
-/// @notice A singleton `ILendingAdapter` over one Compound v3 (Comet) instance. The adapter is a thin
-///         shell composing a governed `(collateral, debt)` allowlist and an owner guard. Balances and
+/// @notice A singleton, stateless `ILendingAdapter` over one Compound v3 (Comet) instance. A Comet
+///         keys a market by the collateral asset alone (its base token is the only debt), so
+///         `Market.data` MUST be empty; any `(collateral, debt)` pair with `debt == comet.baseToken()`
+///         and a `collateral` the Comet lists as a collateral asset is routable. Balances and
 ///         collateral factors are read from the Comet; USD valuation, current LTV, and the health
 ///         factor are derived locally from the Comet's own price feeds, mirroring its collateralization
-///         math rather than delegating to it. Each encoded
-///         call is executed by a `MarginAccount` as itself, so the Comet acts on the account's own
-///         balances and no delegated authorization is needed. The motivating use case is a long
-///         position in a Comet collateral asset (e.g. supply UNI, borrow the base USDC).
+///         math rather than delegating to it. Each encoded call is executed by a `MarginAccount` as
+///         itself, so the Comet acts on the account's own balances and no delegated authorization is
+///         needed. The motivating use case is a long position in a Comet collateral asset (e.g. supply
+///         UNI, borrow the base USDC).
 /// @dev    Design and trust notes:
 ///         - A Comet is single-base: it has exactly one borrowable `baseToken` and a set of
-///           collateral assets. This adapter binds one Comet at construction, so every routed market
-///           MUST have `debt == comet.baseToken()` and a `collateral` that is a registered Comet
-///           collateral asset; `setMarket` validates both. To serve a different base, deploy another
-///           adapter against that Comet.
+///           collateral assets. This adapter binds one Comet at construction; to serve a different
+///           base, deploy another adapter against that Comet.
 ///         - Comet has no separate borrow/repay: borrowing the base is `withdraw`ing it (drawing the
 ///           base balance negative) and repaying is `supply`ing it. The encoders map the four
-///           `ILendingAdapter` primitives onto `supply`/`withdraw`/`withdrawTo` accordingly.
+///           `ILendingAdapter` primitives onto `supply`/`withdraw`/`withdrawTo` accordingly. Because
+///           `withdraw(asset)` of a COLLATERAL asset is a collateral withdrawal, not a borrow, the
+///           `debt == baseToken` check runs on every call, so a key naming a collateral asset as the
+///           debt can never turn `encodeBorrow` into a withdrawal.
 ///         - The adapter only encodes calls; it never holds funds or moves tokens. The executing
 ///           `MarginAccount` performs a regular call (never a delegatecall) and validates the `to` it
 ///           is handed, but it does not decode this calldata, so THIS ADAPTER is what guarantees the
@@ -50,10 +51,14 @@ import {PositionData} from "./types/PositionData.sol";
 ///           They are account-level in the base only when the account holds multiple positions in the
 ///           same Comet (multiple collaterals backing one base borrow), so use a distinct `subId` per
 ///           Comet position, as with the Aave adapters.
-///         - Routing is curated: every `encode*` and read reverts `MarketNotSupported` for a pair the
-///           owner has not allowlisted, never a silent default market.
+///         - Market selection is permissionless but venue-validated on every call: a `debt` other than
+///           the Comet base reverts `DebtNotBaseToken`, a `collateral` the Comet does not list reverts
+///           `MarketNotSupported`, and non-empty `data` reverts `InvalidMarketData`, never a silent
+///           default market. If Compound governance removes a collateral asset, every call for that
+///           market reverts `MarketNotSupported` from then on; funds stay exitable via the owner
+///           escape hatch.
 /// @custom:security-contact security@uniswap.org
-contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountResolver {
+contract CompoundV3LendingAdapter is ILendingAdapter, PositionAmountResolver {
     // WAD scale for loan-to-value ratios and collateral factors (Comet expresses factors in WAD).
     uint256 private constant WAD = 1e18;
 
@@ -61,23 +66,19 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
     ///         all `encode*` functions return this address as `target`.
     IComet public immutable comet;
 
-    /// @notice The Comet's single borrowable base token, cached at construction. Every routed market's
-    ///         `debt` must equal this.
+    /// @notice The Comet's single borrowable base token, cached at construction. Every routable
+    ///         market's `debt` must equal this.
     address public immutable baseToken;
 
     /// @notice `10 ** baseTokenDecimals` for the Comet's base token, cached at construction. Immutable
     ///         per Comet instance, so it is read once here rather than on every valuation.
     uint256 public immutable baseScale;
 
-    /// @notice The governed allowlist of routable `(collateral, debt)` pairs. Managed via `setMarket`;
-    ///         the owner guard lives in `OwnableAdapter`.
-    MarketAllowlist internal _markets;
-
     /// @dev Thrown when the Comet reports a zero base token at construction.
     error ZeroAddress();
 
-    /// @dev Thrown when `setMarket` is asked to enable a pair whose `debt` is not this Comet's base
-    ///      token. A Comet can only borrow its single base asset.
+    /// @dev Thrown by every encode and read when the key's `debt` is not this Comet's base token. A
+    ///      Comet can only borrow its single base asset.
     /// @param debt The debt token supplied.
     /// @param baseToken The Comet's actual base token.
     error DebtNotBaseToken(Currency debt, address baseToken);
@@ -90,15 +91,8 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
     /// @param caller The actual caller (`msg.sender`).
     error AccountMismatch(address account, address caller);
 
-    /// @notice Emitted when a market is enabled or disabled in the allowlist.
-    /// @param collateral The collateral token address of the market.
-    /// @param debt The debt token address of the market (this Comet's base token).
-    /// @param allowed Whether the pair is now routable.
-    event MarketSet(address indexed collateral, address indexed debt, bool allowed);
-
     /// @param comet_ The Comet instance this adapter routes to.
-    /// @param owner_ The initial adapter owner (governance).
-    constructor(IComet comet_, address owner_) OwnableAdapter(owner_) {
+    constructor(IComet comet_) {
         address base = comet_.baseToken();
         if (base == address(0)) revert ZeroAddress();
         comet = comet_;
@@ -121,18 +115,12 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
     }
 
     /// @inheritdoc ILendingAdapter
+    /// @dev True when `data` is empty, `debt` is the Comet base, and `collateral` is a listed Comet
+    ///      collateral asset.
     function isSupportedMarket(Market calldata market) external view returns (bool) {
-        return _markets.isAllowed(market);
-    }
-
-    /// @inheritdoc ILendingAdapter
-    function supportedMarketsLength() external view returns (uint256) {
-        return _markets.count();
-    }
-
-    /// @inheritdoc ILendingAdapter
-    function supportedMarkets(uint256 offset, uint256 limit) external view returns (Market[] memory) {
-        return _markets.page(offset, limit);
+        if (market.data.length != 0 || Currency.unwrap(market.debt) != baseToken) return false;
+        (bool listed,) = _assetInfo(market.collateral);
+        return listed;
     }
 
     /// @inheritdoc ILendingAdapter
@@ -144,14 +132,16 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
         view
         returns (address, uint256, bytes memory)
     {
-        _requireSupportedMarket(market);
+        _resolve(market);
         account; // the account is Comet's msg.sender; supply credits it, no onBehalf argument exists
         return (address(comet), 0, abi.encodeCall(IComet.supply, (Currency.unwrap(market.collateral), amount)));
     }
 
     /// @inheritdoc ILendingAdapter
     /// @dev No-op: Comet counts a supplied collateral asset as collateral automatically, so there is
-    ///      no separate enable step. Returns empty `callData`, which the account skips.
+    ///      no separate enable step. Returns empty `callData`, which the account skips, without
+    ///      decoding the key: the account calls this only after `encodeSupplyCollateral` has validated
+    ///      it.
     function encodeEnableCollateral(address, Market calldata) external pure returns (address, uint256, bytes memory) {
         return (address(0), 0, "");
     }
@@ -166,7 +156,7 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
         view
         returns (address, uint256, bytes memory)
     {
-        _requireSupportedMarket(market);
+        _resolve(market);
         if (account != msg.sender) revert AccountMismatch(account, msg.sender);
         return
             (
@@ -179,13 +169,14 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
     /// @inheritdoc ILendingAdapter
     /// @dev Encodes `IComet.withdraw(baseToken, amount)`: withdrawing the base with no base supply
     ///      draws a borrow, delivered to `msg.sender` (the account), which forwards it to the receiver
-    ///      it validates. `market.debt` is the Comet's base by construction (`setMarket` enforces it).
+    ///      it validates. `market.debt` is the Comet's base by construction (`_resolve` enforces it on
+    ///      this very call).
     function encodeBorrow(address account, Market calldata market, uint256 amount)
         external
         view
         returns (address, uint256, bytes memory)
     {
-        _requireSupportedMarket(market);
+        _resolve(market);
         account; // Comet delivers the borrow to msg.sender (the account); no receiver argument exists
         return (address(comet), 0, abi.encodeCall(IComet.withdraw, (Currency.unwrap(market.debt), amount)));
     }
@@ -203,7 +194,7 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
         view
         returns (address, uint256, bytes memory)
     {
-        _requireSupportedMarket(market);
+        _resolve(market);
         uint256 owed = comet.borrowBalanceOf(account);
         if (owed == 0) return (address(comet), 0, "");
         uint256 repayAmount = amount > owed ? owed : amount;
@@ -220,7 +211,7 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
         override(ILendingAdapter, PositionAmountResolver)
         returns (uint256 collateralAmount, uint256 debtAmount)
     {
-        _requireSupportedMarket(market);
+        _resolve(market);
         collateralAmount = uint256(comet.collateralBalanceOf(account, Currency.unwrap(market.collateral)));
         debtAmount = comet.borrowBalanceOf(account);
     }
@@ -229,8 +220,7 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
     /// @dev Returns the collateral's LIQUIDATE collateral factor (already WAD), the liquidation
     ///      boundary. Comet enforces the tighter BORROW collateral factor at borrow time.
     function maxLtvWad(Market calldata market) external view returns (Ltv) {
-        _requireSupportedMarket(market);
-        return toLtv(comet.getAssetInfoByAddress(Currency.unwrap(market.collateral)).liquidateCollateralFactor);
+        return toLtv(_resolve(market).liquidateCollateralFactor);
     }
 
     /// @inheritdoc ILendingAdapter
@@ -239,7 +229,6 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
     ///      `type(uint256).max` (as an `Ltv`) when there is debt but zero collateral value, and 0 when
     ///      there is no debt.
     function currentLtvWad(address account, Market calldata market) external view returns (Ltv) {
-        _requireSupportedMarket(market);
         (,, uint256 debtValue, uint256 collateralValue,) = _positionValues(account, market);
         return _ltv(debtValue, collateralValue);
     }
@@ -253,7 +242,6 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
         view
         returns (PositionData memory data)
     {
-        _requireSupportedMarket(market);
         (
             uint256 collateral,
             uint256 debt,
@@ -275,11 +263,11 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
         });
     }
 
-    /// @notice Reads the account's collateral, accrued base debt, their USD values, and the collateral
-    ///         reserve's liquidation factor for a resolved market in a single pass, so `currentLtvWad`
-    ///         and `describePosition` share one read.
+    /// @notice Resolves the market key and reads the account's collateral, accrued base debt, their
+    ///         USD values, and the collateral's liquidation factor in a single pass, so
+    ///         `currentLtvWad` and `describePosition` share one read.
     /// @param account The account to read.
-    /// @param market The (collateral, debt) pair; must be allowlisted.
+    /// @param market The market key; validated by `_resolve`.
     /// @return collateral The account's supplied collateral, in the collateral token's native decimals.
     /// @return debt The account's accrued base borrow, in the base token's native decimals.
     /// @return debtValue The base debt valued in USD (Comet price scale).
@@ -296,7 +284,7 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
             uint64 liquidateCollateralFactor
         )
     {
-        IComet.AssetInfo memory info = comet.getAssetInfoByAddress(Currency.unwrap(market.collateral));
+        IComet.AssetInfo memory info = _resolve(market);
         collateral = uint256(comet.collateralBalanceOf(account, Currency.unwrap(market.collateral)));
         debt = comet.borrowBalanceOf(account);
         collateralValue = _usd(collateral, comet.getPrice(info.priceFeed), info.scale);
@@ -323,30 +311,31 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
         return toLtv(Math.mulDiv(debtValue, WAD, collateralValue));
     }
 
-    /// @notice Enables or disables routing for a `(collateral, debt)` pair. When enabling, `debt` must
-    ///         be this Comet's base token and `collateral` must be a registered Comet collateral asset.
-    ///         Owner-gated.
-    /// @param collateral The collateral token of the pair (a Comet collateral asset).
-    /// @param debt The debt token of the pair (must equal `baseToken`).
-    /// @param allowed Whether the pair should be routable.
-    function setMarket(Currency collateral, Currency debt, bool allowed) external {
-        _onlyOwner();
-        if (allowed) {
-            if (Currency.unwrap(debt) != baseToken) revert DebtNotBaseToken(debt, baseToken);
-            // getAssetInfoByAddress reverts for a non-collateral asset; treat that as unsupported
-            try comet.getAssetInfoByAddress(Currency.unwrap(collateral)) returns (IComet.AssetInfo memory info) {
-                if (info.asset != Currency.unwrap(collateral)) revert MarketNotSupported(collateral, debt);
-            } catch {
-                revert MarketNotSupported(collateral, debt);
-            }
-        }
-        _markets.set(collateral, debt, allowed);
-        emit MarketSet(Currency.unwrap(collateral), Currency.unwrap(debt), allowed);
+    /// @notice Validates a market key against the bound Comet and returns the collateral's asset info
+    ///         for reuse. Reverts `InvalidMarketData` for non-empty `data` (a Comet market is the
+    ///         collateral asset alone), `DebtNotBaseToken` unless `debt` is the Comet base, and
+    ///         `MarketNotSupported` unless `collateral` is a listed Comet collateral asset.
+    /// @param market The market key to validate.
+    /// @return info The Comet asset info for the collateral.
+    function _resolve(Market memory market) internal view returns (IComet.AssetInfo memory info) {
+        if (market.data.length != 0) revert InvalidMarketData(market.data.length);
+        if (Currency.unwrap(market.debt) != baseToken) revert DebtNotBaseToken(market.debt, baseToken);
+        bool listed;
+        (listed, info) = _assetInfo(market.collateral);
+        if (!listed) revert MarketNotSupported(market.collateral, market.debt);
     }
 
-    /// @notice Reverts `MarketNotSupported` unless the `(collateral, debt)` pair is allowlisted.
-    /// @param market The market pair to check.
-    function _requireSupportedMarket(Market memory market) internal view {
-        _markets.requireAllowed(market);
+    /// @notice Looks up a collateral asset on the Comet without reverting. `getAssetInfoByAddress`
+    ///         reverts for an asset the Comet does not list, which is treated as "not listed".
+    /// @param collateral The collateral asset to look up.
+    /// @return listed True if the Comet lists `collateral` as a collateral asset.
+    /// @return info The Comet asset info when listed; zeroed otherwise.
+    function _assetInfo(Currency collateral) internal view returns (bool listed, IComet.AssetInfo memory info) {
+        address asset = Currency.unwrap(collateral);
+        try comet.getAssetInfoByAddress(asset) returns (IComet.AssetInfo memory found) {
+            return (found.asset == asset, found);
+        } catch {
+            return (false, info);
+        }
     }
 }

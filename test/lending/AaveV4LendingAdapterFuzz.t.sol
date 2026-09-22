@@ -7,15 +7,15 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {AaveV4LendingAdapter} from "../../src/AaveV4LendingAdapter.sol";
+import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {ISpoke} from "../../src/interfaces/external/aave-v4/ISpoke.sol";
 import {Market} from "../../src/types/Market.sol";
-import {NotOwner, NotPendingOwner} from "../../src/types/Owner.sol";
 import {Ltv} from "../../src/types/Ltv.sol";
 import {MockAaveV4Spoke} from "../mocks/MockAaveV4Spoke.sol";
 
-/// @notice Fuzz tests for AaveV4LendingAdapter — encode* output shape, multicall
-///         wrapping for supplyCollateral, positionOf seeding, currentLtvWad formula
-///         at real Value/RAY scales, and access-control gating.
+/// @notice Fuzz tests for AaveV4LendingAdapter: encode* output shape, the post-supply collateral
+///         enable, positionOf seeding, currentLtvWad formula at real Value/RAY scales, and per-call
+///         market-key validation.
 contract AaveV4LendingAdapterFuzzTest is Test {
     uint256 internal constant WAD = 1e18;
     uint256 internal constant RAY = 1e27;
@@ -34,15 +34,15 @@ contract AaveV4LendingAdapterFuzzTest is Test {
     MockAaveV4Spoke internal spoke;
     AaveV4LendingAdapter internal adapter;
 
-    address internal gov = makeAddr("gov");
     address internal hub = makeAddr("hub");
     address internal oracle = makeAddr("oracle");
 
     MockERC20 internal usdc;
     MockERC20 internal weth;
+    // Short ETH market: supply USDC collateral, borrow WETH debt.
     Market internal market;
+    // Long ETH market: the reversed live key, routable with no registration step.
     Market internal longMarket;
-    Market internal unroutedMarket;
 
     function setUp() public {
         usdc = new MockERC20("USD Coin", "USDC", 6);
@@ -52,16 +52,23 @@ contract AaveV4LendingAdapterFuzzTest is Test {
         spoke.registerReserve(WETH_RESERVE_ID, address(weth), hub, 0, 2_000 * USD_BASE, WETH_CF_BPS);
         spoke.registerReserve(USDC_RESERVE_ID, address(usdc), hub, 5, 1 * USD_BASE, USDC_CF_BPS);
 
-        adapter = new AaveV4LendingAdapter(ISpoke(address(spoke)), gov);
+        adapter = new AaveV4LendingAdapter(ISpoke(address(spoke)));
 
-        market = Market({collateral: Currency.wrap(address(usdc)), debt: Currency.wrap(address(weth))});
-        longMarket = Market({collateral: Currency.wrap(address(weth)), debt: Currency.wrap(address(usdc))});
-        unroutedMarket = Market({collateral: Currency.wrap(address(usdc)), debt: Currency.wrap(address(usdc))});
+        market = _key(usdc, weth, USDC_RESERVE_ID, WETH_RESERVE_ID);
+        longMarket = _key(weth, usdc, WETH_RESERVE_ID, USDC_RESERVE_ID);
+    }
 
-        vm.startPrank(gov);
-        adapter.setMarket(market.collateral, market.debt, USDC_RESERVE_ID, WETH_RESERVE_ID, true);
-        adapter.setMarket(longMarket.collateral, longMarket.debt, WETH_RESERVE_ID, USDC_RESERVE_ID, true);
-        vm.stopPrank();
+    /// @dev Aave v4 keys a market by per-Spoke reserve ids, carried as two words in `data`.
+    function _key(MockERC20 collateral, MockERC20 debt, uint256 collateralReserveId, uint256 debtReserveId)
+        internal
+        pure
+        returns (Market memory)
+    {
+        return Market({
+            collateral: Currency.wrap(address(collateral)),
+            debt: Currency.wrap(address(debt)),
+            data: abi.encode(collateralReserveId, debtReserveId)
+        });
     }
 
     // External calldata-decode helpers.
@@ -115,7 +122,7 @@ contract AaveV4LendingAdapterFuzzTest is Test {
     }
 
     // -------------------------------------------------------------------------
-    // encodeSupplyCollateral — multicall wrapping
+    // encodeSupplyCollateral + encodeEnableCollateral
     // -------------------------------------------------------------------------
 
     function testFuzz_encodeSupplyAndEnableCollateral(address account, uint256 amount) public view {
@@ -197,7 +204,7 @@ contract AaveV4LendingAdapterFuzzTest is Test {
     }
 
     // -------------------------------------------------------------------------
-    // positionOf — seeded via mock helpers
+    // positionOf: seeded via mock helpers
     // -------------------------------------------------------------------------
 
     function testFuzz_positionOf_reflectsSeededAmounts(address account, uint128 collAmt, uint128 debtAmt) public {
@@ -215,7 +222,7 @@ contract AaveV4LendingAdapterFuzzTest is Test {
     }
 
     // -------------------------------------------------------------------------
-    // currentLtvWad — formula verification at Value/RAY scales
+    // currentLtvWad: formula verification at Value/RAY scales
     //
     // MockAaveV4Spoke.getUserAccountData():
     //   totalCollateralValue += supplied * priceBase / 10^decimals   (USD * 1e8)
@@ -263,53 +270,88 @@ contract AaveV4LendingAdapterFuzzTest is Test {
     }
 
     // -------------------------------------------------------------------------
-    // setMarket access-control gating
+    // market key validation (per call: there is no registration step)
     // -------------------------------------------------------------------------
 
-    /// setMarket reverts NotOwner for any caller that is not the owner.
-    function testFuzz_setMarket_revertsForNonOwner(address caller) public {
-        vm.assume(caller != gov);
-        vm.prank(caller);
-        vm.expectRevert(abi.encodeWithSelector(NotOwner.selector, caller));
-        adapter.setMarket(market.collateral, market.debt, USDC_RESERVE_ID, WETH_RESERVE_ID, true);
+    /// @dev `data` must be exactly two words. Any other length reverts with the length seen on both the
+    ///      encode and read paths, and the probe is false, rather than decoding a default market.
+    function testFuzz_market_revertsOnWrongLengthData(address account, bytes memory data) public {
+        if (data.length == 64) data = bytes.concat(data, hex"00");
+        Market memory keyed = Market({collateral: market.collateral, debt: market.debt, data: data});
+
+        assertFalse(adapter.isSupportedMarket(keyed), "wrong-length data is never supported");
+
+        bytes memory expected = abi.encodeWithSelector(ILendingAdapter.InvalidMarketData.selector, data.length);
+        vm.expectRevert(expected);
+        adapter.encodeSupplyCollateral(account, keyed, 1e6);
+        vm.expectRevert(expected);
+        adapter.positionOf(account, keyed);
     }
 
-    /// setMarket reverts ReserveMismatch when the collateral reserve underlying
-    /// does not match the supplied collateral currency.
-    function testFuzz_setMarket_revertsOnUnderlyingMismatch(uint256) public {
-        // Use WETH_RESERVE_ID as the collateral reserve, but pass USDC as collateral currency.
-        // The Spoke reports WETH as underlying for WETH_RESERVE_ID, not USDC => ReserveMismatch.
-        vm.prank(gov);
+    /// @dev A reserve id the Spoke has not configured, on either side, names a market the venue does
+    ///      not have: the probe is false and the encode and read paths revert MarketNotSupported.
+    function testFuzz_market_revertsOnUnconfiguredReserveId(address account, uint256 reserveId) public {
+        vm.assume(reserveId != WETH_RESERVE_ID && reserveId != USDC_RESERVE_ID);
+        Market memory badDebt = _key(usdc, weth, USDC_RESERVE_ID, reserveId);
+        Market memory badCollateral = _key(usdc, weth, reserveId, WETH_RESERVE_ID);
+
+        assertFalse(adapter.isSupportedMarket(badDebt), "unconfigured debt id is never supported");
+        assertFalse(adapter.isSupportedMarket(badCollateral), "unconfigured collateral id is never supported");
+
+        bytes memory expected =
+            abi.encodeWithSelector(ILendingAdapter.MarketNotSupported.selector, market.collateral, market.debt);
+        vm.expectRevert(expected);
+        adapter.encodeSupplyCollateral(account, badDebt, 1e6);
+        vm.expectRevert(expected);
+        adapter.encodeBorrow(account, badCollateral, 1e18);
+        vm.expectRevert(expected);
+        adapter.positionOf(account, badDebt);
+        vm.expectRevert(expected);
+        adapter.positionOf(account, badCollateral);
+    }
+
+    /// @dev A configured reserve id paired with the other side's currency is a mis-typed key, not a
+    ///      missing market: the revert names the reserve, its actual underlying, and the currency the
+    ///      key claimed for it.
+    function testFuzz_market_revertsOnReserveMismatch(address account, uint256 amount) public {
+        // the WETH reserve id on the USDC collateral side
+        Market memory collateralMismatch = _key(usdc, weth, WETH_RESERVE_ID, WETH_RESERVE_ID);
+        assertFalse(adapter.isSupportedMarket(collateralMismatch), "collateral mismatch is never supported");
         vm.expectRevert(
             abi.encodeWithSelector(
-                AaveV4LendingAdapter.ReserveMismatch.selector,
-                WETH_RESERVE_ID,
-                address(weth), // actual underlying of WETH_RESERVE_ID
-                address(usdc) // expected (we passed USDC as collateral)
+                AaveV4LendingAdapter.ReserveMismatch.selector, WETH_RESERVE_ID, address(weth), address(usdc)
             )
         );
-        adapter.setMarket(market.collateral, market.debt, WETH_RESERVE_ID, WETH_RESERVE_ID, true);
+        adapter.encodeSupplyCollateral(account, collateralMismatch, amount);
+
+        // the USDC reserve id on the WETH debt side
+        Market memory debtMismatch = _key(usdc, weth, USDC_RESERVE_ID, USDC_RESERVE_ID);
+        assertFalse(adapter.isSupportedMarket(debtMismatch), "debt mismatch is never supported");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                AaveV4LendingAdapter.ReserveMismatch.selector, USDC_RESERVE_ID, address(usdc), address(weth)
+            )
+        );
+        adapter.encodeBorrow(account, debtMismatch, amount);
     }
 
-    // -------------------------------------------------------------------------
-    // transferOwnership / acceptOwnership
-    // -------------------------------------------------------------------------
+    /// @dev Permissionless selection: the reversed live key (WETH collateral, USDC debt) routes with
+    ///      no registration step and encodes against its own reserve ids.
+    function testFuzz_longMarket_routesWithoutRegistration(address account, uint256 amount) public view {
+        assertTrue(adapter.isSupportedMarket(longMarket), "long key is live");
 
-    function testFuzz_transferOwnership_revertsForNonOwner(address caller, address newOwner) public {
-        vm.assume(caller != gov);
-        vm.prank(caller);
-        vm.expectRevert(abi.encodeWithSelector(NotOwner.selector, caller));
-        adapter.transferOwnership(newOwner);
-    }
+        (address target,, bytes memory supplyData) = adapter.encodeSupplyCollateral(account, longMarket, amount);
+        assertEq(target, address(spoke), "target must be spoke");
+        (uint256 supplyId, uint256 decodedAmount, address onBehalfOf) = this.decodeSupply(supplyData);
+        assertEq(supplyId, WETH_RESERVE_ID, "long key supplies the WETH reserve");
+        assertEq(decodedAmount, amount, "amount mismatch");
+        assertEq(onBehalfOf, account, "onBehalfOf must be account");
 
-    function testFuzz_acceptOwnership_revertsForNonPendingCaller(address successor, address other) public {
-        vm.assume(successor != address(0));
-        vm.assume(other != successor);
-        vm.prank(gov);
-        adapter.transferOwnership(successor);
+        (,, bytes memory borrowData) = adapter.encodeBorrow(account, longMarket, amount);
+        (uint256 borrowId, uint256 borrowAmount,) = this.decodeBorrow(borrowData);
+        assertEq(borrowId, USDC_RESERVE_ID, "long key borrows the USDC reserve");
+        assertEq(borrowAmount, amount, "amount mismatch");
 
-        vm.prank(other);
-        vm.expectRevert(abi.encodeWithSelector(NotPendingOwner.selector, other));
-        adapter.acceptOwnership();
+        assertEq(Ltv.unwrap(adapter.maxLtvWad(longMarket)), uint256(WETH_CF_BPS) * WAD / 1e4, "maxLtv reads WETH");
     }
 }

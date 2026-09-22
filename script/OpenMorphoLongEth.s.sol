@@ -57,9 +57,13 @@ contract OpenMorphoLongEth is Script {
 
     address internal constant MAINNET_WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address internal constant MAINNET_USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-    // Oracle of the canonical Morpho WETH/USDC market
-    // (id 0x94b823e6bd8ea533b4e33fbc307faea0b307301bc48763acc4d4aa4def7636cd).
+    // Canonical Morpho WETH/USDC market
+    // (id 0x94b823e6bd8ea533b4e33fbc307faea0b307301bc48763acc4d4aa4def7636cd), verified against
+    // morpho.idToMarketParams. Together with the (WETH, USDC) pair these three fields are the
+    // adapter's market key (`Market.data = abi.encode(oracle, irm, lltv)`).
     address internal constant MAINNET_MORPHO_WETH_USDC_ORACLE = 0x0F948CBa8231Db7898ef36A4212581Ad7b1B4580;
+    address internal constant MAINNET_MORPHO_WETH_USDC_IRM = 0x870aC11D48B15DB9a138Cf899d20F13F79Ba00BC;
+    uint256 internal constant MAINNET_MORPHO_WETH_USDC_LLTV = 0.86e18;
 
     uint256 internal constant WAD = 1e18;
     uint256 internal constant ORACLE_PRICE_SCALE = 1e36;
@@ -74,8 +78,14 @@ contract OpenMorphoLongEth is Script {
         );
         require(router.isAdapterAllowed(adapter), "Morpho adapter not allowlisted");
 
-        Market memory market = Market({collateral: Currency.wrap(MAINNET_WETH), debt: Currency.wrap(MAINNET_USDC)});
-        require(adapter.isSupportedMarket(market), "Morpho long ETH market not registered");
+        Market memory market = Market({
+            collateral: Currency.wrap(MAINNET_WETH),
+            debt: Currency.wrap(MAINNET_USDC),
+            data: abi.encode(
+                MAINNET_MORPHO_WETH_USDC_ORACLE, MAINNET_MORPHO_WETH_USDC_IRM, MAINNET_MORPHO_WETH_USDC_LLTV
+            )
+        });
+        require(adapter.isSupportedMarket(market), "Morpho long ETH market key does not resolve on Morpho");
 
         PoolKey memory poolKey = _poolKey();
         _requireInitializedPool(router.poolManager(), poolKey);

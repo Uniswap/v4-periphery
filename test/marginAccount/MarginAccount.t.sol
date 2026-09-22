@@ -46,7 +46,9 @@ contract MarginAccountTest is Test {
         account =
             MarginAccount(payable(LibClone.cloneDeterministic(impl, abi.encode(owner, manager), keccak256("acct"))));
 
-        market = Market({collateral: Currency.wrap(address(collateralToken)), debt: Currency.wrap(address(debtToken))});
+        market = Market({
+            collateral: Currency.wrap(address(collateralToken)), debt: Currency.wrap(address(debtToken)), data: ""
+        });
 
         collateralToken.mint(address(account), 100e18);
         debtToken.mint(address(account), 100e18);

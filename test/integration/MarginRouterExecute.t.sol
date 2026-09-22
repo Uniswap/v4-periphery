@@ -53,7 +53,7 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
         collateral = currency0;
         debt = currency1;
         poolKey = key0; // (currency0, currency1) pool with deep 1:1 liquidity
-        market = Market({collateral: collateral, debt: debt});
+        market = Market({collateral: collateral, debt: debt, data: ""});
 
         protocol = new MockLendingProtocol(IERC20(Currency.unwrap(collateral)), IERC20(Currency.unwrap(debt)));
         adapter = new MockLendingAdapter(address(protocol));
@@ -157,10 +157,11 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
         assertEq(count, 2, "PositionUpdated after supply and after borrow");
 
         // the final snapshot matches the resulting position on the mock ledger
-        (address c, address d, uint256 collateralTotal, uint256 debtTotal,,,) =
-            abi.decode(lastData, (address, address, uint256, uint256, uint256, uint256, uint256));
+        (address c, address d, bytes memory marketData, uint256 collateralTotal, uint256 debtTotal,,,) =
+            abi.decode(lastData, (address, address, bytes, uint256, uint256, uint256, uint256, uint256));
         assertEq(c, Currency.unwrap(collateral), "collateral currency");
         assertEq(d, Currency.unwrap(debt), "debt currency");
+        assertEq(marketData, market.data, "marketData snapshot");
         assertEq(collateralTotal, protocol.collateralOf(account), "collateralTotal snapshot");
         assertEq(debtTotal, protocol.debtOf(account), "debtTotal snapshot");
     }
@@ -670,8 +671,9 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
         marginRouter.execute(_openPlan(0, 2 ether, 5 ether), block.timestamp + 1);
 
         bytes32 positionIncreased = keccak256(
-            "PositionIncreased(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256)"
+            "PositionIncreased(address,address,address,address,bytes,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256)"
         );
+        assertEq(positionIncreased, IMarginRouter.PositionIncreased.selector, "event signature carries marketData");
         Vm.Log[] memory logs = vm.getRecordedLogs();
         for (uint256 i; i < logs.length; i++) {
             assertTrue(logs[i].topics[0] != positionIncreased, "execute must not emit Position* snapshots");

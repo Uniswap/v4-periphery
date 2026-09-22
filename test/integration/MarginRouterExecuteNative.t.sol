@@ -45,7 +45,7 @@ contract MarginRouterExecuteNativeTest is RoutingTestHelpers, MarginRouteHelpers
         weth = new WETH();
         debtToken = new MockERC20("Debt", "DEBT", 18);
         wethCurrency = Currency.wrap(address(weth));
-        market = Market({collateral: wethCurrency, debt: Currency.wrap(address(debtToken))});
+        market = Market({collateral: wethCurrency, debt: Currency.wrap(address(debtToken)), data: ""});
 
         protocol = new MockLendingProtocol(IERC20(address(weth)), IERC20(address(debtToken)));
         adapter = new MockLendingAdapter(address(protocol));

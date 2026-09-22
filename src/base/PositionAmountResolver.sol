@@ -14,9 +14,9 @@ import {Market} from "../types/Market.sol";
 /// @dev    Context ABI: `abi.encode(PositionAmount kind, address account, Market market)`.
 ///         Semantics inherit from `positionOf`: amounts are the venue's current values (debt
 ///         interest-accrued; collateral per the venue's own accrual, see
-///         `ILendingAdapter.positionOf`), and an unrouted market reverts `MarketNotSupported`
-///         exactly as the read surface does. Malformed or out-of-range context reverts in
-///         `abi.decode`.
+///         `ILendingAdapter.positionOf`), and a market the venue does not have reverts
+///         (`MarketNotSupported`, or the adapter's more specific error) exactly as the read surface
+///         does. Malformed or out-of-range context reverts in `abi.decode`.
 abstract contract PositionAmountResolver is IAmountResolver {
     /// @notice Which side of the `(account, market)` position the resolver returns.
     enum PositionAmount {
@@ -28,7 +28,7 @@ abstract contract PositionAmountResolver is IAmountResolver {
     ///         public virtual so `resolveAmount` reads it with an internal call instead of an
     ///         external self-call; the implementing adapter overrides both declarations.
     /// @param account The MarginAccount holding the position.
-    /// @param market The (collateral, debt) pair identifying the lending market.
+    /// @param market The market key identifying the lending market.
     /// @return collateralAmount The venue's current collateral balance (see
     ///         `ILendingAdapter.positionOf` for per-venue accrual semantics).
     /// @return debtAmount The outstanding debt with accrued interest.

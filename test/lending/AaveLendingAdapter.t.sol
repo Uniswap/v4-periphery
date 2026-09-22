@@ -6,11 +6,11 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {AaveLendingAdapter} from "../../src/AaveLendingAdapter.sol";
+import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {IPool} from "../../src/interfaces/external/aave/IPool.sol";
 import {IPoolAddressesProvider} from "../../src/interfaces/external/aave/IPoolAddressesProvider.sol";
+import {PositionAmountResolver} from "../../src/base/PositionAmountResolver.sol";
 import {Market} from "../../src/types/Market.sol";
-import {MarketNotSupported} from "../../src/types/MarketAllowlist.sol";
-import {NotOwner, ZeroOwner, NotPendingOwner} from "../../src/types/Owner.sol";
 import {Ltv} from "../../src/types/Ltv.sol";
 import {MockAavePool, MockAaveAddressesProvider, MockAaveDataProvider} from "../mocks/MockAavePool.sol";
 
@@ -29,20 +29,27 @@ contract AaveLendingAdapterTest is Test {
     MockAaveDataProvider internal dataProvider;
     AaveLendingAdapter internal adapter;
 
-    address internal gov = makeAddr("gov");
-    address internal stranger = makeAddr("stranger");
     address internal account = makeAddr("account");
 
-    // Short ETH market: supply USDC collateral, borrow WETH debt.
     MockERC20 internal usdc;
     MockERC20 internal weth;
+    // A token that is never registered as an Aave reserve.
+    MockERC20 internal unlisted;
+
+    // Short ETH market: supply USDC collateral, borrow WETH debt.
     Market internal market;
-    // An unrouted pair (reversed market) used to assert every entrypoint reverts when not allowlisted.
-    Market internal unroutedMarket;
+    // The reversed live pair (WETH collateral, USDC debt). Market selection is permissionless, so it
+    // routes with no registration step: both assets are live reserves.
+    Market internal reversedMarket;
+    // Pairs naming the unlisted token on one side. The venue has no market for them, so every entry
+    // point must revert MarketNotSupported rather than route a default market.
+    Market internal unlistedCollateralMarket;
+    Market internal unlistedDebtMarket;
 
     function setUp() public {
         usdc = new MockERC20("USD Coin", "USDC", 6);
         weth = new MockERC20("Wrapped Ether", "WETH", 18);
+        unlisted = new MockERC20("Unlisted", "UNL", 18);
 
         // Deploy in dependency order: the pool first, then the data provider and provider over it.
         pool = new MockAavePool();
@@ -52,13 +59,22 @@ contract AaveLendingAdapterTest is Test {
         _registerReserve(usdc, 1 * USD_BASE, USDC_LIQ_THRESHOLD_BPS);
         _registerReserve(weth, 2_000 * USD_BASE, WETH_LIQ_THRESHOLD_BPS);
 
-        adapter = new AaveLendingAdapter(IPoolAddressesProvider(address(provider)), gov);
+        adapter = new AaveLendingAdapter(IPoolAddressesProvider(address(provider)));
 
-        market = Market({collateral: Currency.wrap(address(usdc)), debt: Currency.wrap(address(weth))});
-        unroutedMarket = Market({collateral: Currency.wrap(address(weth)), debt: Currency.wrap(address(usdc))});
+        market = _pair(usdc, weth);
+        reversedMarket = _pair(weth, usdc);
+        unlistedCollateralMarket = _pair(unlisted, weth);
+        unlistedDebtMarket = _pair(usdc, unlisted);
+    }
 
-        vm.prank(gov);
-        adapter.setMarket(market.collateral, market.debt, true);
+    /// @dev Aave v3 keys a market by the asset pair alone, so the key carries no `data`.
+    function _pair(MockERC20 collateral, MockERC20 debt) internal pure returns (Market memory) {
+        return Market({collateral: Currency.wrap(address(collateral)), debt: Currency.wrap(address(debt)), data: ""});
+    }
+
+    /// @dev The live pair with `data` attached: the wrong shape for this adapter.
+    function _withData(bytes memory data) internal view returns (Market memory) {
+        return Market({collateral: market.collateral, debt: market.debt, data: data});
     }
 
     function _registerReserve(MockERC20 asset, uint256 priceBase, uint256 liquidationThresholdBps) internal {
@@ -71,6 +87,11 @@ contract AaveLendingAdapterTest is Test {
     function _seedPosition(uint256 collateralAmount, uint256 debtAmount) internal {
         if (collateralAmount != 0) pool.aToken(address(usdc)).mint(account, collateralAmount);
         if (debtAmount != 0) pool.variableDebtToken(address(weth)).mint(account, debtAmount);
+    }
+
+    /// @dev The `resolveAmount` context asking for the debt side of `account`'s position in `m`.
+    function _debtContext(Market memory m) internal view returns (bytes memory) {
+        return abi.encode(PositionAmountResolver.PositionAmount.DEBT, account, m);
     }
 
     // calldata decode helpers (slice the 4-byte selector, then abi.decode the args)
@@ -103,6 +124,15 @@ contract AaveLendingAdapterTest is Test {
         (asset, amount, rateMode, onBehalfOf) = abi.decode(d[4:], (address, uint256, uint256, address));
     }
 
+    /// @dev Strip the 4-byte selector so the args can be abi.decoded.
+    function sliceSelector(bytes calldata d) external pure returns (bytes memory) {
+        return d[4:];
+    }
+
+    // -------------------------------------------------------------------------
+    // wiring + encode shape
+    // -------------------------------------------------------------------------
+
     function test_lendingProtocol_returnsPool() public view {
         assertEq(adapter.lendingProtocol(), address(pool));
     }
@@ -129,10 +159,6 @@ contract AaveLendingAdapterTest is Test {
         assertEq(Ltv.unwrap(adapter.maxLtvWad(market)), USDC_LIQ_THRESHOLD_BPS * WAD / 1e4, "maxLtv via new provider");
     }
 
-    function test_owner_isConstructorOwner() public view {
-        assertEq(adapter.owner(), gov);
-    }
-
     function test_encodeSupplyCollateral_targetSelectorAndArgs() public view {
         (address target, uint256 value, bytes memory data) = adapter.encodeSupplyCollateral(account, market, 1_000e6);
         assertEq(target, address(pool));
@@ -155,18 +181,6 @@ contract AaveLendingAdapterTest is Test {
         (address asset, bool useAsCollateral) = abi.decode(this.sliceSelector(data), (address, bool));
         assertEq(asset, address(usdc), "enables the collateral reserve");
         assertTrue(useAsCollateral, "enables (not disables) collateral");
-    }
-
-    function test_encodeEnableCollateral_revertsWhenMarketNotSupported() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(MarketNotSupported.selector, unroutedMarket.collateral, unroutedMarket.debt)
-        );
-        adapter.encodeEnableCollateral(account, unroutedMarket);
-    }
-
-    /// @dev Strip the 4-byte selector so the args can be abi.decoded.
-    function sliceSelector(bytes calldata d) external pure returns (bytes memory) {
-        return d[4:];
     }
 
     function test_encodeWithdrawCollateral_honorsReceiver() public {
@@ -236,6 +250,10 @@ contract AaveLendingAdapterTest is Test {
         assertEq(data.length, 0, "debt-free repay must be an empty no-op");
     }
 
+    // -------------------------------------------------------------------------
+    // reads
+    // -------------------------------------------------------------------------
+
     function test_positionOf_reflectsReceiptBalances() public {
         _seedPosition(1_000e6, 0.3e18);
         (uint256 collateralAmount, uint256 debtAmount) = adapter.positionOf(account, market);
@@ -271,123 +289,128 @@ contract AaveLendingAdapterTest is Test {
         assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), type(uint256).max);
     }
 
-    function test_isSupportedMarket_trueForRegisteredFalseOtherwise() public view {
-        assertTrue(adapter.isSupportedMarket(market));
-        assertFalse(adapter.isSupportedMarket(unroutedMarket));
+    // -------------------------------------------------------------------------
+    // market key validation (per call: there is no registration step)
+    // -------------------------------------------------------------------------
+
+    function test_isSupportedMarket_trueForLivePairsFalseOtherwise() public view {
+        assertTrue(adapter.isSupportedMarket(market), "short pair");
+        assertTrue(adapter.isSupportedMarket(reversedMarket), "reversed pair needs no registration");
+        assertFalse(adapter.isSupportedMarket(unlistedCollateralMarket), "unlisted collateral");
+        assertFalse(adapter.isSupportedMarket(unlistedDebtMarket), "unlisted debt");
+        assertFalse(adapter.isSupportedMarket(_withData(abi.encode(uint256(7), uint256(0)))), "non-empty data");
+    }
+
+    /// @dev Permissionless selection: the reversed pair routes against its own reserves with no
+    ///      registration step, and `maxLtvWad` reads the reserve now on the collateral side.
+    function test_reversedPair_routesWithoutRegistration() public view {
+        (address target,, bytes memory data) = adapter.encodeSupplyCollateral(account, reversedMarket, 1e18);
+        assertEq(target, address(pool));
+        (address asset,, address onBehalfOf,) = this.decodeSupply(data);
+        assertEq(asset, address(weth), "reversed pair supplies WETH");
+        assertEq(onBehalfOf, account);
+
+        (,, data) = adapter.encodeBorrow(account, reversedMarket, 1_000e6);
+        (asset,,,,) = this.decodeBorrow(data);
+        assertEq(asset, address(usdc), "reversed pair borrows USDC");
+
+        assertEq(Ltv.unwrap(adapter.maxLtvWad(reversedMarket)), WETH_LIQ_THRESHOLD_BPS * WAD / 1e4, "WETH threshold");
+        assertEq(Ltv.unwrap(adapter.maxLtvWad(reversedMarket)), 0.8e18);
+    }
+
+    /// @dev Aave keys a market by the pair alone, so `data` must be empty. A two-word key (the Aave v4
+    ///      shape) handed to this adapter is the likeliest mistake; it must revert with the length it
+    ///      saw rather than be ignored.
+    function test_encodeSupplyCollateral_revertsOnNonEmptyData() public {
+        Market memory keyed = _withData(abi.encode(uint256(7), uint256(0)));
+        vm.expectRevert(abi.encodeWithSelector(ILendingAdapter.InvalidMarketData.selector, 64));
+        adapter.encodeSupplyCollateral(account, keyed, 1e6);
+    }
+
+    function test_positionOf_revertsOnNonEmptyData() public {
+        Market memory keyed = _withData(hex"01");
+        vm.expectRevert(abi.encodeWithSelector(ILendingAdapter.InvalidMarketData.selector, 1));
+        adapter.positionOf(account, keyed);
     }
 
     function test_encodeSupplyCollateral_revertsWhenMarketNotSupported() public {
-        _expectMarketNotSupported(unroutedMarket);
-        adapter.encodeSupplyCollateral(account, unroutedMarket, 1e6);
+        _expectMarketNotSupported(unlistedCollateralMarket);
+        adapter.encodeSupplyCollateral(account, unlistedCollateralMarket, 1e6);
+    }
+
+    function test_encodeEnableCollateral_revertsWhenMarketNotSupported() public {
+        _expectMarketNotSupported(unlistedCollateralMarket);
+        adapter.encodeEnableCollateral(account, unlistedCollateralMarket);
     }
 
     function test_encodeWithdrawCollateral_revertsWhenMarketNotSupported() public {
-        _expectMarketNotSupported(unroutedMarket);
-        adapter.encodeWithdrawCollateral(account, unroutedMarket, 1e6, account);
+        // the key is validated before the caller check, so a stranger sees the market error
+        _expectMarketNotSupported(unlistedCollateralMarket);
+        adapter.encodeWithdrawCollateral(account, unlistedCollateralMarket, 1e6, account);
     }
 
     function test_encodeBorrow_revertsWhenMarketNotSupported() public {
-        _expectMarketNotSupported(unroutedMarket);
-        adapter.encodeBorrow(account, unroutedMarket, 1e18);
+        _expectMarketNotSupported(unlistedCollateralMarket);
+        adapter.encodeBorrow(account, unlistedCollateralMarket, 1e18);
     }
 
     function test_encodeRepay_revertsWhenMarketNotSupported() public {
-        _expectMarketNotSupported(unroutedMarket);
-        adapter.encodeRepay(account, unroutedMarket, 1e18);
+        _expectMarketNotSupported(unlistedCollateralMarket);
+        adapter.encodeRepay(account, unlistedCollateralMarket, 1e18);
     }
 
     function test_positionOf_revertsWhenMarketNotSupported() public {
-        _expectMarketNotSupported(unroutedMarket);
-        adapter.positionOf(account, unroutedMarket);
+        _expectMarketNotSupported(unlistedCollateralMarket);
+        adapter.positionOf(account, unlistedCollateralMarket);
     }
 
     function test_maxLtvWad_revertsWhenMarketNotSupported() public {
-        _expectMarketNotSupported(unroutedMarket);
-        adapter.maxLtvWad(unroutedMarket);
+        _expectMarketNotSupported(unlistedCollateralMarket);
+        adapter.maxLtvWad(unlistedCollateralMarket);
     }
 
     function test_currentLtvWad_revertsWhenMarketNotSupported() public {
-        _expectMarketNotSupported(unroutedMarket);
-        adapter.currentLtvWad(account, unroutedMarket);
+        _expectMarketNotSupported(unlistedCollateralMarket);
+        adapter.currentLtvWad(account, unlistedCollateralMarket);
     }
 
-    function test_setMarket_revertsForNonOwner() public {
-        vm.prank(stranger);
-        vm.expectRevert(abi.encodeWithSelector(NotOwner.selector, stranger));
-        adapter.setMarket(market.collateral, market.debt, true);
+    function test_describePosition_revertsWhenMarketNotSupported() public {
+        _expectMarketNotSupported(unlistedCollateralMarket);
+        adapter.describePosition(account, unlistedCollateralMarket);
     }
 
-    function test_setMarket_revertsForUnlistedReserve() public {
-        MockERC20 unlisted = new MockERC20("Unlisted", "UNL", 18);
-        Currency unlistedCurrency = Currency.wrap(address(unlisted));
-        vm.prank(gov);
-        vm.expectRevert(abi.encodeWithSelector(MarketNotSupported.selector, unlistedCurrency, market.debt));
-        adapter.setMarket(unlistedCurrency, market.debt, true);
+    function test_resolveAmount_revertsWhenMarketNotSupported() public {
+        _expectMarketNotSupported(unlistedCollateralMarket);
+        adapter.resolveAmount(_debtContext(unlistedCollateralMarket));
     }
 
-    function test_setMarket_disableSucceeds() public {
-        vm.prank(gov);
-        adapter.setMarket(market.collateral, market.debt, false);
-        assertFalse(adapter.isSupportedMarket(market));
-    }
-
-    function test_transferOwnership_revertsForNonOwner() public {
-        vm.prank(stranger);
-        vm.expectRevert(abi.encodeWithSelector(NotOwner.selector, stranger));
-        adapter.transferOwnership(makeAddr("newOwner"));
-    }
-
-    function test_transferOwnership_revertsForZeroAddress() public {
-        vm.prank(gov);
-        vm.expectRevert(ZeroOwner.selector);
-        adapter.transferOwnership(address(0));
-    }
-
-    function test_transferOwnership_proposesWithoutChangingOwner() public {
-        address newOwner = makeAddr("newOwner");
-        vm.prank(gov);
-        adapter.transferOwnership(newOwner);
-        // the owner is unchanged until the successor accepts
-        assertEq(adapter.owner(), gov);
-        assertEq(adapter.pendingOwner(), newOwner);
-    }
-
-    function test_oldOwnerRetainsPowerUntilAccept() public {
-        vm.prank(gov);
-        adapter.transferOwnership(makeAddr("newOwner"));
-        // the old owner can still configure markets before the handoff completes
-        vm.prank(gov);
-        adapter.setMarket(market.collateral, market.debt, false);
-        assertFalse(adapter.isSupportedMarket(market));
-    }
-
-    function test_acceptOwnership_completesHandoff() public {
-        address newOwner = makeAddr("newOwner");
-        vm.prank(gov);
-        adapter.transferOwnership(newOwner);
-
-        vm.prank(newOwner);
-        adapter.acceptOwnership();
-
-        assertEq(adapter.owner(), newOwner);
-        assertEq(adapter.pendingOwner(), address(0));
-    }
-
-    function test_acceptOwnership_revertsForNonPendingCaller() public {
-        vm.prank(gov);
-        adapter.transferOwnership(makeAddr("newOwner"));
-        vm.prank(stranger);
-        vm.expectRevert(abi.encodeWithSelector(NotPendingOwner.selector, stranger));
-        adapter.acceptOwnership();
-    }
-
-    function test_acceptOwnership_revertsWhenNonePending() public {
-        vm.prank(stranger);
-        vm.expectRevert(abi.encodeWithSelector(NotPendingOwner.selector, stranger));
-        adapter.acceptOwnership();
+    /// @dev The debt side is checked too: a live collateral paired with an unlisted debt asset is
+    ///      rejected on every entry point, not just the debt-side encoders.
+    function test_allEntryPoints_revertWhenDebtIsNotAReserve() public {
+        Market memory m = unlistedDebtMarket;
+        _expectMarketNotSupported(m);
+        adapter.encodeSupplyCollateral(account, m, 1e6);
+        _expectMarketNotSupported(m);
+        adapter.encodeEnableCollateral(account, m);
+        _expectMarketNotSupported(m);
+        adapter.encodeWithdrawCollateral(account, m, 1e6, account);
+        _expectMarketNotSupported(m);
+        adapter.encodeBorrow(account, m, 1e18);
+        _expectMarketNotSupported(m);
+        adapter.encodeRepay(account, m, 1e18);
+        _expectMarketNotSupported(m);
+        adapter.positionOf(account, m);
+        _expectMarketNotSupported(m);
+        adapter.maxLtvWad(m);
+        _expectMarketNotSupported(m);
+        adapter.currentLtvWad(account, m);
+        _expectMarketNotSupported(m);
+        adapter.describePosition(account, m);
+        _expectMarketNotSupported(m);
+        adapter.resolveAmount(_debtContext(m));
     }
 
     function _expectMarketNotSupported(Market memory m) internal {
-        vm.expectRevert(abi.encodeWithSelector(MarketNotSupported.selector, m.collateral, m.debt));
+        vm.expectRevert(abi.encodeWithSelector(ILendingAdapter.MarketNotSupported.selector, m.collateral, m.debt));
     }
 }

@@ -14,11 +14,9 @@ import {MarketParamsLib} from "morpho-blue/libraries/MarketParamsLib.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {MorphoLendingAdapter} from "../../src/MorphoLendingAdapter.sol";
-import {OwnableAdapter} from "../../src/base/OwnableAdapter.sol";
+import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {PositionAmountResolver} from "../../src/base/PositionAmountResolver.sol";
 import {Market} from "../../src/types/Market.sol";
-import {MarketNotSupported} from "../../src/types/MarketRegistry.sol";
-import {NotOwner, ZeroOwner, NotPendingOwner} from "../../src/types/Owner.sol";
 import {Ltv} from "../../src/types/Ltv.sol";
 import {MockMorpho} from "../mocks/MockMorpho.sol";
 
@@ -28,8 +26,6 @@ contract MorphoLendingAdapterTest is Test {
     MockMorpho internal morpho;
     MorphoLendingAdapter internal adapter;
 
-    address internal gov = makeAddr("gov");
-    address internal stranger = makeAddr("stranger");
     address internal account = makeAddr("account");
 
     address internal collateralToken = makeAddr("collateral");
@@ -40,7 +36,7 @@ contract MorphoLendingAdapterTest is Test {
 
     function setUp() public {
         morpho = new MockMorpho();
-        adapter = new MorphoLendingAdapter(IMorpho(address(morpho)), gov);
+        adapter = new MorphoLendingAdapter(IMorpho(address(morpho)));
         marketParams = MarketParams({
             loanToken: debtToken,
             collateralToken: collateralToken,
@@ -48,21 +44,47 @@ contract MorphoLendingAdapterTest is Test {
             irm: makeAddr("irm"),
             lltv: 0.86e18
         });
-        market = Market({collateral: Currency.wrap(collateralToken), debt: Currency.wrap(debtToken)});
+        market = _key(marketParams);
     }
 
-    function _register() internal {
-        morpho.setMarketParams(marketParams); // make the market "exist" on Morpho
-        vm.prank(gov);
-        adapter.setMarket(marketParams);
+    /// @dev The adapter's market key: the pair plus `abi.encode(oracle, irm, lltv)`, which together are
+    ///      the full Morpho `MarketParams`. The adapter rebuilds the params from the key on every call.
+    function _key(MarketParams memory mp) internal pure returns (Market memory) {
+        return Market({
+            collateral: Currency.wrap(mp.collateralToken),
+            debt: Currency.wrap(mp.loanToken),
+            data: abi.encode(mp.oracle, mp.irm, mp.lltv)
+        });
+    }
+
+    /// @dev A key for the same pair whose `lltv` names a market Morpho has not created.
+    function _uncreatedKey() internal view returns (Market memory) {
+        MarketParams memory other = marketParams;
+        other.lltv = 0.5e18;
+        return _key(other);
+    }
+
+    /// @dev A key for the created pair whose `data` is not the canonical three words.
+    function _malformedKey(uint256 length) internal view returns (Market memory) {
+        return Market({collateral: market.collateral, debt: market.debt, data: new bytes(length)});
+    }
+
+    /// @dev Makes the market exist on Morpho. There is no adapter-side registration: any market Morpho
+    ///      has created is routable by its key.
+    function _create() internal {
+        morpho.setMarketParams(marketParams);
     }
 
     /// @dev Seeds a borrow position plus 1:1 market totals with `lastUpdate == block.timestamp` so
     ///      accrual is skipped, making `expectedBorrowAssets` a deterministic function of the shares.
-    function _seedBorrow(address who, uint128 borrowShares, uint128 totalBorrowAssets, uint128 totalBorrowShares)
-        internal
-    {
-        Id id = marketParams.id();
+    function _seedBorrow(
+        MarketParams memory mp,
+        address who,
+        uint128 borrowShares,
+        uint128 totalBorrowAssets,
+        uint128 totalBorrowShares
+    ) internal {
+        Id id = mp.id();
         morpho.setPosition(id, who, Position({supplyShares: 0, borrowShares: borrowShares, collateral: 0}));
         morpho.setMarketState(
             id,
@@ -85,49 +107,169 @@ contract MorphoLendingAdapterTest is Test {
         dataLen = inner.length;
     }
 
+    function decodeSupplyParams(bytes calldata d) external pure returns (MarketParams memory mp) {
+        (mp,,,) = abi.decode(d[4:], (MarketParams, uint256, address, bytes));
+    }
+
     function decodeRepay(bytes calldata d) external pure returns (uint256 assets, uint256 shares, address onBehalf) {
         MarketParams memory mp;
         bytes memory inner;
         (mp, assets, shares, onBehalf, inner) = abi.decode(d[4:], (MarketParams, uint256, uint256, address, bytes));
     }
 
+    /// @dev Asserts every validating entry point rejects `bad` with exactly `err`. `encodeEnableCollateral`
+    ///      is excluded: it is a documented pure no-op on Morpho and decodes nothing.
+    function _assertRevertsEverywhere(Market memory bad, bytes memory err) internal {
+        vm.expectRevert(err);
+        adapter.encodeSupplyCollateral(account, bad, 1);
+        vm.expectRevert(err);
+        adapter.encodeWithdrawCollateral(account, bad, 1, account);
+        vm.expectRevert(err);
+        adapter.encodeBorrow(account, bad, 1);
+        vm.expectRevert(err);
+        adapter.encodeRepay(account, bad, 1);
+        vm.expectRevert(err);
+        adapter.positionOf(account, bad);
+        vm.expectRevert(err);
+        adapter.maxLtvWad(bad);
+        vm.expectRevert(err);
+        adapter.currentLtvWad(account, bad);
+        vm.expectRevert(err);
+        adapter.describePosition(account, bad);
+        vm.expectRevert(err);
+        adapter.resolveAmount(abi.encode(PositionAmountResolver.PositionAmount.DEBT, account, bad));
+    }
+
+    // ---- construction ----
+
+    function test_constructor_revertsOnZeroAddress() public {
+        vm.expectRevert(MorphoLendingAdapter.ZeroAddress.selector);
+        new MorphoLendingAdapter(IMorpho(address(0)));
+    }
+
     function test_lendingProtocol_returnsMorphoSingleton() public view {
         assertEq(adapter.lendingProtocol(), address(morpho));
     }
 
-    /// @dev The adapter doubles as an IAmountResolver; the resolver read routes through the same
-    ///      registry gate as positionOf, so an unrouted pair reverts rather than resolving zero.
-    function test_resolveAmount_revertsWhenMarketNotSupported() public {
-        bytes memory context = abi.encode(PositionAmountResolver.PositionAmount.DEBT, account, market);
-        vm.expectRevert(abi.encodeWithSelector(MarketNotSupported.selector, market.collateral, market.debt));
-        adapter.resolveAmount(context);
-    }
+    // ---- key validation: the key must name a market Morpho has created ----
 
-    function test_setMarket_revertsForNonOwner() public {
-        vm.prank(stranger);
-        vm.expectRevert(abi.encodeWithSelector(NotOwner.selector, stranger));
-        adapter.setMarket(marketParams);
-    }
-
-    function test_setMarket_revertsWhenMorphoMarketNotCreated() public {
-        // morpho.idToMarketParams is unset, so the market does not exist on Morpho
-        vm.prank(gov);
-        vm.expectRevert(MorphoLendingAdapter.MorphoMarketNotCreated.selector);
-        adapter.setMarket(marketParams);
-    }
-
-    function test_setMarket_succeeds_andMarketIsSupported() public {
-        _register();
+    function test_isSupportedMarket_trueForCreatedMarket() public {
+        _create();
         assertTrue(adapter.isSupportedMarket(market));
     }
 
+    function test_isSupportedMarket_falseWhenMarketNotCreated() public view {
+        // morpho.idToMarketParams is unset, so the market does not exist on Morpho
+        assertFalse(adapter.isSupportedMarket(market));
+    }
+
+    function test_isSupportedMarket_falseForUncreatedLltv() public {
+        _create();
+        assertFalse(adapter.isSupportedMarket(_uncreatedKey()));
+    }
+
+    /// @dev The probe never reverts: malformed data is simply not a routable key.
+    function test_isSupportedMarket_falseForWrongLengthData() public {
+        _create();
+        assertFalse(adapter.isSupportedMarket(_malformedKey(0)));
+        assertFalse(adapter.isSupportedMarket(_malformedKey(64)));
+        assertFalse(adapter.isSupportedMarket(_malformedKey(128)));
+    }
+
+    function test_encodeSupplyCollateral_revertsOnShortMarketData() public {
+        _create();
+        vm.expectRevert(abi.encodeWithSelector(ILendingAdapter.InvalidMarketData.selector, 64));
+        adapter.encodeSupplyCollateral(account, _malformedKey(64), 1e18);
+    }
+
+    function test_maxLtvWad_revertsOnLongMarketData() public {
+        _create();
+        vm.expectRevert(abi.encodeWithSelector(ILendingAdapter.InvalidMarketData.selector, 128));
+        adapter.maxLtvWad(_malformedKey(128));
+    }
+
+    /// @dev The length check runs before the market lookup, so wrong-shape data is reported as such on
+    ///      every entry point even though the pair itself is live.
+    function test_invalidMarketData_revertsEverywhere() public {
+        _create();
+        _assertRevertsEverywhere(
+            _malformedKey(64), abi.encodeWithSelector(ILendingAdapter.InvalidMarketData.selector, 64)
+        );
+    }
+
     function test_encodeBorrow_revertsWhenMarketNotSupported() public {
-        vm.expectRevert(abi.encodeWithSelector(MarketNotSupported.selector, market.collateral, market.debt));
+        vm.expectRevert(
+            abi.encodeWithSelector(ILendingAdapter.MarketNotSupported.selector, market.collateral, market.debt)
+        );
         adapter.encodeBorrow(account, market, 1e18);
     }
 
+    /// @dev The adapter doubles as an IAmountResolver; the resolver read routes through the same key
+    ///      validation as positionOf, so an uncreated market reverts rather than resolving zero.
+    function test_resolveAmount_revertsWhenMarketNotSupported() public {
+        bytes memory context = abi.encode(PositionAmountResolver.PositionAmount.DEBT, account, market);
+        vm.expectRevert(
+            abi.encodeWithSelector(ILendingAdapter.MarketNotSupported.selector, market.collateral, market.debt)
+        );
+        adapter.resolveAmount(context);
+    }
+
+    function test_resolveAmount_returnsLiveDebtForCreatedMarket() public {
+        _create();
+        _seedBorrow(marketParams, account, 100e18, 100e18, 100e18);
+        (, uint256 reportedDebt) = adapter.positionOf(account, market);
+        bytes memory context = abi.encode(PositionAmountResolver.PositionAmount.DEBT, account, market);
+        assertEq(adapter.resolveAmount(context), reportedDebt, "resolver reads the same debt as positionOf");
+    }
+
+    /// @dev A key whose lltv names a market Morpho has not created reverts on every entry point. It
+    ///      must never fall back to the created market for the same pair.
+    function test_uncreatedMarket_revertsEverywhere() public {
+        _create();
+        Market memory bad = _uncreatedKey();
+        _assertRevertsEverywhere(
+            bad, abi.encodeWithSelector(ILendingAdapter.MarketNotSupported.selector, bad.collateral, bad.debt)
+        );
+    }
+
+    /// @dev Market selection is permissionless: two Morpho markets for one pair (differing only in lltv)
+    ///      are two keys, each resolving to its own MarketParams with no adapter-side registration.
+    function test_multipleMarketsForSamePair_resolveIndependently() public {
+        _create();
+        MarketParams memory second = marketParams;
+        second.lltv = 0.77e18;
+        morpho.setMarketParams(second);
+        Market memory secondKey = _key(second);
+
+        assertTrue(adapter.isSupportedMarket(market), "first market routable");
+        assertTrue(adapter.isSupportedMarket(secondKey), "second market routable");
+        assertEq(Ltv.unwrap(adapter.maxLtvWad(market)), 0.86e18, "first market lltv");
+        assertEq(Ltv.unwrap(adapter.maxLtvWad(secondKey)), 0.77e18, "second market lltv");
+
+        // the encoded MarketParams carry each key's own lltv and hash to each market's own id
+        (,, bytes memory firstData) = adapter.encodeSupplyCollateral(account, market, 1e18);
+        (,, bytes memory secondData) = adapter.encodeSupplyCollateral(account, secondKey, 1e18);
+        MarketParams memory firstParams = this.decodeSupplyParams(firstData);
+        MarketParams memory secondParams = this.decodeSupplyParams(secondData);
+        assertEq(firstParams.lltv, 0.86e18, "first encode carries first lltv");
+        assertEq(secondParams.lltv, 0.77e18, "second encode carries second lltv");
+        assertEq(Id.unwrap(firstParams.id()), Id.unwrap(marketParams.id()), "first encode targets first id");
+        assertEq(Id.unwrap(secondParams.id()), Id.unwrap(second.id()), "second encode targets second id");
+
+        // a borrow held in the second market is invisible through the first key
+        _seedBorrow(second, account, 40e18, 40e18, 40e18);
+        (, uint256 firstDebt) = adapter.positionOf(account, market);
+        (, uint256 secondDebt) = adapter.positionOf(account, secondKey);
+        assertEq(firstDebt, 0, "first market has no debt");
+        // Morpho's share-to-asset conversion adds virtual shares, so the reported debt sits a hair
+        // under the seeded 40e18; what matters is that it is the second market's debt, not the first's
+        assertApproxEqAbs(secondDebt, 40e18, 1e7, "second market reports its own debt");
+    }
+
+    // ---- encoders ----
+
     function test_encodeSupplyCollateral_targetOnBehalfAndEmptyData() public {
-        _register();
+        _create();
         (address target, uint256 value, bytes memory data) = adapter.encodeSupplyCollateral(account, market, 5e18);
         assertEq(target, address(morpho));
         assertEq(value, 0);
@@ -138,8 +280,17 @@ contract MorphoLendingAdapterTest is Test {
         assertEq(dataLen, 0); // empty data so no Morpho callback fires
     }
 
+    /// @dev Morpho treats supplied collateral as collateral automatically, so the enable step is the
+    ///      empty skip signal the account honours.
+    function test_encodeEnableCollateral_encodesNoOp() public view {
+        (address target, uint256 value, bytes memory data) = adapter.encodeEnableCollateral(account, market);
+        assertEq(target, address(0));
+        assertEq(value, 0);
+        assertEq(data.length, 0);
+    }
+
     function test_encodeRepay_max_usesSharesBasedFullRepay() public {
-        _register();
+        _create();
         Id id = marketParams.id();
         morpho.setPosition(id, account, Position({supplyShares: 0, borrowShares: 77, collateral: 0}));
         (,, bytes memory data) = adapter.encodeRepay(account, market, type(uint256).max);
@@ -151,9 +302,9 @@ contract MorphoLendingAdapterTest is Test {
     }
 
     function test_encodeRepay_partialBelowDebt_usesAssets() public {
-        _register();
+        _create();
         // reported debt ~100e18; a request well below it is a genuine partial and stays asset-denominated
-        _seedBorrow(account, 100e18, 100e18, 100e18);
+        _seedBorrow(marketParams, account, 100e18, 100e18, 100e18);
         (,, bytes memory data) = adapter.encodeRepay(account, market, 9e18);
         (uint256 assets, uint256 shares,) = this.decodeRepay(data);
         assertEq(assets, 9e18);
@@ -164,8 +315,8 @@ contract MorphoLendingAdapterTest is Test {
     ///      the asset path (which converts the rounded-up value to more shares than held and underflows
     ///      on Morpho). The clamp routes a request at the reported debt to the dust-free share path.
     function test_encodeRepay_atReportedDebt_usesShares() public {
-        _register();
-        _seedBorrow(account, 100e18, 100e18, 100e18);
+        _create();
+        _seedBorrow(marketParams, account, 100e18, 100e18, 100e18);
         (, uint256 reportedDebt) = adapter.positionOf(account, market);
         (,, bytes memory data) = adapter.encodeRepay(account, market, reportedDebt);
         (uint256 assets, uint256 shares,) = this.decodeRepay(data);
@@ -175,8 +326,8 @@ contract MorphoLendingAdapterTest is Test {
 
     /// @dev A request above the reported debt likewise clamps to the share path rather than over-repaying.
     function test_encodeRepay_aboveReportedDebt_usesShares() public {
-        _register();
-        _seedBorrow(account, 100e18, 100e18, 100e18);
+        _create();
+        _seedBorrow(marketParams, account, 100e18, 100e18, 100e18);
         (, uint256 reportedDebt) = adapter.positionOf(account, market);
         (,, bytes memory data) = adapter.encodeRepay(account, market, reportedDebt + 1);
         (uint256 assets, uint256 shares,) = this.decodeRepay(data);
@@ -187,7 +338,7 @@ contract MorphoLendingAdapterTest is Test {
     /// @dev L-01 boundary: a debt-free position (zero borrow shares) encodes a no-op the account skips,
     ///      instead of a `(0, 0)` repay Morpho rejects, so a generic repay-then-withdraw plan applies.
     function test_encodeRepay_zeroDebt_encodesNoOp() public {
-        _register();
+        _create();
         // no borrow position seeded: borrowShares == 0
         (address target, uint256 value, bytes memory data) = adapter.encodeRepay(account, market, type(uint256).max);
         assertEq(target, address(morpho));
@@ -195,97 +346,10 @@ contract MorphoLendingAdapterTest is Test {
         assertEq(data.length, 0, "debt-free repay must be an empty no-op");
     }
 
+    // ---- reads ----
+
     function test_maxLtvWad_returnsMarketLltv() public {
-        _register();
+        _create();
         assertEq(Ltv.unwrap(adapter.maxLtvWad(market)), 0.86e18);
-    }
-
-    function test_owner_isConstructorOwner() public view {
-        assertEq(adapter.owner(), gov);
-    }
-
-    function test_transferOwnership_revertsForNonOwner() public {
-        vm.prank(stranger);
-        vm.expectRevert(abi.encodeWithSelector(NotOwner.selector, stranger));
-        adapter.transferOwnership(makeAddr("newOwner"));
-    }
-
-    function test_transferOwnership_revertsForZeroAddress() public {
-        vm.prank(gov);
-        vm.expectRevert(ZeroOwner.selector);
-        adapter.transferOwnership(address(0));
-    }
-
-    function test_transferOwnership_proposesWithoutChangingOwner() public {
-        address newOwner = makeAddr("newOwner");
-        vm.prank(gov);
-        adapter.transferOwnership(newOwner);
-        // the owner is unchanged until the successor accepts
-        assertEq(adapter.owner(), gov);
-        assertEq(adapter.pendingOwner(), newOwner);
-    }
-
-    function test_acceptOwnership_completesHandoff() public {
-        address newOwner = makeAddr("newOwner");
-        vm.prank(gov);
-        adapter.transferOwnership(newOwner);
-
-        vm.prank(newOwner);
-        adapter.acceptOwnership();
-
-        assertEq(adapter.owner(), newOwner);
-        assertEq(adapter.pendingOwner(), address(0));
-    }
-
-    function test_oldOwnerRetainsPowerUntilAccept() public {
-        morpho.setMarketParams(marketParams); // make the market "exist" on Morpho
-        vm.prank(gov);
-        adapter.transferOwnership(makeAddr("newOwner"));
-        // the old owner can still register markets before the handoff completes
-        vm.prank(gov);
-        adapter.setMarket(marketParams);
-        assertTrue(adapter.isSupportedMarket(market));
-    }
-
-    function test_acceptOwnership_revertsForNonPendingCaller() public {
-        vm.prank(gov);
-        adapter.transferOwnership(makeAddr("newOwner"));
-        vm.prank(stranger);
-        vm.expectRevert(abi.encodeWithSelector(NotPendingOwner.selector, stranger));
-        adapter.acceptOwnership();
-    }
-
-    function test_acceptOwnership_revertsWhenNonePending() public {
-        vm.prank(stranger);
-        vm.expectRevert(abi.encodeWithSelector(NotPendingOwner.selector, stranger));
-        adapter.acceptOwnership();
-    }
-
-    // owner-lifecycle events (audit N-12): the adapter owner is the sole market curator, so seeding,
-    // proposing, and completing a handoff must each be observable onchain
-
-    function test_constructor_emitsInitialOwnershipTransferred() public {
-        vm.expectEmit(true, true, true, true);
-        emit OwnableAdapter.OwnershipTransferred(address(0), gov);
-        new MorphoLendingAdapter(IMorpho(address(morpho)), gov);
-    }
-
-    function test_transferOwnership_emitsOwnershipTransferStarted() public {
-        address newOwner = makeAddr("newOwner");
-        vm.expectEmit(true, true, true, true, address(adapter));
-        emit OwnableAdapter.OwnershipTransferStarted(gov, newOwner);
-        vm.prank(gov);
-        adapter.transferOwnership(newOwner);
-    }
-
-    function test_acceptOwnership_emitsOwnershipTransferred() public {
-        address newOwner = makeAddr("newOwner");
-        vm.prank(gov);
-        adapter.transferOwnership(newOwner);
-
-        vm.expectEmit(true, true, true, true, address(adapter));
-        emit OwnableAdapter.OwnershipTransferred(gov, newOwner);
-        vm.prank(newOwner);
-        adapter.acceptOwnership();
     }
 }

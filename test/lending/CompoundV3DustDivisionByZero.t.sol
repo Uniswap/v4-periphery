@@ -25,7 +25,6 @@ contract CompoundV3DustDivisionByZeroTest is Test {
 
     MockComet internal comet;
     CompoundV3LendingAdapter internal adapter;
-    address internal gov = makeAddr("gov");
     address internal account = address(this);
 
     MockERC20 internal weth; // 18-decimal base token (models a WETH-base Comet, e.g. cWETHv3)
@@ -44,10 +43,9 @@ contract CompoundV3DustDivisionByZeroTest is Test {
         comet.setPrice(wethFeed, 2500 * PRICE_SCALE);
         comet.setPrice(uniFeed, 7 * PRICE_SCALE);
 
-        adapter = new CompoundV3LendingAdapter(comet, gov);
-        market = Market({collateral: Currency.wrap(address(uni)), debt: Currency.wrap(address(weth))});
-        vm.prank(gov);
-        adapter.setMarket(market.collateral, market.debt, true);
+        adapter = new CompoundV3LendingAdapter(comet);
+        // a Comet market is the collateral asset alone, so the key carries no data
+        market = Market({collateral: Currency.wrap(address(uni)), debt: Currency.wrap(address(weth)), data: ""});
     }
 
     /// @notice A 1-wei WETH debt has a USD value that rounds to zero; describePosition must still

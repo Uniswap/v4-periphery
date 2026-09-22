@@ -82,7 +82,9 @@ contract MarginRouterExecuteForkTest is Test, MarginRouteHelpers {
         vm.createSelectFork(rpc, FORK_BLOCK);
 
         marketParams = MarketParams({loanToken: USDC, collateralToken: WETH, oracle: ORACLE, irm: IRM, lltv: LLTV});
-        market = Market({collateral: Currency.wrap(WETH), debt: Currency.wrap(USDC)});
+        // Morpho keys a market by its full MarketParams, so the key carries (oracle, irm, lltv)
+        market =
+            Market({collateral: Currency.wrap(WETH), debt: Currency.wrap(USDC), data: abi.encode(ORACLE, IRM, LLTV)});
 
         assertEq(MORPHO.idToMarketParams(marketParams.id()).collateralToken, WETH, "market collateral");
         assertGt(PERMIT2.code.length, 0, "permit2 deployed");
@@ -92,8 +94,8 @@ contract MarginRouterExecuteForkTest is Test, MarginRouteHelpers {
         _initAndSeedUsdcWethPool();
         _initAndSeedWbtcWethPool();
 
-        adapter = new MorphoLendingAdapter(MORPHO, address(this));
-        adapter.setMarket(marketParams);
+        adapter = new MorphoLendingAdapter(MORPHO);
+        assertTrue(adapter.isSupportedMarket(market), "market routable on Morpho adapter");
 
         address impl = address(new MarginAccount());
         // route position swaps through a Universal Router bound to the local flash-take PoolManager

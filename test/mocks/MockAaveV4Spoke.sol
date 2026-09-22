@@ -166,9 +166,14 @@ contract MockAaveV4Spoke is ISpoke {
         }
     }
 
+    /// @dev Thrown for a reserve id that has not been registered, mirroring the live Spoke, which
+    ///      reverts rather than returning an empty struct (verified against the mainnet Main Spoke).
+    error ReserveNotListed();
+
     /// @inheritdoc ISpoke
     function getReserve(uint256 reserveId) external view returns (Reserve memory) {
         ReserveData storage r = _reserves[reserveId];
+        if (!r.registered) revert ReserveNotListed();
         return Reserve({
             underlying: r.underlying,
             hub: r.hub,

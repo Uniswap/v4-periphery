@@ -3,7 +3,6 @@ pragma solidity 0.8.26;
 
 import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {Market} from "../../src/types/Market.sol";
-import {EnumerableMarketKeys} from "../../src/types/EnumerableMarketKeys.sol";
 import {Ltv, toLtv} from "../../src/types/Ltv.sol";
 import {PositionData} from "../../src/types/PositionData.sol";
 import {MockLendingProtocol} from "./MockLendingProtocol.sol";
@@ -15,7 +14,8 @@ contract MockLendingAdapter is ILendingAdapter {
     address public lendingProtocol;
     Ltv internal _maxLtv = toLtv(0.86e18);
 
-    EnumerableMarketKeys internal _supported;
+    // markets flagged routable by tests, keyed by the hash of the full market key (pair plus data)
+    mapping(bytes32 marketHash => bool supported) internal _supported;
 
     // when set non-zero, encode* returns this instead of lendingProtocol (to exercise the
     // account's target == lendingProtocol() check)
@@ -50,8 +50,7 @@ contract MockLendingAdapter is ILendingAdapter {
     // --- test configuration ---
 
     function setSupported(Market calldata m, bool supported) external {
-        if (supported) _supported.add(m.collateral, m.debt);
-        else _supported.remove(m.collateral, m.debt);
+        _supported[keccak256(abi.encode(m))] = supported;
     }
 
     function setMaxLtv(Ltv v) external {
@@ -61,15 +60,7 @@ contract MockLendingAdapter is ILendingAdapter {
     // --- ILendingAdapter ---
 
     function isSupportedMarket(Market calldata m) external view returns (bool) {
-        return _supported.has(m.collateral, m.debt);
-    }
-
-    function supportedMarketsLength() external view returns (uint256) {
-        return _supported.count();
-    }
-
-    function supportedMarkets(uint256 offset, uint256 limit) external view returns (Market[] memory) {
-        return _supported.page(offset, limit);
+        return _supported[keccak256(abi.encode(m))];
     }
 
     function encodeSupplyCollateral(address account, Market calldata, uint256 amount)

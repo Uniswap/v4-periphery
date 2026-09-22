@@ -210,8 +210,9 @@ contract MarginRouterInvariantTest is StdInvariant, Test, MarginRouteHelpers, De
         protocol = new MockLendingProtocol(IERC20(address(collateralToken)), IERC20(address(debtToken)));
         adapter = new MockLendingAdapter(address(protocol));
 
-        Market memory mkt =
-            Market({collateral: Currency.wrap(address(collateralToken)), debt: Currency.wrap(address(debtToken))});
+        Market memory mkt = Market({
+            collateral: Currency.wrap(address(collateralToken)), debt: Currency.wrap(address(debtToken)), data: ""
+        });
         adapter.setSupported(mkt, true);
 
         // Pre-fund the protocol with debt so borrows can deliver tokens.

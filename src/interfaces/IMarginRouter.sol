@@ -110,6 +110,8 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     /// @param account The MarginAccount holding the position.
     /// @param collateral The collateral currency of the market.
     /// @param debt The debt currency of the market.
+    /// @param marketData The adapter-specific market data (`Market.data`); with `collateral` and `debt`
+    ///        it identifies the venue market, since one pair can map to several markets on a venue.
     /// @param equity The equity the caller contributed, in the collateral token's native decimals
     ///        (the wrapped native amount when funded with ETH). The increase supplies the account's
     ///        FULL collateral balance, so any idle balance the account already held is committed on
@@ -128,6 +130,7 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
         address indexed account,
         Currency collateral,
         Currency debt,
+        bytes marketData,
         uint256 equity,
         uint256 collateralBought,
         uint256 debtDrawn,
@@ -146,6 +149,8 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     /// @param account The MarginAccount holding the position.
     /// @param collateral The collateral currency of the market.
     /// @param debt The debt currency of the market.
+    /// @param marketData The adapter-specific market data (`Market.data`); with `collateral` and `debt`
+    ///        it identifies the venue market.
     /// @param debtRepaid The requested repay amount, in the debt token's native decimals: the
     ///        caller's `debtToRepay` on a partial decrease, all outstanding debt on a full close. A
     ///        partial request above the live debt clamps at the venue (Compound in its encoder, Aave
@@ -165,6 +170,7 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
         address indexed account,
         Currency collateral,
         Currency debt,
+        bytes marketData,
         uint256 debtRepaid,
         uint256 collateralWithdrawn,
         uint256 collateralReturned,
@@ -202,17 +208,19 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///         `describePosition` call. Mutations made through the owner escape hatch (calling the
     ///         `MarginAccount` directly) bypass the router entirely and emit no snapshot. A single
     ///         transaction may emit several (an open emits one after the supply and one after the
-    ///         borrow); take the last per `(account, collateral, debt)` as the resulting state. The
-    ///         curated entry points additionally emit the richer `Position*` events carrying the
-    ///         per-operation deltas.
-    /// @dev Best-effort: the snapshot reads `adapter.describePosition`, which reverts for a
-    ///      de-registered market. To preserve the exit guarantee (withdraw/repay are never
+    ///         borrow); take the last per `(account, collateral, debt, marketData)` as the resulting
+    ///         state. The curated entry points additionally emit the richer `Position*` events carrying
+    ///         the per-operation deltas.
+    /// @dev Best-effort: the snapshot reads `adapter.describePosition`, which reverts for a market
+    ///      the venue no longer has. To preserve the exit guarantee (withdraw/repay are never
     ///      market-gated), a failing read is swallowed and no event is emitted rather than reverting
     ///      the action.
     /// @param owner The position owner (the authenticated caller).
     /// @param account The MarginAccount holding the position.
     /// @param collateral The collateral currency of the market.
     /// @param debt The debt currency of the market.
+    /// @param marketData The adapter-specific market data (`Market.data`); with `collateral` and `debt`
+    ///        it identifies the venue market.
     /// @param collateralTotal The account's total collateral after the action.
     /// @param debtTotal The account's total debt after the action.
     /// @param currentLtv The position's current LTV after the action (WAD, 1e18 == 100%).
@@ -223,6 +231,7 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
         address indexed account,
         Currency collateral,
         Currency debt,
+        bytes marketData,
         uint256 collateralTotal,
         uint256 debtTotal,
         Ltv currentLtv,
@@ -239,8 +248,10 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///      set entirely by the market's (collateral, debt) assignment: the position is long the
     ///      collateral and short the debt. Equity is provided in the collateral currency.
     /// @param adapter The allowlisted lending adapter that encodes and reads lending protocol calls.
-    /// @param market The (collateral, debt) pair defining the margin market. This pairing sets the
-    ///        trade direction: long the collateral, short the debt.
+    /// @param market The market key: the (collateral, debt) pair defining the margin market plus the
+    ///        adapter-specific `data` selecting the venue market (see the adapter's NatSpec for its
+    ///        encoding). The pairing sets the trade direction: long the collateral, short the debt.
+    ///        Market selection is permissionless, so the caller vets the market it names.
     /// @param equity The amount of collateral the caller contributes as equity, in the collateral
     ///        token's native decimals. Ignored when `msg.value > 0` (native ETH is used instead).
     /// @param collateralToBuy The exact amount of collateral the route buys (its exact-output amount),
@@ -296,7 +307,8 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///      zero withdraw amount collides with the `OPEN_DELTA` sentinel and reverts opaquely at the
     ///      venue. Repay such a position through an `execute` plan or the account's own `repay`.
     /// @param adapter The allowlisted lending adapter.
-    /// @param market The (collateral, debt) pair defining the margin market.
+    /// @param market The market key: the (collateral, debt) pair plus the adapter-specific `data`
+    ///        selecting the venue market.
     /// @param debtToRepay The exact amount of debt the route buys and repays (its exact-output amount),
     ///        in the debt token's native decimals, or `type(uint256).max` to fully close. On a full
     ///        close the route must buy AT LEAST the current debt (quote it with a small accrual buffer);
@@ -337,7 +349,8 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
 
     /// @notice Parameters for adding collateral to an existing position without changing leverage.
     /// @param adapter The allowlisted lending adapter.
-    /// @param market The (collateral, debt) pair defining the margin market.
+    /// @param market The market key: the (collateral, debt) pair plus the adapter-specific `data`
+    ///        selecting the venue market.
     /// @param amount The amount of collateral to add, in the collateral token's native decimals.
     ///        Ignored when `msg.value > 0` (native ETH is wrapped and used instead).
     /// @param subId The sub-account index identifying which MarginAccount receives the collateral.

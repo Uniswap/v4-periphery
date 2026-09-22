@@ -110,8 +110,9 @@ contract MarginRouterHandler is Test, MarginRouteHelpers {
         collateralToken = collateralToken_;
         debtToken = debtToken_;
         poolKey = poolKey_;
-        market =
-            Market({collateral: Currency.wrap(address(collateralToken_)), debt: Currency.wrap(address(debtToken_))});
+        market = Market({
+            collateral: Currency.wrap(address(collateralToken_)), debt: Currency.wrap(address(debtToken_)), data: ""
+        });
 
         actors[0] = makeAddr("actor0");
         actors[1] = makeAddr("actor1");
