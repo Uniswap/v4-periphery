@@ -46,8 +46,8 @@ identical regardless of venue.
           ▼
   ┌─────────────────┐   encode* (view)    ┌────────────────────┐
   │ MarginAccount   │ ──────────────────▶ │  LendingAdapter    │
-  │ (per-user clone,│  self-call          │  (governed market  │
-  │  soulbound)     │ ──────────────────▶ │   routing table)   │
+  │ (per-user clone,│  self-call          │  (stateless;       │
+  │  soulbound)     │ ──────────────────▶ │   decodes the key) │
   └───────┬─────────┘  onBehalf = account └──────────┬─────────┘
           │                                          │ reads + oracle price
           ▼                                          ▼
@@ -59,9 +59,9 @@ identical regardless of venue.
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `MarginRouter`         | The entry point. Builds and runs each flow inside a `PoolManager` unlock. Inherits `V4Router`, `ReentrancyLock`, `Permit2Forwarder`, `Multicall_v4`, `NativeWrapper`, and the account factory. The router is the `manager` of every account. |
 | `MarginAccount`        | A per-user clone (Solady clone-with-immutable-args). It is the lending counterparty (`onBehalf == account`), so it acts as itself and needs no delegated authorization. Owner and manager are baked into bytecode (soulbound).               |
-| lending adapters       | Singleton encoders over a governed `(collateral, debt)` routing table. `MorphoLendingAdapter` targets Morpho Blue; `AaveLendingAdapter` targets the Aave v3 Pool; `AaveV4LendingAdapter` targets a single Aave v4 Spoke; `CompoundV3LendingAdapter` targets a single Compound v3 Comet (its base token is the only borrowable debt). Each returns the `(target, value, callData)` an account executes and holds no funds. The caller picks a venue by passing the matching adapter. |
+| lending adapters       | Stateless singleton encoders. The caller names the venue market with a `Market` key (the `(collateral, debt)` pair plus adapter-decoded `data`), which the adapter validates against the live venue on every call; there is no routing table and no owner. `MorphoLendingAdapter` targets Morpho Blue; `AaveLendingAdapter` targets the Aave v3 Pool; `AaveV4LendingAdapter` targets a single Aave v4 Spoke; `CompoundV3LendingAdapter` targets a single Compound v3 Comet (its base token is the only borrowable debt). Each returns the `(target, value, callData)` an account executes and holds no funds. The caller picks a venue by passing the matching adapter. |
 | `ILendingAdapter`      | The protocol-agnostic surface the router and account depend on. New lending protocols are supported by new adapters.                                                                                                                         |
-| value types            | `Market` (the `(collateral, debt)` pair), `Ltv` (WAD ratio), `MarketRegistry`, `Owner`.                                                                                                                      |
+| value types            | `Market` (the `(collateral, debt)` pair plus adapter-specific `data`), `Ltv` (WAD ratio), `Owner` (router governance).                                                                                                                      |
 
 
 ---
@@ -76,6 +76,7 @@ A position is described by a `Market`:
 struct Market {
     Currency collateral; // supplied to the lending market
     Currency debt;       // borrowed from the lending market
+    bytes data;          // adapter-specific: pins the pair to one concrete venue market
 }
 ```
 
@@ -90,14 +91,36 @@ is no separate long/short flag — the two are the same information:
 
 
 The swap mechanic is identical in both cases (borrow debt, buy collateral, supply collateral); only
-which token sits in `collateral` vs `debt` differs. `Currency` is the v4 currency type
+which token sits in `collateral` vs `debt` differs. The `Market(collateral, debt)` shorthand used in
+this guide's prose names the pair only; a real key also carries the adapter-specific `data` described
+below, which pins the pair to one concrete venue market. `Currency` is the v4 currency type
 (`Currency.wrap(tokenAddress)`); native ETH is `Currency.wrap(address(0))`, but margin markets are
 ERC-20 only (use WETH).
 
+**Market selection is permissionless.** Adapters hold no routing table and no owner: any market the
+venue has is routable, and the caller pins the pair to a concrete venue market through `data`, which
+the adapter decodes and validates against the live venue on every encode and read (there is no
+registration step, and nothing to re-point). The encoding is defined per adapter:
+
+| Adapter                    | `Market.data`                                                    | Validated on every call                                                                                   |
+| -------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `MorphoLendingAdapter`     | `abi.encode(address oracle, address irm, uint256 lltv)`          | the `MarketParams` `(debt, collateral, oracle, irm, lltv)` is a created Morpho Blue market                 |
+| `AaveLendingAdapter`       | empty (`""`); Aave v3 keys a market by the asset pair            | both assets are live Aave reserves                                                                        |
+| `AaveV4LendingAdapter`     | `abi.encode(uint256 collateralReserveId, uint256 debtReserveId)` | each reserve exists on the Spoke, its `underlying` is the named currency, and both share a Hub            |
+| `CompoundV3LendingAdapter` | empty (`""`); a Comet market is the collateral asset             | `debt` is the Comet base token and `collateral` is a listed Comet collateral asset                        |
+
+A key of the wrong shape reverts `InvalidMarketData(length)`; a key the venue has no market for
+reverts `MarketNotSupported(collateral, debt)` (Aave v4 and Compound add `ReserveMismatch` /
+`HubMismatch` / `DebtNotBaseToken` for a key whose fields disagree with each other). Adapters require
+the canonical length, so one market has exactly one key encoding. `isSupportedMarket(market)` is the
+non-reverting form of the same check, for validation before a transaction is built. Because anyone can
+name any market, **the caller vets the market it names**: on Morpho Blue in particular, market creation
+is itself permissionless, so the oracle, IRM, and LLTV are whatever the creator chose (see §9).
+
 Which venue serves a pairing depends on which markets each protocol lists:
 
-- **Long ETH** is `Market(collateral: WETH, debt: USDC)`. It is available on Morpho today and also
-works on Aave v3 and Aave v4.
+- **Long ETH** is `Market(collateral: WETH, debt: USDC)`. It is available on Morpho (the canonical
+WETH/USDC market key is listed in §10) and also works on Aave v3 and Aave v4.
 - **Short ETH** is `Market(collateral: USDC, debt: WETH)`. It is served by Aave v3 and Aave v4 today;
 no Morpho market exists for this pairing on mainnet. See §8 for the venue-selection and short-ETH
 walkthrough.
@@ -115,7 +138,9 @@ balances across the whole account, not per `(collateral, debt)` pair, so each Aa
 in its own `(owner, subId)` account: open a second Aave market under a *new* `subId`, never the same
 one. The router does not enforce this. Re-using a `subId` for two markets on the same Aave deployment
 blends their collateral/debt and can make a later `decreasePosition` (partial or full close) revert or
-withdraw collateral still backing the other debt. Morpho markets are isolated and not subject to this.
+withdraw collateral still backing the other debt. Morpho markets are isolated per market key, so two
+Morpho markets on one account do not blend; still, the router's `PositionUpdated` snapshots are keyed
+per `(account, collateral, debt, marketData)`, so keep one market per `subId` for clean accounting.
 - **Soulbound.** The owner and the manager (the router) are baked into the clone's bytecode at
 deployment. There is no initializer and no transfer path.
 - **Self-custody with a manager.** The account's fund-moving primitives (`supplyCollateral`,
@@ -140,7 +165,8 @@ guarantees are that it acts as its own `onBehalf` and constrains every fund reci
 manager. Governance maintains an **allowlist** of adapters. The allowlist gates only the operations
 that *add* exposure — `increasePosition`, `addCollateral` (and, under `execute`, `ACCOUNT_SUPPLY_COLLATERAL`
 / `ACCOUNT_BORROW`). **Closing and delevering never require an allowlisted adapter**, so a position can
-always be unwound even if its adapter is later removed.
+always be unwound even if its adapter is later removed. The allowlist curates **venues**, not markets:
+an allowlisted adapter routes any market its venue has, selected by the caller's `Market` key (§3.1).
 
 ### 3.4 Leverage and LTV
 
@@ -273,10 +299,10 @@ sentinel, unlike the other opcodes); `CONTRACT_BALANCE` is honored only on the r
 native currency is unsupported (wrap to WETH first).
 6. **Events.** Every position mutation (supply, withdraw, borrow, repay) on every router path,
 including inside an `execute` plan and on the unlock-free paths (`addCollateral` and the zero-debt
-swap-free close), emits a `PositionUpdated` snapshot with the account's resulting
-`(collateral, debt)`, LTV, max LTV, and health factor, so an indexer can reconstruct positions from
-router logs alone (take the last `PositionUpdated` per `(account, collateral, debt)` in a
-transaction as the resulting state). Mutations made through the owner escape hatch (calling the
+swap-free close), emits a `PositionUpdated` snapshot with the market key (`collateral`, `debt`, `marketData`) and the
+account's resulting collateral, debt, LTV, max LTV, and health factor, so an indexer can reconstruct
+positions from router logs alone (take the last `PositionUpdated` per
+`(account, collateral, debt, marketData)` in a transaction as the resulting state). Mutations made through the owner escape hatch (calling the
 `MarginAccount` directly) bypass the router and emit no snapshot. `execute` plans also emit the account-level delta events
 (`CollateralSupplied`, `Borrowed`, `Repaid`, `Swept`, `AccountCreated`). Only the curated entry
 points additionally emit the richer `PositionIncreased`/`PositionDecreased`/`CollateralAdded` events
@@ -317,7 +343,7 @@ supplied assets; the raw supplied balance on Morpho and Compound, whose collater
 Ltv current = adapter.currentLtvWad(account, market);
 Ltv maxLtv  = adapter.maxLtvWad(market);
 
-// is this (collateral, debt) pair routable?
+// does this market key resolve to a live venue market? (non-reverting; see §3.1 for the key encodings)
 bool ok = adapter.isSupportedMarket(market);
 ```
 
@@ -357,19 +383,24 @@ contract MarginIntegrator {
 
     // WETH/USDC pool the leverage swap routes through (currencies sorted: USDC < WETH)
     PoolKey internal poolKey;
+    // adapter-specific market data pinning (WETH, USDC) to one venue market (see §3.1): for the Morpho
+    // adapter abi.encode(oracle, irm, lltv) of the market you vetted; empty for Aave v3 and Compound
+    bytes internal marketData;
 
     constructor(
         IMarginRouter _router,
         ILendingAdapter _adapter,
         IAllowanceTransfer _permit2,
         address _universalRouter,
-        PoolKey memory _key
+        PoolKey memory _key,
+        bytes memory _marketData
     ) {
         router = _router;
         adapter = _adapter;
         permit2 = _permit2;
         universalRouter = _universalRouter;
         poolKey = _key;
+        marketData = _marketData;
     }
 
     /// @notice Open a 2x long WETH position with `equity` WETH of the caller's funds (held by this
@@ -383,7 +414,8 @@ contract MarginIntegrator {
         external
         returns (address account)
     {
-        Market memory market = Market({collateral: Currency.wrap(weth), debt: Currency.wrap(usdc)});
+        Market memory market =
+            Market({collateral: Currency.wrap(weth), debt: Currency.wrap(usdc), data: marketData});
 
         // one-time per token: let Permit2 move this contract's WETH, then authorize the router
         IERC20(weth).approve(address(permit2), type(uint256).max);
@@ -463,7 +495,7 @@ function openLongWithEth(address weth, address usdc, uint128 collateralToBuy, ui
     returns (address account)
 {
     // collateral MUST be WETH for the native path
-    Market memory market = Market({collateral: Currency.wrap(weth), debt: Currency.wrap(usdc)});
+    Market memory market = Market({collateral: Currency.wrap(weth), debt: Currency.wrap(usdc), data: marketData});
 
     account = router.increasePosition{value: msg.value}(
         IMarginRouter.IncreaseParams({
@@ -583,6 +615,9 @@ close is sent to your contract.
 native-ETH position calls in one `multicall` — `msg.value` is shared and the second wrap would
 revert.
 - Markets are standard ERC-20 only (no fee-on-transfer or rebasing tokens).
+- Market selection is permissionless, so vet the market your `Market.data` names (on Morpho: the
+oracle, IRM, and LLTV; confirm the id and TVL with `cast`). Probe a key with
+`adapter.isSupportedMarket(market)` before building a transaction; it never reverts.
 
 ---
 
@@ -598,7 +633,7 @@ changes.
 ### 7.1 Setup
 
 ```ts
-import { createPublicClient, createWalletClient, custom, http, parseUnits, formatUnits } from "viem";
+import { createPublicClient, createWalletClient, custom, encodeAbiParameters, http, parseUnits, formatUnits } from "viem";
 import { mainnet } from "viem/chains";
 import { marginRouterAbi, lendingAdapterAbi } from "./abis";
 
@@ -609,7 +644,11 @@ const ADDR = {
   permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
   weth:    "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
   usdc:    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  // the canonical Morpho WETH/USDC market (see §10); verify the id and TVL with cast before use
+  morphoOracle: "0x0F948CBa8231Db7898ef36A4212581Ad7b1B4580",
+  morphoIrm:    "0x870aC11D48B15DB9a138Cf899d20F13F79Ba00BC",
 } as const;
+const MORPHO_LLTV = 860_000_000_000_000_000n; // 0.86e18
 
 const publicClient = createPublicClient({ chain: mainnet, transport: http() });
 const walletClient = createWalletClient({ chain: mainnet, transport: custom((window as any).ethereum) });
@@ -623,8 +662,14 @@ const poolKey = {
   hooks: "0x0000000000000000000000000000000000000000",
 } as const;
 
-// market: long WETH (collateral) vs USDC (debt)
-const market = { collateral: ADDR.weth, debt: ADDR.usdc } as const;
+// market: long WETH (collateral) vs USDC (debt), pinned to one venue market by `data` (see §3.1).
+// Morpho: abi.encode(oracle, irm, lltv). Aave v3 and Compound: "0x". Aave v4:
+// abi.encode(collateralReserveId, debtReserveId).
+const marketData = encodeAbiParameters(
+  [{ type: "address" }, { type: "address" }, { type: "uint256" }],
+  [ADDR.morphoOracle, ADDR.morphoIrm, MORPHO_LLTV],
+);
+const market = { collateral: ADDR.weth, debt: ADDR.usdc, data: marketData } as const;
 ```
 
 ### 7.2 Permit2 approval (one-time per token)
@@ -796,6 +841,8 @@ message.
 - Derive `maxDebtIn` / `maxCollateralIn` from a real quote plus a slippage buffer; do not use spot.
 - Account decimals carefully: WETH is 18, USDC is 6.
 - Surface the account address (`accountOf`) and its health (`currentLtvWad` vs `maxLtvWad`).
+- Validate the market key with `isSupportedMarket` before building a transaction (it never reverts), and
+only offer markets you have vetted: market selection is permissionless (§3.1, §9).
 
 ---
 
@@ -810,17 +857,16 @@ in the flow changes: all implement the same `ILendingAdapter` surface
 and the router orchestrates them identically. Each adapter must be allowlisted by governance
 (`router.setAdapterAllowed(adapter, true)`) before it can be used to *add* exposure; closing and
 delevering never require an allowlisted adapter, so a position opened on any venue can always be
-unwound. Whether a given `(collateral, debt)` pair is routable on a venue is read with
-`adapter.isSupportedMarket(market)`.
+unwound. Market selection within a venue is permissionless: the caller names the market through
+`Market.data` (§3.1), and whether a key resolves on a venue is read with
+`adapter.isSupportedMarket(market)`. The adapters are stateless and unowned; there is no `setMarket`.
 
 `AaveLendingAdapter` is constructed from an Aave v3 `IPoolAddressesProvider`
-(`constructor(IPoolAddressesProvider provider, address owner_)`); it resolves and stores the Pool
+(`constructor(IPoolAddressesProvider provider)`); it resolves and stores the Pool
 immutably (a proxy with a stable address across Aave upgrades), while the protocol data provider, a
 plain address Aave can repoint, is re-resolved from the addresses provider on each use rather than
-stored. Governance enables a pairing with
-`setMarket(Currency collateral, Currency debt, bool allowed)` (owner-gated; both must be live Aave
-reserves), and ownership is the same two-step `transferOwnership` / `acceptOwnership` /
-`owner()` / `pendingOwner()` handoff as the Morpho adapter. Reads mirror the Morpho adapter:
+stored. Aave keys a market by the asset pair, so `Market.data` must be empty and any pair whose two
+assets are live Aave reserves is routable (`MarketNotSupported` otherwise). Reads mirror the Morpho adapter:
 `positionOf` returns the account's aToken and variableDebtToken balances, `maxLtvWad` returns the
 collateral reserve's liquidation threshold, and `currentLtvWad` is the account-level LTV from Aave's
 `getUserAccountData` (denominated in Aave's USD base currency, so it is decimal-agnostic). Because
@@ -829,14 +875,14 @@ these reads are account-level (true for both the v3 and v4 adapters), keep one A
 blends the reads and can break a later close/decrease (see §3.2).
 
 `AaveV4LendingAdapter` targets Aave v4's **hub-and-spoke** architecture and is constructed against a
-single **Spoke** (`constructor(ISpoke spoke, address owner_)`); the Spoke is `lendingProtocol()` and
+single **Spoke** (`constructor(ISpoke spoke)`); the Spoke is `lendingProtocol()` and
 the call target for every market it routes. To serve a second Spoke, deploy a second adapter instance
-and allowlist it. A v4 market is keyed by a per-Spoke `reserveId` rather than an asset address, so
-governance enables a pairing with
-`setMarket(Currency collateral, Currency debt, uint256 collateralReserveId, uint256 debtReserveId, bool allowed)`;
-the call validates on-chain that each reserve's `underlying` matches the currency and that both
-reserves are on the same Hub. Four v4 specifics are handled entirely inside the adapter, so the router
-and account flows are unchanged:
+and allowlist it. A v4 market is keyed by a per-Spoke `reserveId` rather than an asset address, so the
+caller names it with `Market.data = abi.encode(collateralReserveId, debtReserveId)`; on every call the
+adapter validates against the live Spoke that each reserve exists (`MarketNotSupported` otherwise),
+that its `underlying` matches the currency (`ReserveMismatch`), and that both reserves are on the same
+Hub (`HubMismatch`), so a Spoke reserve-layout change is caught immediately. Four v4 specifics are
+handled entirely inside the adapter, so the router and account flows are unchanged:
 
 - **Supply enables collateral atomically.** v4 `supply` does not auto-enable collateral, so the
 adapter's `encodeEnableCollateral` hook encodes `setUsingAsCollateral`, which the account runs
@@ -860,14 +906,14 @@ forwards it to the validated recipient, the same measure-and-forward `MarginAcco
 `borrow`.
 
 `CompoundV3LendingAdapter` targets a single Compound v3 **Comet** and is constructed against it
-(`constructor(IComet comet, address owner_)`); the Comet is `lendingProtocol()` and the call target for
+(`constructor(IComet comet)`); the Comet is `lendingProtocol()` and the call target for
 every market. A Comet is **single-base**: it has exactly one borrowable base token and a set of
 collateral assets. So every routable pair must have `debt == comet.baseToken()` and a `collateral` that
-is a registered Comet collateral asset — governance enables a pair with
-`setMarket(Currency collateral, Currency debt, bool allowed)`, which validates both on-chain (the base
-match and that the collateral is a Comet collateral asset). To serve a different base, deploy a second
-adapter against that Comet. Two Compound specifics are handled inside the adapter, so the router and
-account flows are unchanged:
+is a listed Comet collateral asset; `Market.data` must be empty, and the adapter validates both on every
+call (`DebtNotBaseToken` and `MarketNotSupported` respectively), which is what keeps a key naming a
+collateral asset as the debt from turning a borrow into a collateral withdrawal. To serve a different
+base, deploy a second adapter against that Comet. Two Compound specifics are handled inside the adapter,
+so the router and account flows are unchanged:
 
 - **No separate borrow/repay.** Borrowing the base is `withdraw`ing it (drawing the base balance
 negative) and repaying is `supply`ing it. The four `ILendingAdapter` primitives map onto Comet's
@@ -883,8 +929,8 @@ large enough to bring the position back under the borrow factor, or be a full cl
 works). `maxLtvWad` surfaces only the liquidate factor, so size partial decreases against
 `getAssetInfoByAddress(collateral).borrowCollateralFactor`, not `maxLtvWad`.
 - **Base-asset supplies are out of scope.** A positive base balance (a Comet base supply) reads as
-`borrowBalanceOf == 0`, and the base token cannot be registered as a market's collateral (`setMarket`
-rejects it, since `getAssetInfoByAddress(base)` reverts), so the router cannot open, read, or unwind a
+`borrowBalanceOf == 0`, and the base token cannot be named as a market's collateral (every call
+rejects it with `MarketNotSupported`, since `getAssetInfoByAddress(base)` reverts), so the router cannot open, read, or unwind a
 base-supply position - it manages collateral-backed base borrows only. A base supply can only arise via
 an `execute` plan or a direct Comet call; unwind it the same way (an `execute` plan or the owner escape
 hatch).
@@ -895,17 +941,16 @@ Reads mirror the other adapters: `positionOf` returns `(collateralBalanceOf, bor
 Comet), and `currentLtvWad` is USD-valued through Comet's own price feeds (decimal-agnostic). The reads
 are account-level in the base, so keep one Compound position per `(owner, subId)` and use a distinct
 `subId` for each, as with the Aave adapters. The priced reads (`maxLtvWad`, `currentLtvWad`,
-`describePosition`) also depend on the live Comet configuration: they call
-`getAssetInfoByAddress(collateral)` unguarded, so if Compound governance ever removes a collateral
-asset from the Comet, those reads (and the curated flows that consult them) revert opaquely until the
-market is de-registered. Compound's removal process makes this realistic only after balances are
-zeroed, and funds remain exitable via the owner escape hatch regardless.
+`describePosition`) also depend on the live Comet configuration: if Compound governance ever removes a
+collateral asset from the Comet, every call for that market reverts `MarketNotSupported` from then on.
+Compound's removal process makes this realistic only after balances are zeroed, and funds remain
+exitable via the owner escape hatch regardless.
 
 ### 8.2 Open a short ETH position via Aave
 
 A short ETH position is `Market(collateral: USDC, debt: WETH)`: supply USDC, borrow WETH, sell the
 borrowed WETH for more USDC collateral. The only differences from a long are the adapter, the market
-pairing, and the token decimals: `equity` and `collateralToBuy` are USDC (6 decimals) and `maxDebtIn`
+pairing (with the adapter's `data` encoding, empty on Aave v3), and the token decimals: `equity` and `collateralToBuy` are USDC (6 decimals) and `maxDebtIn`
 is WETH (18 decimals), the reverse of the long examples in §6.
 
 ```solidity
@@ -919,7 +964,8 @@ function openShortEth(
     uint128 collateralToBuyUsdc, // extra USDC collateral to buy, 6 decimals
     uint128 maxDebtInWeth      // max WETH to borrow and sell, 18 decimals (from a quote + slippage)
 ) external returns (address account) {
-    Market memory market = Market({collateral: Currency.wrap(usdc), debt: Currency.wrap(weth)});
+    // Aave v3 keys a market by the asset pair alone, so `data` is empty
+    Market memory market = Market({collateral: Currency.wrap(usdc), debt: Currency.wrap(weth), data: ""});
 
     // one-time per token: let Permit2 move this contract's USDC, then authorize the router
     IERC20(usdc).approve(address(permit2), type(uint256).max);
@@ -947,7 +993,8 @@ function openShortEth(
 this a short. Everything else (increase, add collateral, decrease, close, reading state) works exactly
 as in §5 and §6, with the adapter set to the Aave adapter and the decimals swapped. The example routes
 through Aave v3; to route the identical short through Aave v4, pass an allowlisted `AaveV4LendingAdapter`
-instead. The router, account, params, and decimals are unchanged.
+and set `data` to `abi.encode(usdcReserveId, wethReserveId)` (the Main Spoke ids are in §10). The
+router, account, params, and decimals are otherwise unchanged.
 
 > Front-end caveat: the §7.3 `sizeOpen` helper is hardcoded for an 18-decimal collateral / 6-decimal
 > debt long. For a short the decimals are reversed: size `equity` and `collateralToBuy` in 6-decimal
@@ -971,7 +1018,11 @@ funding-rate spread between the two venues. The two calls differ only by adapter
 router.increasePosition(
     IMarginRouter.IncreaseParams({
         adapter: morphoAdapter,
-        market: Market({collateral: Currency.wrap(weth), debt: Currency.wrap(usdc)}),
+        market: Market({
+            collateral: Currency.wrap(weth),
+            debt: Currency.wrap(usdc),
+            data: abi.encode(morphoOracle, morphoIrm, morphoLltv) // the vetted Morpho WETH/USDC market
+        }),
         equity: equityWeth,              // 18d WETH
         collateralToBuy: longBuyWeth,    // 18d WETH
         maxDebtIn: longMaxDebtInUsdc,    // 6d USDC
@@ -988,7 +1039,7 @@ router.increasePosition(
 router.increasePosition(
     IMarginRouter.IncreaseParams({
         adapter: aaveAdapter,
-        market: Market({collateral: Currency.wrap(usdc), debt: Currency.wrap(weth)}),
+        market: Market({collateral: Currency.wrap(usdc), debt: Currency.wrap(weth), data: ""}),
         equity: equityUsdc,              // 6d USDC
         collateralToBuy: shortBuyUsdc,   // 6d USDC
         maxDebtIn: shortMaxDebtInWeth,   // 18d WETH
@@ -1016,20 +1067,25 @@ Only the manager (router) or owner can move an account's funds, and only to the 
 governance is responsible for vetting adapters it allowlists (a malicious adapter could drain funds
 routed through it). The account routes calls only to the adapter's declared `lendingProtocol()` with a
 regular call (never a delegatecall), acts as its own `onBehalf`, and constrains every fund recipient to
-the owner or manager — but these are durable structural guarantees, not a defense against a malicious
+the owner or manager. These are durable structural guarantees, not a defense against a malicious
 adapter, which the allowlist is what actually gates.
-- **Governance.** The router's adapter allowlist and the adapter's market routing table are
-governance-controlled. Ownership transfers are two-step and reject the zero address. Production
+- **Market trust is the caller's.** Market selection is permissionless: an allowlisted adapter routes
+any market its venue has, and the adapter validates only that the key names a real venue market, not
+that the market is sound. On Aave and Compound the venue's own governance lists markets, so the
+universe is venue-vetted. On Morpho Blue anyone can create a market with any oracle, IRM, and LLTV, so
+a caller (or the front end building its calldata) must vet the market it names: confirm the id, oracle,
+and TVL with `cast`, and only offer markets you have reviewed. The router's curated flows fail closed
+on a non-standard token (a fee-on-transfer or rebasing asset trips the fill and settle assertions), but
+a bad oracle is a position-level risk the caller accepts by naming that market.
+- **Governance.** The router's adapter allowlist is governance-controlled; the adapters themselves have
+no owner and no configuration. Governance transfers are two-step and reject the zero address. Production
 deployments should put governance behind a timelock or multisig.
-- **Market lifecycle.** Retiring or re-pointing a market is a deliberate governance action, and the
-curated router paths (open, increase, decrease, close, reads) only operate on a currently supported
-market. Do not de-register or re-point a pair that has open positions: doing so removes the convenient
-router path for those positions (a full close can read as a success-shaped no-op), and holders must
-then exit through the owner `execute` escape hatch against the lending protocol directly. The Morpho
-registry has no per-market revoke, so stopping routing to a single Morpho market means re-pointing it
-or disallowing the adapter. On the Aave v4 adapter, reserve-id bindings are validated at registration
-against the Spoke's live layout and are not re-checked per operation, so a market must be re-registered
-if the Spoke's reserve layout changes.
+- **Market lifecycle.** There is no market registry to retire or re-point. A key stays routable exactly
+as long as its venue market exists: every call re-validates against the live venue, so a Compound
+collateral delisting or an Aave v4 reserve-layout change is reflected immediately (`MarketNotSupported`
+or `ReserveMismatch` on the next call). Withdraw and repay never gate on the venue-side reads beyond
+key validation, and the owner `execute` escape hatch acts on the lending protocol directly, so a position
+on a market the venue itself has withdrawn remains exitable.
 - **Exit is always available.** Closing and delevering do not require an allowlisted adapter, and the
 owner `execute` escape hatch can act directly on the lending protocol, so funds are never trapped by
 router-side configuration.
@@ -1044,6 +1100,13 @@ the margin layer adds no independent oracle.
 ---
 
 ## 10. Deployment addresses
+
+> **ABI notice.** The mainnet margin suite listed below was deployed before the permissionless
+> market-key rework this guide describes: its `Market` has no `data` field, its adapters expose
+> `setMarket` and an owner, and its router events carry no `marketData`. Do not build calldata from
+> this guide against those addresses. Integrate against them with the guide revision that matches
+> their commit (`0df9a61`), or wait for the redeploy of this ABI, at which point this table will be
+> re-pinned.
 
 The margin contracts below are the Ethereum mainnet deployment (DeployMargin.s.sol, chain 1), verified
 on-chain with `cast code`; the external dependencies follow. Other networks are deployment-specific.
@@ -1077,8 +1140,8 @@ Superseded margin deployments remain live onchain but should not be integrated a
 (earlier APIs), each with its own adapter set. Positions opened on them stay exitable through their
 own router or the owner escape hatch; retire their adapter allowlists via governance when ready.
 
-Morpho WETH/USDC market (collateral WETH, loan USDC) — the canonical liquid market the deploy scripts
-register: oracle `0x0F948CBa8231Db7898ef36A4212581Ad7b1B4580`,
+Morpho WETH/USDC market (collateral WETH, loan USDC), the canonical liquid market; its adapter key is
+`Market.data = abi.encode(oracle, irm, lltv)` with oracle `0x0F948CBa8231Db7898ef36A4212581Ad7b1B4580`,
 IRM `0x870aC11D48B15DB9a138Cf899d20F13F79Ba00BC`, LLTV `0.86e18`,
 id `0x94b823e6bd8ea533b4e33fbc307faea0b307301bc48763acc4d4aa4def7636cd` (verified on-chain: ~$4M
 supplied / ~$3.7M borrowed). A second, near-empty WETH/USDC market exists at oracle
@@ -1091,7 +1154,9 @@ were verified on a mainnet fork at block 25319047.
 
 Aave v4 Main Spoke reserve ids: WETH is reserveId `0` (the debt leg of a short, borrowable) and USDC
 is reserveId `7` (the collateral leg, collateral factor `7800` bps, which
-`AaveV4LendingAdapter.maxLtvWad` returns as `0.78e18`). Both reserves are on the Core Hub. The
+`AaveV4LendingAdapter.maxLtvWad` returns as `0.78e18`). Both reserves are on the Core Hub, so the
+short-ETH key is `Market.data = abi.encode(uint256(7), uint256(0))` and the long-ETH key
+`abi.encode(uint256(0), uint256(7))`. The
 addresses, reserve ids, and collateral factor were verified on a mainnet fork at block 25330047.
 
 Compound v3 long-UNI market (collateral UNI, debt USDC) on the cUSDCv3 Comet: UNI's borrow collateral
@@ -1174,25 +1239,21 @@ only escape hatch).
 All four adapters — `MorphoLendingAdapter`, `AaveLendingAdapter` (Aave v3), `AaveV4LendingAdapter`, and
 `CompoundV3LendingAdapter` — expose the same `ILendingAdapter` reads: `lendingProtocol()`,
 `isSupportedMarket(Market)`, `positionOf(account, Market)`, `maxLtvWad(Market)`,
-`currentLtvWad(account, Market)`, plus `owner()`, `pendingOwner()`, `acceptOwnership()`, and
-`transferOwnership(address)` for the two-step ownership handoff. The encode surface (see §3.3) is the
-five encoders `encodeSupplyCollateral` / `encodeEnableCollateral` / `encodeWithdrawCollateral` /
-`encodeBorrow` / `encodeRepay`; on the Aave adapters `encodeEnableCollateral` returns the venue's
-explicit collateral-enable call, on Morpho and Compound the empty skip signal. Market routing is curated with
-`setMarket` (owner-gated), and only the `setMarket` signature differs by venue:
+`currentLtvWad(account, Market)`, and `describePosition(account, Market)`. The encode surface (see
+§3.3) is the five encoders `encodeSupplyCollateral` / `encodeEnableCollateral` /
+`encodeWithdrawCollateral` / `encodeBorrow` / `encodeRepay`; on the Aave adapters
+`encodeEnableCollateral` returns the venue's explicit collateral-enable call, on Morpho and Compound
+the empty skip signal. The adapters are stateless and unowned: there is no `setMarket`, no `MarketSet`
+event, and no ownership surface. Only the `Market.data` encoding differs by venue (§3.1):
 
-- `MorphoLendingAdapter` registers a Morpho `MarketParams` (validating the market exists on Morpho).
-- `AaveLendingAdapter.setMarket(Currency collateral, Currency debt, bool allowed)` allowlists a pair
-after validating both are live Aave v3 reserves.
-- `AaveV4LendingAdapter.setMarket(Currency collateral, Currency debt, uint256 collateralReserveId, uint256 debtReserveId, bool allowed)`
-registers a route after validating on-chain that each reserve's `underlying` matches the currency and
-that both reserves are on the same Hub. Its `lendingProtocol()` is the bound Spoke.
-- `CompoundV3LendingAdapter.setMarket(Currency collateral, Currency debt, bool allowed)` allowlists a
-pair after validating `debt` is the bound Comet's base token and `collateral` is a registered Comet
-collateral asset. Its `lendingProtocol()` is the bound Comet.
-
-(Note: `MarketSet`, emitted by all four on `setMarket`, carries the two `reserveId`s for the v4
-adapter.)
+- `MorphoLendingAdapter`: `abi.encode(address oracle, address irm, uint256 lltv)`; the market must
+exist on Morpho Blue.
+- `AaveLendingAdapter`: empty; both assets must be live Aave v3 reserves.
+- `AaveV4LendingAdapter`: `abi.encode(uint256 collateralReserveId, uint256 debtReserveId)`; each
+reserve's `underlying` must match the currency and both must share a Hub. Its `lendingProtocol()` is
+the bound Spoke.
+- `CompoundV3LendingAdapter`: empty; `debt` must be the bound Comet's base token and `collateral` a
+listed Comet collateral asset. Its `lendingProtocol()` is the bound Comet.
 
 ### Errors
 
@@ -1211,14 +1272,14 @@ adapter.)
 | V4Router | `V4TooMuchRequestedPerHopSingle(uint256 minPrice, uint256 priceX36)` | a swap's realized per-hop price fell below the caller's `minHopPriceX36` bound                                        |
 | account  | `NotAuthorized()`                                                | caller is neither manager nor owner                                                                                       |
 | account  | `ReceiverNotAllowed(address)`                                    | recipient is neither manager nor owner                                                                                    |
-| Owner    | `NotOwner(address)` / `ZeroOwner()` / `NotPendingOwner(address)` | ownership guards                                                                                                          |
-| adapter (Morpho) | `MorphoMarketNotCreated()`                              | `setMarket` for a market that does not exist on Morpho                                                                    |
-| adapter (Aave v3/v4) | `MarketNotSupported(Currency, Currency)`           | an encode/read or `setMarket` for a `(collateral, debt)` pair that is not allowlisted/registered (Aave v3: or whose assets are not live reserves) |
+| Owner    | `NotOwner(address)` / `ZeroOwner()` / `NotPendingOwner(address)` | router governance guards                                                                                                  |
+| adapter (all) | `MarketNotSupported(Currency, Currency)`                    | an encode/read for a key the venue has no market for: Morpho market not created, Aave v3 asset not a reserve, Aave v4 reserve id unconfigured, Compound collateral not listed |
+| adapter (all) | `InvalidMarketData(uint256 length)`                         | `Market.data` is not the adapter's canonical shape (Morpho 96 bytes, Aave v4 64 bytes, Aave v3 and Compound empty)     |
+| adapter (Compound) | `DebtNotBaseToken(Currency, address)`                  | an encode/read whose `debt` is not the bound Comet's base token                                                           |
 | adapter (Aave v3/v4) | `ZeroAddress()`                                    | a required address is zero at construction (Aave v3: the resolved Pool or data provider; Aave v4: the Spoke)             |
 | adapter (Aave v3/v4) | `AccountMismatch(address, address)`               | a withdraw was encoded for an account other than the caller (the account always passes its own address)                 |
-| adapter (Aave v4) | `ReserveMismatch(uint256, address, address)`         | `setMarket` where a reserve's on-chain `underlying` does not match the currency it is registered for                     |
-| adapter (Aave v4) | `HubMismatch(address, address)`                      | `setMarket` where the collateral and debt reserves are on different Hubs (a single v4 position cannot span Hubs)         |
-| registry | `MarketNotSupported(Currency, Currency)`                         | the `(collateral, debt)` pair has no registered market (Morpho registry)                                                  |
+| adapter (Aave v4) | `ReserveMismatch(uint256, address, address)`         | an encode/read whose reserve id exists but its onchain `underlying` is not the currency named on that side of the key    |
+| adapter (Aave v4) | `HubMismatch(address, address)`                      | an encode/read whose collateral and debt reserves are on different Hubs (a single v4 position cannot span Hubs)          |
 
 
 ### Events
@@ -1228,9 +1289,10 @@ every router path: curated flows, `execute` plans, and the unlock-free `addColla
 close), `PositionIncreased`, `PositionDecreased` (a full close is a
 `PositionDecreased` with the position emptied), `CollateralAdded`, `AdapterAllowed`,
 `GovernanceTransferStarted`, `GovernanceTransferred` (router; `GovernanceTransferred` also fires at
-construction, from the zero address, for the initial governance); `MarketSet`,
-`OwnershipTransferStarted`, `OwnershipTransferred` (adapter; the ownership events cover construction
-and both steps of the two-step handoff); `CollateralSupplied`, `CollateralWithdrawn`, `Borrowed`,
+construction, from the zero address, for the initial governance). `PositionIncreased`,
+`PositionDecreased`, and `PositionUpdated` carry the market key (`collateral`, `debt`, `marketData`) so
+two same-pair markets on one venue stay distinguishable. The adapters emit no events. Account events:
+`CollateralSupplied`, `CollateralWithdrawn`, `Borrowed`,
 `Repaid`, `Swept` (account); `AccountCreated` (account factory). Indexers can key on `PositionUpdated`
 for resulting state uniformly across curated and `execute` paths; the `Position*` increase/decrease
 events add the per-operation deltas on the curated path — see §4.1.
@@ -1243,7 +1305,7 @@ field then over-reports), and an increase's `equity` is the caller's contributio
 `OPEN_DELTA` supply also absorbs any idle balance the account already held). `PositionUpdated` always
 carries measured resulting state — prefer it for accounting.
 - Every `describePosition`-derived emission is **best-effort**: if the venue read reverts (oracle
-downtime, de-registered market), the snapshot and the rich delta event are skipped rather than
+downtime, a market the venue no longer has), the snapshot and the rich delta event are skipped rather than
 reverting the completed mutation, so a mutation during venue downtime can emit only account-level and
 venue events.
 - The account's `CollateralWithdrawn` logs the **account's own balance delta**, which is zero on
