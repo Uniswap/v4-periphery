@@ -72,11 +72,8 @@ contract CompoundV3LendingAdapterForkTest is Test, MarginRouteHelpers {
         // route position swaps through a Universal Router bound to the local flash-take PoolManager
         ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
         router = IMarginRouter(
-            deployMarginRouter(
-                IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this)
-            )
+            deployMarginRouter(IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl)
         );
-        router.setAdapterAllowed(adapter, true);
         // no adapter-side registration: UNI is a listed Comet collateral, so the key routes as-is
         assertTrue(adapter.isSupportedMarket(market), "key routes to the live Comet market");
     }

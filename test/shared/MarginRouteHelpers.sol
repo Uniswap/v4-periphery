@@ -48,10 +48,9 @@ abstract contract MarginRouteHelpers is Test {
         IPoolManager poolManager,
         IAllowanceTransfer permit2,
         IWETH9 weth9,
-        address accountImplementation,
-        address governance
+        address accountImplementation
     ) internal returns (address router) {
-        bytes memory args = abi.encode(poolManager, permit2, weth9, accountImplementation, governance);
+        bytes memory args = abi.encode(poolManager, permit2, weth9, accountImplementation);
         bytes memory initcode = abi.encodePacked(vm.getCode("MarginRouter.sol:MarginRouter"), args);
         assembly {
             router := create(0, add(initcode, 0x20), mload(initcode))

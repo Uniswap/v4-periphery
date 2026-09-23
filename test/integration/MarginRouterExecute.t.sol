@@ -32,7 +32,7 @@ import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 ///         PoolManager and pool, with a mock lending protocol standing in for Morpho. Covers
 ///         parity with the curated flows, the new opcodes (SET_ACCOUNT, PULL_TO_ACCOUNT, and the
 ///         intercepted SWEEP), the handler-level guards, and the security-relevant behaviors from
-///         the design review (caller-scoped accounts, allowlist asymmetry, residual claimability).
+///         the design review (caller-scoped accounts, caller-chosen adapters, residual claimability).
 contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, DeployPermit2 {
     using Planner for Plan;
 
@@ -62,8 +62,7 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
         address impl = address(new MarginAccount());
         // the curated increasePosition parity test routes its swap through a Universal Router
         ur = deployUniversalRouter(address(manager), address(permit2), address(0xbeef));
-        marginRouter = IMarginRouter(deployMarginRouter(manager, permit2, IWETH9(address(0xbeef)), impl, address(this)));
-        marginRouter.setAdapterAllowed(adapter, true);
+        marginRouter = IMarginRouter(deployMarginRouter(manager, permit2, IWETH9(address(0xbeef)), impl));
 
         // fund the lending protocol with debt to lend out
         MockERC20(Currency.unwrap(debt)).transfer(address(protocol), 1_000_000 ether);
@@ -379,11 +378,10 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
 
     function test_execute_revertsOnReentrancy_viaMaliciousProtocol() public {
         // a lending protocol that reenters the router during supply must be stopped by isNotLocked.
-        // wire a fresh adapter at the reentrant protocol, allowlist it, fund an account, and supply.
+        // wire a fresh adapter at the reentrant protocol, fund an account, and supply.
         ReentrantLendingProtocol evil = new ReentrantLendingProtocol(marginRouter);
         MockLendingAdapter evilAdapter = new MockLendingAdapter(address(evil));
         evilAdapter.setSupported(market, true);
-        marginRouter.setAdapterAllowed(evilAdapter, true);
 
         address account = marginRouter.accountOf(address(this), 0);
         MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
@@ -399,53 +397,23 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
         marginRouter.execute(plan.encode(), block.timestamp + 1);
     }
 
-    // ─────────────────────────────────────── Allowlist asymmetry ────────────────────────────────
+    // ─────────────────────────────────────── Swap-free exit ─────────────────────────────────────
 
-    function test_execute_supply_revertsWhenAdapterNotAllowed() public {
-        marginRouter.setAdapterAllowed(adapter, false);
-        address account = marginRouter.accountOf(address(this), 0);
-        MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
-
-        Plan memory plan = Planner.init();
-        plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
-        plan =
-            plan.add(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, abi.encode(adapter, market, ActionConstants.OPEN_DELTA));
-        vm.expectRevert(abi.encodeWithSelector(IMarginRouter.AdapterNotAllowed.selector, address(adapter)));
-        marginRouter.execute(plan.encode(), block.timestamp + 1);
-    }
-
-    function test_execute_borrow_revertsWhenAdapterNotAllowed() public {
-        // open while allowed, then de-allowlist and try to draw more debt via execute
-        address account = _openViaExecute(0, 1 ether, 2 ether);
-        marginRouter.setAdapterAllowed(adapter, false);
-
-        Plan memory plan = Planner.init();
-        plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
-        plan = plan.add(MarginActions.ACCOUNT_BORROW, abi.encode(adapter, market, uint256(1), address(marginRouter)));
-        vm.expectRevert(abi.encodeWithSelector(IMarginRouter.AdapterNotAllowed.selector, address(adapter)));
-        marginRouter.execute(plan.encode(), block.timestamp + 1);
-        account; // position untouched; the guard reverts before the borrow
-    }
-
-    function test_execute_exit_succeedsAfterAdapterDeAllowlisted() public {
+    function test_execute_exitRepayFromWallet_unwindsPosition() public {
         address account = _openViaExecute(0, 1 ether, 2 ether);
         uint256 debtOwed = protocol.debtOf(account);
         uint256 collateralHeld = protocol.collateralOf(account);
 
-        // governance removes the adapter; the exit path (repay + withdraw) must still work
-        marginRouter.setAdapterAllowed(adapter, false);
-
-        // fund the repay from the wallet via Permit2 so no swap/allowlisted-borrow is needed
+        // fund the repay from the wallet via Permit2 so no swap is needed to unwind
         bytes memory plan = _exitPlanRepayFromWallet(0, debtOwed, collateralHeld);
         marginRouter.execute(plan, block.timestamp + 1);
 
-        assertEq(protocol.debtOf(account), 0, "debt repaid despite de-allowlisting");
-        assertEq(protocol.collateralOf(account), 0, "collateral withdrawn despite de-allowlisting");
+        assertEq(protocol.debtOf(account), 0, "debt repaid from the wallet");
+        assertEq(protocol.collateralOf(account), 0, "collateral withdrawn");
     }
 
     /// @dev Exit plan that repays from the caller's wallet (Permit2) rather than by selling
-    ///      collateral: pull debt in, repay all, withdraw all collateral to the caller. Uses none
-    ///      of the allowlist-gated opcodes.
+    ///      collateral: pull debt in, repay all, withdraw all collateral to the caller.
     function _exitPlanRepayFromWallet(uint256 subId, uint256 debtOwed, uint256 collateralHeld)
         internal
         view

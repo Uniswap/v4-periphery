@@ -144,12 +144,8 @@ contract MarginRouterCrossVenueHedgeForkTest is Test, MarginRouteHelpers {
         // route position swaps through a Universal Router bound to the local flash-take PoolManager
         ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
         router = IMarginRouter(
-            deployMarginRouter(
-                IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this)
-            )
+            deployMarginRouter(IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl)
         );
-        router.setAdapterAllowed(morphoAdapter, true);
-        router.setAdapterAllowed(aaveAdapter, true);
     }
 
     /// @notice Proves one owner can run a LONG on Morpho (subId 0) and a SHORT on Aave (subId 1) of

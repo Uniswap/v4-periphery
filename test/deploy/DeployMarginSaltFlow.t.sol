@@ -43,7 +43,6 @@ contract DeployMarginSaltFlowTest is Test {
     address internal pm = makeAddr("poolManager");
     address internal permit2 = makeAddr("permit2");
     address internal weth9 = makeAddr("weth9");
-    address internal governance = makeAddr("governance");
 
     function setUp() public {
         // Place the deterministic factory at the canonical address the whole pipeline mines against.
@@ -61,9 +60,8 @@ contract DeployMarginSaltFlowTest is Test {
 
     /// @dev The exact router init code every stage builds: restricted creation code ++ encoded ctor args.
     function _routerInitCode(address accountImpl) internal view returns (bytes memory) {
-        return abi.encodePacked(
-            vm.getCode("MarginRouter.sol:MarginRouter"), abi.encode(pm, permit2, weth9, accountImpl, governance)
-        );
+        return
+            abi.encodePacked(vm.getCode("MarginRouter.sol:MarginRouter"), abi.encode(pm, permit2, weth9, accountImpl));
     }
 
     function test_vanityDeploy_landsAtMinedAddress_andFitsEIP170() public {
@@ -80,7 +78,7 @@ contract DeployMarginSaltFlowTest is Test {
         // the full router (a stub or the oversized default-profile build would fail one of these).
         assertLt(router.code.length, 24_576, "deployed runtime must fit under the EIP-170 limit");
         assertGt(router.code.length, 20_000, "deployed the full router, not a stub");
-        // And it really is the router, wired to the encoded governance.
-        assertEq(IMarginRouter(router).governance(), governance, "deployed contract is the wired MarginRouter");
+        // And it really is the router, wired to the encoded PoolManager.
+        assertEq(address(IMarginRouter(router).poolManager()), pm, "deployed contract is the wired MarginRouter");
     }
 }

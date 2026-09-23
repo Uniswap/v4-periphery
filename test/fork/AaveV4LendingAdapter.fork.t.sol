@@ -112,11 +112,8 @@ contract AaveV4LendingAdapterForkTest is Test, MarginRouteHelpers {
         // route position swaps through a Universal Router bound to the local flash-take PoolManager
         ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
         router = IMarginRouter(
-            deployMarginRouter(
-                IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this)
-            )
+            deployMarginRouter(IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl)
         );
-        router.setAdapterAllowed(adapter, true);
     }
 
     /// @notice Proves a real ETH short composes across a full lifecycle against live Aave v4: open a

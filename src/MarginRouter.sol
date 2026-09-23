@@ -28,7 +28,6 @@ import {MarginCalldataDecoder} from "./libraries/MarginCalldataDecoder.sol";
 import {Market} from "./types/Market.sol";
 import {Ltv} from "./types/Ltv.sol";
 import {PositionData} from "./types/PositionData.sol";
-import {Owner} from "./types/Owner.sol";
 
 /// @title MarginRouter
 /// @author Uniswap Labs
@@ -39,12 +38,13 @@ import {Owner} from "./types/Owner.sol";
 ///         from the authenticated caller (never from a caller-supplied address). The router is the
 ///         manager of every account it deploys, so it can drive their lending primitives.
 ///
-///         Governance allowlists lending ADAPTERS (venues); market selection within a venue is
-///         permissionless. The caller names the market through `Market` (the `(collateral, debt)`
-///         pair plus adapter-decoded `data`), the adapter validates it against the live venue, and
-///         the caller vets what it names. The supported venues list standard ERC-20 markets (no
-///         fee-on-transfer or rebasing tokens), under which every curated flow
-///         (`increasePosition`/`decreasePosition`/`addCollateral`) nets to zero with no router
+///         The router has no governance and no allowlist. The caller chooses both the lending adapter
+///         (the venue) and the market within it (`Market`: the `(collateral, debt)` pair plus
+///         adapter-decoded `data`); the adapter validates the market against the live venue, and the
+///         caller, or the app that built the transaction, vets the adapter it names. A hostile adapter
+///         reaches only the caller's own account (see `MarginAccount`). The supported venues list
+///         standard ERC-20 markets (no fee-on-transfer or rebasing tokens), under which every curated
+///         flow (`increasePosition`/`decreasePosition`/`addCollateral`) nets to zero with no router
 ///         residual by construction; a non-standard token fails the flows' fill and settle assertions
 ///         rather than leaving a residual.
 ///
@@ -80,25 +80,6 @@ contract MarginRouter is
     // satisfy a "bound is set" check yet leave ASSERT_HEALTH a no-op; a supplied bound must sit below it.
     uint256 private constant WAD = 1e18;
 
-    Owner internal _governance;
-    mapping(ILendingAdapter adapter => bool isAllowed) internal _allowedAdapters;
-
-    /// @notice Emitted when governance allows or disallows a lending adapter.
-    /// @param adapter The adapter address whose allowlist status changed.
-    /// @param allowed True if the adapter was allowed; false if it was disallowed.
-    event AdapterAllowed(address indexed adapter, bool allowed);
-
-    /// @notice Emitted when the current governance proposes a successor for the two-step handoff.
-    /// @param currentGovernance The governance address that proposed the successor.
-    /// @param pendingGovernance The address proposed as the next governance.
-    event GovernanceTransferStarted(address indexed currentGovernance, address indexed pendingGovernance);
-
-    /// @notice Emitted when governance takes effect: once at construction (from the zero address) and
-    ///         when a proposed successor accepts the handoff.
-    /// @param previousGovernance The governance address that was replaced (zero at construction).
-    /// @param newGovernance The address that became the new governance.
-    event GovernanceTransferred(address indexed previousGovernance, address indexed newGovernance);
-
     /// @dev Reverts `DeadlinePassed` if `block.timestamp` has passed `deadline`.
     modifier checkDeadline(uint256 deadline) {
         if (block.timestamp > deadline) revert DeadlinePassed(deadline);
@@ -110,27 +91,12 @@ contract MarginRouter is
     /// @param permit2_ The Permit2 contract used to pull caller equity and settle swaps.
     /// @param weth9_ The canonical WETH9 contract used to wrap native token equity.
     /// @param accountImplementation_ The MarginAccount implementation cloned for each account.
-    /// @param governance_ The initial governance address (e.g. the deployer, a multisig, or a
-    ///        timelock) that curates the adapter allowlist. Passed explicitly rather than read from
-    ///        `msg.sender` so a deterministic CREATE2 deployment sets the intended owner instead of
-    ///        the CREATE2 factory. Mirrors v4-core's `PoolManager(address initialOwner)` pattern.
-    constructor(
-        IPoolManager poolManager_,
-        IAllowanceTransfer permit2_,
-        IWETH9 weth9_,
-        address accountImplementation_,
-        address governance_
-    )
+    constructor(IPoolManager poolManager_, IAllowanceTransfer permit2_, IWETH9 weth9_, address accountImplementation_)
         V4Router(poolManager_)
         Permit2Forwarder(permit2_)
         NativeWrapper(weth9_)
         MarginAccountFactory(accountImplementation_)
-    {
-        // governance is set explicitly so CREATE2 deployment names the intended owner, not the
-        // CREATE2 factory; hand off to a timelock or multisig after setup
-        _governance.write(governance_);
-        emit GovernanceTransferred(address(0), governance_);
-    }
+    {}
 
     /// @inheritdoc IMarginRouter
     function increasePosition(IncreaseParams calldata params)
@@ -335,7 +301,6 @@ contract MarginRouter is
         checkDeadline(params.deadline)
         returns (address account)
     {
-        _requireAllowedAdapter(params.adapter);
         account = createAccount(msgSender(), params.subId);
 
         uint256 amount;
@@ -410,35 +375,6 @@ contract MarginRouter is
         return super.createAccount(owner, subId);
     }
 
-    /// @notice The governance address that curates the adapter allowlist.
-    /// @return The current governance address.
-    function governance() external view returns (address) {
-        return _governance.read();
-    }
-
-    /// @notice The address proposed to become governance, pending its acceptance. Zero when no
-    ///         handoff is in progress.
-    /// @return The pending governance address.
-    function pendingGovernance() external view returns (address) {
-        return _governance.pendingOwner();
-    }
-
-    /// @notice Completes a governance handoff. Callable by anyone, but only the address previously
-    ///         named by `transferGovernance` succeeds; all others revert. On success the caller
-    ///         becomes governance.
-    function acceptGovernance() external {
-        address previousGovernance = _governance.read();
-        _governance.acceptOwnership(msg.sender);
-        emit GovernanceTransferred(previousGovernance, msg.sender);
-    }
-
-    /// @notice Whether `adapter` is on the governance allowlist and may be used in position flows.
-    /// @param adapter The lending adapter to check.
-    /// @return True if the adapter is allowlisted.
-    function isAdapterAllowed(ILendingAdapter adapter) external view returns (bool) {
-        return _allowedAdapters[adapter];
-    }
-
     /// @notice The authenticated caller for the current lock. Overrides `BaseActionsRouter.msgSender`
     ///         to return the address stored by `ReentrancyLock._getLocker`, which is set to
     ///         `msg.sender` at the start of each `isNotLocked` call. The active account is derived
@@ -446,29 +382,6 @@ contract MarginRouter is
     /// @return The authenticated caller (the locker set by `ReentrancyLock`) for the current unlock.
     function msgSender() public view override returns (address) {
         return _getLocker();
-    }
-
-    /// @notice Allows or disallows a lending adapter for use in the position flows. A non-allowlisted
-    ///         adapter could redirect a caller's equity to an arbitrary destination, so the set is
-    ///         curated by governance.
-    /// @dev Only the current governance address may call this.
-    /// @param adapter The lending adapter to allow or disallow.
-    /// @param allowed True to allow; false to disallow.
-    function setAdapterAllowed(ILendingAdapter adapter, bool allowed) external {
-        _governance.onlyOwner(msg.sender);
-        _allowedAdapters[adapter] = allowed;
-        emit AdapterAllowed(address(adapter), allowed);
-    }
-
-    /// @notice Begins a two-step governance handoff by proposing a successor. The successor takes
-    ///         effect only once it calls `acceptGovernance`; the current governance retains its
-    ///         powers until then, and the zero address is rejected so the role cannot be bricked.
-    /// @dev Only the current governance address may call this.
-    /// @param newGovernance The address proposed to become the new governance.
-    function transferGovernance(address newGovernance) external {
-        _governance.onlyOwner(msg.sender);
-        _governance.propose(newGovernance);
-        emit GovernanceTransferStarted(msg.sender, newGovernance);
     }
 
     /// @notice Shared implementation for `increasePosition`. Deploys the account if needed, pulls
@@ -489,7 +402,6 @@ contract MarginRouter is
         if (Ltv.unwrap(params.maxLtvAfter) != 0 && Ltv.unwrap(params.maxLtvAfter) >= WAD) {
             revert IneffectiveLtvBound(params.maxLtvAfter);
         }
-        _requireAllowedAdapter(params.adapter);
 
         account = createAccount(msgSender(), params.subId);
         _setActiveAccount(account);
@@ -548,12 +460,6 @@ contract MarginRouter is
 
         poolManager.unlock(abi.encode(actions, actionParams));
         _setActiveAccount(address(0));
-    }
-
-    /// @notice Reverts `AdapterNotAllowed` unless `adapter` is on the governance allowlist.
-    /// @param adapter The adapter to check.
-    function _requireAllowedAdapter(ILendingAdapter adapter) internal view {
-        if (!_allowedAdapters[adapter]) revert AdapterNotAllowed(address(adapter));
     }
 
     /// @notice Dispatches one action from the current plan to its handler. Called by
@@ -689,10 +595,9 @@ contract MarginRouter is
         permit2.approve(token, universalRouter, 0, 0);
     }
 
-    /// @notice Dispatches an account-scoped margin opcode to its handler. Exposure-increasing
-    ///         actions (supply, borrow) gate on the adapter allowlist inside their handlers;
-    ///         exits (withdraw, repay, sweep) and assertions do not, so a position can always be
-    ///         unwound even if the adapter has been deprecated.
+    /// @notice Dispatches an account-scoped margin opcode to its handler. Every action takes a
+    ///         caller-chosen adapter; a hostile one reaches only the caller's own account (see
+    ///         `MarginAccount`), so no action is gated on who the adapter is.
     /// @param action The account-scoped opcode.
     /// @param params ABI-encoded parameters for the action.
     /// @param account The active account (non-zero; the caller checked the guard).
@@ -708,31 +613,26 @@ contract MarginRouter is
         else revert UnsupportedAction(action);
     }
 
-    /// @notice Supplies collateral to the lending protocol on the account's behalf. Allowlist-gated
-    ///         (supplying is exposure-increasing). `OPEN_DELTA` supplies the account's full collateral
-    ///         balance (equity plus what the swap bought).
+    /// @notice Supplies collateral to the lending protocol on the account's behalf. `OPEN_DELTA`
+    ///         supplies the account's full collateral balance (equity plus what the swap bought).
     function _supplyCollateral(bytes calldata params, address account) private {
         (ILendingAdapter adapter, Market memory market, uint256 amount) = params.decodeAdapterMarketAmount();
-        _requireAllowedAdapter(adapter);
         if (amount == ActionConstants.OPEN_DELTA) amount = market.collateral.balanceOf(account);
         IMarginAccount(account).supplyCollateral(adapter, market, amount);
         _emitPosition(adapter, market, account);
     }
 
-    /// @notice Borrows debt to `to`. Allowlist-gated (borrowing is exposure-increasing). `OPEN_DELTA`
-    ///         borrows exactly the debt the swap owes the pool.
+    /// @notice Borrows debt to `to`. `OPEN_DELTA` borrows exactly the debt the swap owes the pool.
     function _borrow(bytes calldata params, address account) private {
         (ILendingAdapter adapter, Market memory market, uint256 amount, address to) =
             params.decodeAdapterMarketAmountReceiver();
-        _requireAllowedAdapter(adapter);
         if (amount == ActionConstants.OPEN_DELTA) amount = _getFullDebt(market.debt);
         IMarginAccount(account).borrow(adapter, market, amount, to);
         _emitPosition(adapter, market, account);
     }
 
-    /// @notice Withdraws collateral to `to`. Not allowlist-gated: a position must always be exitable.
-    ///         `OPEN_DELTA` withdraws exactly the collateral the swap owes the pool (partial delever);
-    ///         a full close passes the explicit full collateral amount.
+    /// @notice Withdraws collateral to `to`. `OPEN_DELTA` withdraws exactly the collateral the swap
+    ///         owes the pool (partial delever); a full close passes the explicit full collateral amount.
     function _withdrawCollateral(bytes calldata params, address account) private {
         (ILendingAdapter adapter, Market memory market, uint256 amount, address to) =
             params.decodeAdapterMarketAmountReceiver();
@@ -741,9 +641,8 @@ contract MarginRouter is
         _emitPosition(adapter, market, account);
     }
 
-    /// @notice Repays debt to the lending protocol. Not allowlist-gated. `type(uint256).max` repays
-    ///         the full debt, resolved by the adapter in the venue's own terms (see
-    ///         `ILendingAdapter.encodeRepay`).
+    /// @notice Repays debt to the lending protocol. `type(uint256).max` repays the full debt,
+    ///         resolved by the adapter in the venue's own terms (see `ILendingAdapter.encodeRepay`).
     function _repay(bytes calldata params, address account) private {
         (ILendingAdapter adapter, Market memory market, uint256 amount) = params.decodeAdapterMarketAmount();
         uint256 repaid = IMarginAccount(account).repay(adapter, market, amount);

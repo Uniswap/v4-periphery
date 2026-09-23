@@ -41,14 +41,9 @@ contract MarginRouterNativeTest is Test, MarginRouteHelpers {
         // routes a swap
         router = IMarginRouter(
             deployMarginRouter(
-                IPoolManager(makeAddr("pm")),
-                IAllowanceTransfer(makeAddr("permit2")),
-                IWETH9(address(weth)),
-                impl,
-                address(this)
+                IPoolManager(makeAddr("pm")), IAllowanceTransfer(makeAddr("permit2")), IWETH9(address(weth)), impl
             )
         );
-        router.setAdapterAllowed(adapter, true);
     }
 
     function test_addCollateral_native_wrapsAndSupplies() public {

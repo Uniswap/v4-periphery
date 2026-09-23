@@ -13,8 +13,9 @@ import {Ltv} from "../types/Ltv.sol";
 /// @title IMarginRouter
 /// @author Uniswap Labs
 /// @notice The full external surface of the margin router: opening, closing, and topping up leveraged
-///         spot positions, the general-purpose `execute` plan interpreter, account addressing, the
-///         governance-curated adapter allowlist, and the inherited `multicall`. Each position call
+///         spot positions, the general-purpose `execute` plan interpreter, account addressing, and
+///         the inherited `multicall`. The router has no governance: the caller chooses the lending
+///         adapter and the market on every call. Each position call
 ///         operates on the caller's own MarginAccount, derived from the authenticated caller and a
 ///         subId, never from a caller-supplied account address. Leverage is built as a single
 ///         flash-style swap inside one PoolManager unlock: borrow the debt, swap it into collateral,
@@ -61,11 +62,6 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///      position is exited with a full close (`debtToRepay == type(uint256).max`), which
     ///      withdraws the collateral directly.
     error NoDebtToRepay();
-
-    /// @dev Thrown when a flow is called with a lending adapter that governance has not allowlisted.
-    ///      A non-allowlisted adapter could redirect equity to an arbitrary destination.
-    /// @param adapter The disallowed adapter address that was supplied.
-    error AdapterNotAllowed(address adapter);
 
     /// @dev Thrown when native ETH is sent with a position call but the market's collateral is not
     ///      WETH. ETH is wrapped to WETH before crediting the account; mismatching collateral would
@@ -247,7 +243,9 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     /// @dev The swap always sells the market's debt to buy its collateral. The trade direction is
     ///      set entirely by the market's (collateral, debt) assignment: the position is long the
     ///      collateral and short the debt. Equity is provided in the collateral currency.
-    /// @param adapter The allowlisted lending adapter that encodes and reads lending protocol calls.
+    /// @param adapter The lending adapter that encodes and reads lending protocol calls. Caller-chosen
+    ///        with no allowlist: the caller, or the app building the transaction, vets the adapter as
+    ///        it vets the market. A hostile adapter reaches only the caller's own account.
     /// @param market The market key: the (collateral, debt) pair defining the margin market plus the
     ///        adapter-specific `data` selecting the venue market (see the adapter's NatSpec for its
     ///        encoding). The pairing sets the trade direction: long the collateral, short the debt.
@@ -306,7 +304,7 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///      e.g. a full liquidation leaving dust debt) cannot be fully closed through this flow - the
     ///      zero withdraw amount collides with the `OPEN_DELTA` sentinel and reverts opaquely at the
     ///      venue. Repay such a position through an `execute` plan or the account's own `repay`.
-    /// @param adapter The allowlisted lending adapter.
+    /// @param adapter The lending adapter (caller-chosen, see `IncreaseParams`).
     /// @param market The market key: the (collateral, debt) pair plus the adapter-specific `data`
     ///        selecting the venue market.
     /// @param debtToRepay The exact amount of debt the route buys and repays (its exact-output amount),
@@ -348,7 +346,7 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     }
 
     /// @notice Parameters for adding collateral to an existing position without changing leverage.
-    /// @param adapter The allowlisted lending adapter.
+    /// @param adapter The lending adapter (caller-chosen, see `IncreaseParams`).
     /// @param market The market key: the (collateral, debt) pair plus the adapter-specific `data`
     ///        selecting the venue market.
     /// @param amount The amount of collateral to add, in the collateral token's native decimals.
@@ -382,11 +380,9 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///         or fully closes it when `debtToRepay == type(uint256).max` (repay all, withdraw all,
     ///         and return the residual realized PnL to the caller). A partial decrease keeps the
     ///         position open and enforces `params.maxLtvAfter`; a full close ignores it.
-    /// @dev The adapter allowlist gates only exposure-increasing operations (increase, add
-    ///      collateral), so a position can always be delevered or closed even if its adapter is later
-    ///      removed from the allowlist. This is safe because the flow operates only on the caller's
-    ///      own account, and the MarginAccount itself constrains the call target, receiver, and value
-    ///      regardless of the adapter.
+    /// @dev The adapter is caller-chosen, as on every flow. This is safe because the flow operates
+    ///      only on the caller's own account, and the MarginAccount constrains the receiver of every
+    ///      withdrawal and borrow regardless of the adapter.
     /// @param params See `DecreaseParams`.
     /// @return account The caller's MarginAccount.
     function decreasePosition(DecreaseParams calldata params) external returns (address account);
@@ -429,9 +425,9 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///         4. Residuals: a plan MUST net the router to zero. Terminate with `SWEEP` for every
     ///            currency the plan may leave on the router. Balances left behind are claimable by
     ///            the next caller and are not protocol-protected.
-    ///         5. Allowlist asymmetry: `ACCOUNT_SUPPLY_COLLATERAL` and `ACCOUNT_BORROW` require an
-    ///            allowlisted adapter; withdraw, repay, and account-sweep do not, so a position is
-    ///            always exitable.
+    ///         5. Adapter trust: every account action takes a caller-chosen adapter, with no
+    ///            allowlist. A hostile adapter reaches only the caller's own account, which item 7
+    ///            already makes the plan builder's responsibility.
     ///         6. `PULL_TO_ACCOUNT`: an encoded `0` amount reverts (it is not an `OPEN_DELTA`
     ///            full-balance sentinel here, unlike every other opcode); `CONTRACT_BALANCE` is
     ///            honored only on the router-balance path. Native currency is unsupported: wrap to
@@ -460,37 +456,4 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     /// @param subId The sub-account index.
     /// @return account The deployed (or already-existing) account address.
     function createAccount(address owner, uint256 subId) external returns (address account);
-
-    // -------------------------------------------------------------------------
-    // Governance
-    // -------------------------------------------------------------------------
-
-    /// @notice The governance address that curates the adapter allowlist.
-    /// @return The current governance address.
-    function governance() external view returns (address);
-
-    /// @notice The address proposed to become governance, pending its acceptance. Zero when no
-    ///         handoff is in progress.
-    /// @return The pending governance address.
-    function pendingGovernance() external view returns (address);
-
-    /// @notice Completes a governance handoff. Callable by anyone, but only the address previously
-    ///         named by `transferGovernance` succeeds; all others revert.
-    function acceptGovernance() external;
-
-    /// @notice Begins a two-step governance handoff by proposing a successor. Only the current
-    ///         governance may call this; the zero address is rejected.
-    /// @param newGovernance The address proposed to become the new governance.
-    function transferGovernance(address newGovernance) external;
-
-    /// @notice Allows or disallows a lending adapter for the exposure-increasing flows. Only the
-    ///         current governance may call this.
-    /// @param adapter The lending adapter to allow or disallow.
-    /// @param allowed True to allow; false to disallow.
-    function setAdapterAllowed(ILendingAdapter adapter, bool allowed) external;
-
-    /// @notice Whether `adapter` is on the governance allowlist and may be used in position flows.
-    /// @param adapter The lending adapter to check.
-    /// @return True if the adapter is allowlisted.
-    function isAdapterAllowed(ILendingAdapter adapter) external view returns (bool);
 }

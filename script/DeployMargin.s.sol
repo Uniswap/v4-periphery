@@ -3,7 +3,6 @@ pragma solidity ^0.8.20;
 
 import "forge-std/console2.sol";
 
-import {ILendingAdapter} from "../src/interfaces/ILendingAdapter.sol";
 import {IMarginRouter} from "../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../src/MarginAccount.sol";
 import {MorphoLendingAdapter} from "../src/MorphoLendingAdapter.sol";
@@ -16,25 +15,20 @@ import {MarginDeployConfig} from "./MarginDeployConfig.sol";
 /// @title DeployMargin
 /// @notice Deploys the margin-trading suite: the deterministic MarginAccount implementation, the
 ///         Morpho, Aave v3, Aave v4, and Compound v3 lending adapters, and the MarginRouter at a mined
-///         vanity salt, then wires the router's adapter allowlist. There is no market registration
-///         step: market selection is permissionless, so callers name any live venue market through
-///         `Market.data` and the adapters validate it per call.
+///         vanity salt. There is nothing to wire afterwards: the router has no governance and no
+///         adapter allowlist, and market selection is permissionless, so callers name the adapter and
+///         any live venue market (through `Market.data`) per call and the adapters validate the market.
 /// @dev    Deployment notes:
 ///         - Idempotent. Every contract is deployed through the canonical CREATE2 deployer at a
-///           deterministic address and skipped when that address already has code, and the allowlist
-///           wiring is skipped when already set. A rerun after a partial deploy (or after only the
-///           router's init code changed) broadcasts only what is missing.
+///           deterministic address and skipped when that address already has code. A rerun after a
+///           partial deploy (or after only the router's init code changed) broadcasts only what is
+///           missing. Any key can broadcast; no address is baked in as an owner.
 ///         - The adapters are stateless and unowned: each binds its venue singleton at construction
-///           and holds no routing table, so nothing about them is governance-configurable after
-///           deployment. Governance curates VENUES (the router's adapter allowlist), not markets.
-///         - The broadcaster MUST equal `governance`. The router is constructed with `governance` as
-///           its governance, and this script then calls `setAdapterAllowed` inline, which reverts
-///           unless the broadcasting key is `governance`. After setup, governance can hand off via the
-///           two-step transferGovernance/acceptGovernance.
+///           and holds no routing table, so nothing in the suite is configurable after deployment.
 ///         - `routerSalt` comes from MineMarginRouterSalt and is only valid for the exact
-///           (poolManager, permit2, weth9, accountImpl, governance) tuple it was mined against. The
-///           accountImpl is itself derived from ACCOUNT_SALT, so the shared MarginDeployConfig
-///           constants MUST match the miner; otherwise the mined router address will not be produced.
+///           (poolManager, permit2, weth9, accountImpl) tuple it was mined against. The accountImpl is
+///           itself derived from ACCOUNT_SALT, so the shared MarginDeployConfig constants MUST match
+///           the miner; otherwise the mined router address will not be produced.
 contract DeployMargin is MarginDeployConfig {
     /// @dev Fixed salts for the adapters. Their addresses need not be vanity, only deterministic.
     bytes32 internal constant MORPHO_ADAPTER_SALT = keccak256("uniswap.margin.MorphoLendingAdapter.v1");
@@ -49,8 +43,6 @@ contract DeployMargin is MarginDeployConfig {
     /// @param poolManager The v4 PoolManager singleton the router unlocks for every position flow.
     /// @param permit2 The Permit2 contract used to pull caller equity and settle swaps.
     /// @param weth9 The canonical WETH9 used to wrap native ETH equity.
-    /// @param governance The initial governance of the router. MUST equal the broadcaster so the
-    ///        inline allowlist wiring succeeds.
     /// @param morpho The Morpho Blue singleton the Morpho adapter routes through.
     /// @param aaveProvider The Aave v3 PoolAddressesProvider the Aave v3 adapter resolves its Pool from.
     /// @param aaveV4Spoke The Aave v4 Spoke the Aave v4 adapter routes through (the Main Spoke on
@@ -58,7 +50,7 @@ contract DeployMargin is MarginDeployConfig {
     /// @param compoundComet The Compound v3 Comet the Compound adapter routes through (the USDC Comet
     ///        on mainnet).
     /// @param routerSalt The vanity salt from MineMarginRouterSalt, valid only for the exact
-    ///        (poolManager, permit2, weth9, accountImpl, governance) tuple it was mined against. The
+    ///        (poolManager, permit2, weth9, accountImpl) tuple it was mined against. The
     ///        Universal Router is not a constructor arg (callers pass it per swap), so it does not
     ///        affect the router address.
     /// @return impl The MarginAccount implementation.
@@ -71,7 +63,6 @@ contract DeployMargin is MarginDeployConfig {
         address poolManager,
         address permit2,
         address weth9,
-        address governance,
         address morpho,
         address aaveProvider,
         address aaveV4Spoke,
@@ -136,21 +127,14 @@ contract DeployMargin is MarginDeployConfig {
         // bytecode. The Universal Router is not a constructor arg (callers pass it per swap), so it is
         // not in the init code.
         bytes memory routerInitCode = abi.encodePacked(
-            vm.getCode("MarginRouter.sol:MarginRouter"),
-            abi.encode(poolManager, permit2, weth9, address(impl), governance)
+            vm.getCode("MarginRouter.sol:MarginRouter"), abi.encode(poolManager, permit2, weth9, address(impl))
         );
         router = IMarginRouter(_deployDeterministic("MarginRouter", routerSalt, routerInitCode));
 
-        // wire the allowlist; requires the broadcaster to be governance
-        _ensureAdapterAllowed(router, morphoAdapter);
-        _ensureAdapterAllowed(router, aaveAdapter);
-        _ensureAdapterAllowed(router, aaveV4Adapter);
-        _ensureAdapterAllowed(router, compoundAdapter);
-
         vm.stopBroadcast();
 
-        console2.log("Market selection is permissionless: no market registration step");
-        console2.log("Governance can hand off via transferGovernance/acceptGovernance (router)");
+        console2.log("No post-deploy wiring: the router has no governance or adapter allowlist, and");
+        console2.log("market selection is permissionless (callers name the adapter and market per call)");
     }
 
     /// @notice Deploys `initCode` at its deterministic address through the canonical CREATE2
@@ -171,11 +155,5 @@ contract DeployMargin is MarginDeployConfig {
         (bool ok,) = CREATE2_DEPLOYER.call(bytes.concat(salt, initCode));
         require(ok && addr.code.length != 0, string.concat(name, " deploy failed"));
         console2.log(name, addr);
-    }
-
-    /// @notice Allowlists `adapter` on the router unless it is already allowed, so reruns do not
-    ///         re-send no-op governance transactions.
-    function _ensureAdapterAllowed(IMarginRouter router, ILendingAdapter adapter) internal {
-        if (!router.isAdapterAllowed(adapter)) router.setAdapterAllowed(adapter, true);
     }
 }

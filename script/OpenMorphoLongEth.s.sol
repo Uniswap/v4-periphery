@@ -76,7 +76,6 @@ contract OpenMorphoLongEth is Script {
         require(
             address(router.poolManager()) == _envAddress("POOL_MANAGER", DEFAULT_POOL_MANAGER), "pool manager mismatch"
         );
-        require(router.isAdapterAllowed(adapter), "Morpho adapter not allowlisted");
 
         Market memory market = Market({
             collateral: Currency.wrap(MAINNET_WETH),

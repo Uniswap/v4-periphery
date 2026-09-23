@@ -41,11 +41,10 @@ abstract contract MarginDeployConfig is Script {
             vm.computeCreate2Address(ACCOUNT_SALT, keccak256(type(MarginAccount).creationCode), CREATE2_DEPLOYER);
     }
 
-    /// @notice Init code hash for
-    ///         `new MarginRouter{salt: ...}(poolManager, permit2, weth9, accountImpl, owner)`. The
-    ///         Universal Router is no longer a constructor arg (callers pass it per swap), so it does
-    ///         not affect the router address and is not part of this hash.
-    function _marginRouterInitCodeHash(address poolManager, address accountImpl, address owner)
+    /// @notice Init code hash for `new MarginRouter{salt: ...}(poolManager, permit2, weth9, accountImpl)`.
+    ///         The router has no governance argument, and the Universal Router is not a constructor arg
+    ///         (callers pass it per swap), so neither affects the router address or this hash.
+    function _marginRouterInitCodeHash(address poolManager, address accountImpl)
         internal
         view
         returns (bytes32 initCodeHash)
@@ -53,19 +52,19 @@ abstract contract MarginDeployConfig is Script {
         (address permit2, address weth9) = _marginExternalTokenConfig();
         initCodeHash = keccak256(
             abi.encodePacked(
-                vm.getCode("MarginRouter.sol:MarginRouter"), abi.encode(poolManager, permit2, weth9, accountImpl, owner)
+                vm.getCode("MarginRouter.sol:MarginRouter"), abi.encode(poolManager, permit2, weth9, accountImpl)
             )
         );
     }
 
     /// @notice CREATE2 address of the router for a mined salt and deployment tuple.
-    function _predictedMarginRouter(address poolManager, address owner, bytes32 routerSalt)
+    function _predictedMarginRouter(address poolManager, bytes32 routerSalt)
         internal
         view
         returns (address router, address accountImpl, bytes32 initCodeHash)
     {
         accountImpl = _predictedAccountImpl();
-        initCodeHash = _marginRouterInitCodeHash(poolManager, accountImpl, owner);
+        initCodeHash = _marginRouterInitCodeHash(poolManager, accountImpl);
         router = vm.computeCreate2Address(routerSalt, initCodeHash, CREATE2_DEPLOYER);
     }
 }

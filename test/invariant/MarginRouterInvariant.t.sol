@@ -226,14 +226,9 @@ contract MarginRouterInvariantTest is StdInvariant, Test, MarginRouteHelpers, De
         ur = deployUniversalRouter(address(poolManager), permit2, address(0xbeef));
         marginRouter = IMarginRouter(
             deployMarginRouter(
-                IPoolManager(address(poolManager)),
-                IAllowanceTransfer(permit2),
-                IWETH9(address(0xbeef)),
-                impl,
-                address(this)
+                IPoolManager(address(poolManager)), IAllowanceTransfer(permit2), IWETH9(address(0xbeef)), impl
             )
         );
-        marginRouter.setAdapterAllowed(adapter, true);
     }
 
     function _deployHandler() private {

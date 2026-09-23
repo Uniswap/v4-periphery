@@ -15,7 +15,6 @@ import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Ltv, toLtv} from "../../src/types/Ltv.sol";
-import {NotOwner, ZeroOwner, NotPendingOwner} from "../../src/types/Owner.sol";
 
 /// @dev Unit tests for the router's wiring and pre-unlock guards. The swap-coupled leverage flows
 ///      (open, close end-to-end) run through a real PoolManager and are validated by the integration
@@ -23,10 +22,6 @@ import {NotOwner, ZeroOwner, NotPendingOwner} from "../../src/types/Owner.sol";
 import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
 
 contract MarginRouterTest is Test, MarginRouteHelpers {
-    /// @dev Mirrors MarginRouter's event for expectEmit; the router is deployed via `vm.getCode`
-    ///      (never imported here), so the declaration cannot be referenced from the contract.
-    event GovernanceTransferred(address indexed previousGovernance, address indexed newGovernance);
-
     IMarginRouter internal router;
     address internal owner = makeAddr("owner");
     Currency internal c0 = Currency.wrap(address(0x1111));
@@ -42,8 +37,7 @@ contract MarginRouterTest is Test, MarginRouteHelpers {
                 IPoolManager(makeAddr("poolManager")),
                 IAllowanceTransfer(makeAddr("permit2")),
                 IWETH9(makeAddr("weth9")),
-                impl,
-                address(this)
+                impl
             )
         );
     }
@@ -134,89 +128,6 @@ contract MarginRouterTest is Test, MarginRouteHelpers {
         router.decreasePosition(p);
     }
 
-    function test_governance_isDeployer() public view {
-        assertEq(router.governance(), address(this));
-    }
-
-    // initial governance is observable onchain (audit N-12): the constructor emits the same
-    // GovernanceTransferred a completed handoff does, from the zero address
-    function test_constructor_emitsInitialGovernanceTransferred() public {
-        address impl = address(new MarginAccount());
-        vm.expectEmit(true, true, true, true);
-        emit GovernanceTransferred(address(0), address(this));
-        deployMarginRouter(
-            IPoolManager(makeAddr("poolManager")),
-            IAllowanceTransfer(makeAddr("permit2")),
-            IWETH9(makeAddr("weth9")),
-            impl,
-            address(this)
-        );
-    }
-
-    function test_setAdapterAllowed_onlyGovernance() public {
-        vm.prank(makeAddr("stranger"));
-        vm.expectRevert(abi.encodeWithSelector(NotOwner.selector, makeAddr("stranger")));
-        router.setAdapterAllowed(ILendingAdapter(address(0xA)), true);
-    }
-
-    function test_transferGovernance_onlyGovernance() public {
-        vm.prank(makeAddr("stranger"));
-        vm.expectRevert(abi.encodeWithSelector(NotOwner.selector, makeAddr("stranger")));
-        router.transferGovernance(makeAddr("newGov"));
-    }
-
-    function test_transferGovernance_revertsForZeroAddress() public {
-        vm.expectRevert(ZeroOwner.selector);
-        router.transferGovernance(address(0));
-    }
-
-    function test_transferGovernance_proposesWithoutChangingGovernance() public {
-        address newGov = makeAddr("newGov");
-        router.transferGovernance(newGov);
-        // current governance is unchanged until the successor accepts
-        assertEq(router.governance(), address(this));
-        assertEq(router.pendingGovernance(), newGov);
-    }
-
-    function test_acceptGovernance_completesHandoff() public {
-        address newGov = makeAddr("newGov");
-        router.transferGovernance(newGov);
-
-        vm.prank(newGov);
-        router.acceptGovernance();
-
-        assertEq(router.governance(), newGov);
-        assertEq(router.pendingGovernance(), address(0));
-    }
-
-    function test_oldGovernanceRetainsPowerUntilAccept() public {
-        address newGov = makeAddr("newGov");
-        router.transferGovernance(newGov);
-        // the old governance can still curate the allowlist before the handoff completes
-        router.setAdapterAllowed(ILendingAdapter(address(0xA)), true);
-        assertTrue(router.isAdapterAllowed(ILendingAdapter(address(0xA))));
-    }
-
-    function test_acceptGovernance_revertsForNonPendingCaller() public {
-        router.transferGovernance(makeAddr("newGov"));
-        vm.prank(makeAddr("stranger"));
-        vm.expectRevert(abi.encodeWithSelector(NotPendingOwner.selector, makeAddr("stranger")));
-        router.acceptGovernance();
-    }
-
-    function test_acceptGovernance_revertsWhenNonePending() public {
-        vm.prank(makeAddr("stranger"));
-        vm.expectRevert(abi.encodeWithSelector(NotPendingOwner.selector, makeAddr("stranger")));
-        router.acceptGovernance();
-    }
-
-    function test_increasePosition_revertsWhenAdapterNotAllowed() public {
-        // _openParams leaves adapter as the zero address, which is not allowlisted
-        IMarginRouter.IncreaseParams memory p = _openParams();
-        vm.expectRevert(abi.encodeWithSelector(IMarginRouter.AdapterNotAllowed.selector, address(0)));
-        router.increasePosition(p);
-    }
-
     // ── a supplied health bound must be able to bind (non-zero maxLtvAfter must be < 100%) ──
 
     function test_increasePosition_revertsWhenMaxLtvAfterAtOrAbove100pct() public {
@@ -233,11 +144,18 @@ contract MarginRouterTest is Test, MarginRouteHelpers {
     }
 
     function test_increasePosition_allowsZeroMaxLtvAfter() public {
-        // zero still means "skip the check" (documented, back-compatible); it passes the new guard and
-        // proceeds to the allowlist check, proving the ineffective-bound guard did not trip on zero
+        // zero still means "skip the check" (documented, back-compatible): the flow passes the bound
+        // guard and proceeds to the adapter's position read, whose sentinel revert proves the
+        // ineffective-bound guard did not trip on zero
         IMarginRouter.IncreaseParams memory p = _openParams();
         p.maxLtvAfter = Ltv.wrap(0);
-        vm.expectRevert(abi.encodeWithSelector(IMarginRouter.AdapterNotAllowed.selector, address(0)));
+        p.adapter = ILendingAdapter(makeAddr("adapter"));
+        vm.mockCallRevert(
+            address(p.adapter),
+            abi.encodeWithSelector(ILendingAdapter.positionOf.selector),
+            abi.encodeWithSignature("ReachedAdapterRead()")
+        );
+        vm.expectRevert(abi.encodeWithSignature("ReachedAdapterRead()"));
         router.increasePosition(p);
     }
 

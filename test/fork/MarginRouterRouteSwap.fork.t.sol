@@ -68,11 +68,8 @@ contract MarginRouterRouteSwapForkTest is Test, MarginRouteHelpers {
         adapter = new CompoundV3LendingAdapter(COMET);
         address impl = address(new MarginAccount());
         router = IMarginRouter(
-            deployMarginRouter(
-                IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this)
-            )
+            deployMarginRouter(IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl)
         );
-        router.setAdapterAllowed(adapter, true);
         assertTrue(adapter.isSupportedMarket(market), "WETH/USDC routable on cUSDCv3");
     }
 

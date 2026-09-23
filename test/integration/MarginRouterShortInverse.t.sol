@@ -97,14 +97,9 @@ contract MarginRouterShortInverseTest is Test, MarginRouteHelpers, DeployPermit2
         ur = deployUniversalRouter(address(manager), permit2, address(0xbeef));
         router = IMarginRouter(
             deployMarginRouter(
-                IPoolManager(address(manager)),
-                IAllowanceTransfer(permit2),
-                IWETH9(address(0xbeef)),
-                impl,
-                address(this)
+                IPoolManager(address(manager)), IAllowanceTransfer(permit2), IWETH9(address(0xbeef)), impl
             )
         );
-        router.setAdapterAllowed(adapter, true);
     }
 
     // -------------------------------------------------------------------------

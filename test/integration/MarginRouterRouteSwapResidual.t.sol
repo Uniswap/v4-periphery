@@ -60,10 +60,8 @@ contract MarginRouterRouteSwapResidualTest is RoutingTestHelpers, MarginRouteHel
         address permit2 = deployPermit2();
         address impl = address(new MarginAccount());
         ur = deployUniversalRouter(address(manager), permit2, address(0xbeef));
-        marginRouter = IMarginRouter(
-            deployMarginRouter(manager, IAllowanceTransfer(permit2), IWETH9(address(0xbeef)), impl, address(this))
-        );
-        marginRouter.setAdapterAllowed(adapter, true);
+        marginRouter =
+            IMarginRouter(deployMarginRouter(manager, IAllowanceTransfer(permit2), IWETH9(address(0xbeef)), impl));
 
         MockERC20(Currency.unwrap(debt)).transfer(address(protocol), 1_000_000 ether);
     }

@@ -123,10 +123,8 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
         address impl = address(new MarginAccount());
         // route position swaps through a Universal Router bound to the local PoolManager
         ur = deployUniversalRouter(address(manager), permit2, address(0xbeef));
-        marginRouter = IMarginRouter(
-            deployMarginRouter(manager, IAllowanceTransfer(permit2), IWETH9(address(0xbeef)), impl, address(this))
-        );
-        marginRouter.setAdapterAllowed(adapter, true);
+        marginRouter =
+            IMarginRouter(deployMarginRouter(manager, IAllowanceTransfer(permit2), IWETH9(address(0xbeef)), impl));
 
         // Seed the lending protocol with enough debt liquidity to service any fuzzed borrow.
         MockERC20(Currency.unwrap(debt)).transfer(address(protocol), 1_000_000 ether);

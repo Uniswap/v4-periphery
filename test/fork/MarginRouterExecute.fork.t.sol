@@ -101,11 +101,8 @@ contract MarginRouterExecuteForkTest is Test, MarginRouteHelpers {
         // route position swaps through a Universal Router bound to the local flash-take PoolManager
         ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
         router = IMarginRouter(
-            deployMarginRouter(
-                IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this)
-            )
+            deployMarginRouter(IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl)
         );
-        router.setAdapterAllowed(adapter, true);
 
         // extra lender-side USDC so several borrows are comfortably funded
         _seedMorphoLiquidity(5_000_000e6);

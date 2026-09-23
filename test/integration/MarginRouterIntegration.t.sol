@@ -66,10 +66,8 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
         address impl = address(new MarginAccount());
         // route position swaps through a Universal Router bound to the local PoolManager
         ur = deployUniversalRouter(address(manager), permit2, address(0xbeef));
-        marginRouter = IMarginRouter(
-            deployMarginRouter(manager, IAllowanceTransfer(permit2), IWETH9(address(0xbeef)), impl, address(this))
-        );
-        marginRouter.setAdapterAllowed(adapter, true);
+        marginRouter =
+            IMarginRouter(deployMarginRouter(manager, IAllowanceTransfer(permit2), IWETH9(address(0xbeef)), impl));
 
         // fund the lending protocol with debt to lend out
         MockERC20(Currency.unwrap(debt)).transfer(address(protocol), 1_000_000 ether);
@@ -678,64 +676,6 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
         );
         assertEq(protocol.debtOf(account), 0, "debt fully repaid");
         assertEq(protocol.collateralOf(account), 0, "collateral fully withdrawn");
-    }
-
-    function test_closeLong_succeedsAfterAdapterDeAllowlisted() public {
-        address account = _open(1 ether, 2 ether);
-
-        // governance removes the adapter from the allowlist while the position is still open
-        marginRouter.setAdapterAllowed(adapter, false);
-        assertFalse(marginRouter.isAdapterAllowed(adapter), "adapter de-allowlisted");
-
-        // the position can still be unwound: the allowlist only gates exposure-increasing operations
-        (, uint256 curDebt) = adapter.positionOf(account, market);
-        (bytes memory cmds, bytes[] memory ins) =
-            buildV4ExactOutRoute(poolKey, collateral, debt, uint128(curDebt), 5 ether, account);
-        marginRouter.decreasePosition(
-            IMarginRouter.DecreaseParams({
-                debtToRepay: type(uint256).max,
-                maxLtvAfter: Ltv.wrap(0),
-                adapter: adapter,
-                market: market,
-                maxCollateralIn: 5 ether,
-                universalRouter: ur,
-                routeCommands: cmds,
-                routeInputs: ins,
-                subId: 0,
-                deadline: block.timestamp + 1
-            })
-        );
-
-        assertEq(protocol.debtOf(account), 0, "debt fully repaid");
-        assertEq(protocol.collateralOf(account), 0, "collateral fully withdrawn");
-    }
-
-    function test_decreasePosition_succeedsAfterAdapterDeAllowlisted() public {
-        address account = _open(1 ether, 2 ether);
-        uint256 debtAfterOpen = protocol.debtOf(account);
-
-        marginRouter.setAdapterAllowed(adapter, false);
-
-        // delevering an open position still works once the adapter is de-allowlisted
-        (bytes memory cmds, bytes[] memory ins) =
-            buildV4ExactOutRoute(poolKey, collateral, debt, 1 ether, 2 ether, account);
-        marginRouter.decreasePosition(
-            IMarginRouter.DecreaseParams({
-                adapter: adapter,
-                market: market,
-                debtToRepay: 1 ether,
-                maxCollateralIn: 2 ether,
-                universalRouter: ur,
-                routeCommands: cmds,
-                routeInputs: ins,
-                maxLtvAfter: toLtv(0.9e18),
-                subId: 0,
-                deadline: block.timestamp + 1
-            })
-        );
-
-        assertLt(protocol.debtOf(account), debtAfterOpen, "debt reduced");
-        assertGt(protocol.debtOf(account), 0, "position still open");
     }
 
     function test_openLong_emitsPositionIncreased() public {

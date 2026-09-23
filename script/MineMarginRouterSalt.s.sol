@@ -32,32 +32,27 @@ contract MineMarginRouterSalt is Script {
     /// @param poolManager The v4 PoolManager the router will be constructed with.
     /// @param permit2 The Permit2 contract the router will be constructed with.
     /// @param weth9 The canonical WETH9 the router will be constructed with.
-    /// @param governance The initial governance baked into the router constructor.
     /// @param startSalt The first salt to try; the loop scans `[startSalt, startSalt + iterations)`.
     /// @param iterations The number of salts to scan.
     /// @return bestSalt The best-scoring salt found.
     /// @return bestAddress The router address that salt produces.
     /// @return bestScore The VanityAddressLib score of that address.
-    function run(
-        address poolManager,
-        address permit2,
-        address weth9,
-        address governance,
-        bytes32 startSalt,
-        uint256 iterations
-    ) public view returns (bytes32 bestSalt, address bestAddress, uint256 bestScore) {
+    function run(address poolManager, address permit2, address weth9, bytes32 startSalt, uint256 iterations)
+        public
+        view
+        returns (bytes32 bestSalt, address bestAddress, uint256 bestScore)
+    {
         // derive the deterministic MarginAccount implementation address the deploy will produce, so
         // the router init code hash here matches the one used when the router is actually deployed
         address accountImpl =
             vm.computeCreate2Address(ACCOUNT_SALT, keccak256(type(MarginAccount).creationCode), CREATE2_DEPLOYER);
 
-        // init code hash of the router for the 5-arg constructor; this plus the deployer fully
+        // init code hash of the router for the 4-arg constructor; this plus the deployer fully
         // determines every candidate address, so it is what an off-chain miner needs. The Universal
         // Router is not a constructor arg (callers pass it per swap), so it does not affect the address.
         bytes32 initCodeHash = keccak256(
             abi.encodePacked(
-                vm.getCode("MarginRouter.sol:MarginRouter"),
-                abi.encode(poolManager, permit2, weth9, accountImpl, governance)
+                vm.getCode("MarginRouter.sol:MarginRouter"), abi.encode(poolManager, permit2, weth9, accountImpl)
             )
         );
 

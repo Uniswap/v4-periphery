@@ -29,12 +29,11 @@ import {Market} from "./types/Market.sol";
 ///         checking `target` against `adapter.lendingProtocol()` would not change that, since both
 ///         sides of that comparison come from the same adapter.
 ///
-///         Each call path establishes the assumption differently. On the exposure-increasing paths
-///         (`supplyCollateral`, `borrow`) the manager routes only governance-allowlisted adapters. On
-///         the exit paths (`repay`, `withdrawCollateral`) the adapter is unallowlisted and fully
-///         caller-chosen, which is safe because the manager derives the account from the authenticated
-///         caller, so a hostile adapter reaches only the caller's own account, and the owner-only
-///         `execute` already grants that same power outright.
+///         The adapter is caller-chosen on every path; there is no allowlist. That is safe because the
+///         manager derives the account from the authenticated caller, so a hostile adapter reaches
+///         only the caller's own account, and the owner-only `execute` already grants that same power
+///         outright. The caller, or the app that built the transaction, vets the adapter exactly as it
+///         vets the market it names.
 /// @custom:security-contact security@uniswap.org
 contract MarginAccount is IMarginAccount {
     using CustomRevert for bytes4;
