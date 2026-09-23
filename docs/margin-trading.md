@@ -40,7 +40,7 @@ identical regardless of venue.
   │  MarginRouter   │ ─────────────────────────▶ │  v4 PoolManager    │
   │ (manager of all │  equity pull (Permit2)     ├────────────────────┤
   │  accounts;      │ ─────────────────────────▶ │  Permit2 · WETH9   │
-  │  governance)    │  supply/borrow/repay/...   └────────────────────┘
+  │  no governance) │  supply/borrow/repay/...   └────────────────────┘
   └───────┬─────────┘
           │ drives primitives (router is the manager)
           ▼
@@ -61,7 +61,7 @@ identical regardless of venue.
 | `MarginAccount`        | A per-user clone (Solady clone-with-immutable-args). It is the lending counterparty (`onBehalf == account`), so it acts as itself and needs no delegated authorization. Owner and manager are baked into bytecode (soulbound).               |
 | lending adapters       | Stateless singleton encoders. The caller names the venue market with a `Market` key (the `(collateral, debt)` pair plus adapter-decoded `data`), which the adapter validates against the live venue on every call; there is no routing table and no owner. `MorphoLendingAdapter` targets Morpho Blue; `AaveLendingAdapter` targets the Aave v3 Pool; `AaveV4LendingAdapter` targets a single Aave v4 Spoke; `CompoundV3LendingAdapter` targets a single Compound v3 Comet (its base token is the only borrowable debt). Each returns the `(target, value, callData)` an account executes and holds no funds. The caller picks a venue by passing the matching adapter. |
 | `ILendingAdapter`      | The protocol-agnostic surface the router and account depend on. New lending protocols are supported by new adapters.                                                                                                                         |
-| value types            | `Market` (the `(collateral, debt)` pair plus adapter-specific `data`), `Ltv` (WAD ratio), `Owner` (router governance).                                                                                                                      |
+| value types            | `Market` (the `(collateral, debt)` pair plus adapter-specific `data`), `Ltv` (WAD ratio).                                                                                                                      |
 
 
 ---
@@ -152,7 +152,7 @@ adapter's lending protocol as the account. This lets the owner always manage or 
 directly on the lending protocol without the router (for example if the router is paused or an
 adapter is removed).
 
-### 3.3 Lending adapter and the allowlist
+### 3.3 Lending adapter and adapter trust
 
 The adapter is an **encoder**: each `encode`* returns `(target, value, callData)`, and the account
 performs the call as itself with a regular call (never a delegatecall). The target is the adapter's
@@ -160,13 +160,15 @@ declared `lendingProtocol()`. The encode surface is `encodeSupplyCollateral`,
 `encodeEnableCollateral` (run by the account immediately after every supply, for venues that need an
 explicit collateral enable; empty `callData` is the skip signal), `encodeWithdrawCollateral`,
 `encodeBorrow`, and `encodeRepay` — an adapter implementation must provide all five, or
-`supplyCollateral` reverts when the account consults the missing hook. An allowlisted adapter is trusted (see §9); the account's durable
+`supplyCollateral` reverts when the account consults the missing hook. The adapter is **caller-chosen on
+every call, with no allowlist and no router governance**: you pass the adapter (the venue) and the
+`Market` key (§3.1) together, and the caller, or the app that built the transaction, is responsible for
+both. This is safe for everyone else because the router only ever operates on the caller's own account
+(derived from the authenticated caller and `subId`), so a hostile adapter can reach that account and
+nothing more, a power the owner escape hatch already grants outright (see §9). The account's durable
 guarantees are that it acts as its own `onBehalf` and constrains every fund recipient to the owner or
-manager. Governance maintains an **allowlist** of adapters. The allowlist gates only the operations
-that *add* exposure — `increasePosition`, `addCollateral` (and, under `execute`, `ACCOUNT_SUPPLY_COLLATERAL`
-/ `ACCOUNT_BORROW`). **Closing and delevering never require an allowlisted adapter**, so a position can
-always be unwound even if its adapter is later removed. The allowlist curates **venues**, not markets:
-an allowlisted adapter routes any market its venue has, selected by the caller's `Market` key (§3.1).
+manager. A position can always be unwound with the same adapter it was opened with; nothing router-side
+can be switched off.
 
 ### 3.4 Leverage and LTV
 
@@ -276,8 +278,8 @@ set (swap / settle / take, and `SWEEP` / `WRAP` / `UNWRAP`) plus the margin opco
 | ---------------------------- | ------------------------------------------------------------------------------------------- |
 | `SET_ACCOUNT(subId)`         | Bind the active account for subsequent account-scoped actions. Derived from the authenticated caller and `subId`, never from calldata. May appear multiple times (multi-sub-account plans). |
 | `PULL_TO_ACCOUNT(currency, amount, payerIsUser)` | Move a token into the active account: pulled from the caller via Permit2 (`payerIsUser = true`) or from the router's own balance (`false`). Enables repay-from-wallet and native equity. |
-| `ACCOUNT_SUPPLY_COLLATERAL` / `ACCOUNT_BORROW` | Supply/borrow on the active account. **Allowlist-gated** (exposure-increasing). |
-| `ACCOUNT_WITHDRAW_COLLATERAL` / `ACCOUNT_REPAY` / `ACCOUNT_SWEEP` | Withdraw/repay/sweep on the active account. Not allowlist-gated (exits stay open). |
+| `ACCOUNT_SUPPLY_COLLATERAL` / `ACCOUNT_BORROW` | Supply/borrow on the active account with the encoded (caller-chosen) adapter and market. |
+| `ACCOUNT_WITHDRAW_COLLATERAL` / `ACCOUNT_REPAY` / `ACCOUNT_SWEEP` | Withdraw/repay/sweep on the active account. |
 | `ROUTE_SWAP(universalRouter, input, maxIn, commands, inputs)` | Route a swap through the caller-supplied `universalRouter` (a Universal Router carrying already-unlocked `V4_SWAP`; must be non-zero, else `UniversalRouterNotSet`) across v2/v3/v4: flash-take up to `maxIn` of `input`, fund UR via a scoped Permit2 allowance, run the caller-built UR `commands`/`inputs` (which must deliver the output to the active account and self-settle), then settle only this call's unspent take (any pre-existing router balance is left untouched). Leaves the same net delta a native v4 swap would, so a following `ACCOUNT_BORROW`/`SETTLE` nets via `OPEN_DELTA`. |
 | `ASSERT_HEALTH(adapter, market, maxLtv)` / `ASSERT_FILL(currency, minAmount)` / `ASSERT_ACCOUNT_BALANCE(currency, minAmount)` | Opt-in guards; encode them yourself. `ASSERT_FILL` checks the router's per-unlock swap credit (a true delta). `ASSERT_ACCOUNT_BALANCE` checks the active account's ABSOLUTE balance is at least `minAmount` — a floor any pre-existing balance counts toward, not a fill delta; see the note below on getting a delta guarantee from it. |
 
@@ -292,8 +294,9 @@ guard-railed path for callers who want that done for them.
 3. **Net the router to zero.** A plan MUST leave no residual on the router; terminate with `SWEEP` for
 every currency it may touch. Balances left behind are **claimable by the next caller** and are not
 protocol-protected.
-4. **Allowlist asymmetry.** Supply and borrow require an allowlisted adapter; withdraw, repay, and
-account-sweep do not, so a position is always exitable.
+4. **Adapter trust is yours.** Every account action takes the adapter you encode; there is no
+allowlist. A hostile adapter reaches only your own account, which item 7 already makes the plan
+builder's responsibility.
 5. **`PULL_TO_ACCOUNT`.** An encoded `0` amount reverts (it is not an `OPEN_DELTA` full-balance
 sentinel, unlike the other opcodes); `CONTRACT_BALANCE` is honored only on the router-balance path;
 native currency is unsupported (wrap to WETH first).
@@ -836,8 +839,7 @@ async function decreasePosition(user: `0x${string}`, subId: bigint) {
 ### 7.6 Front-end checklist
 
 - Always `simulateContract` before `writeContract` to surface reverts (`SlippageBoundRequired`,
-`PositionUnhealthy`, `AdapterNotAllowed`, `DeadlinePassed`, `NativeCollateralMismatch`) with a clear
-message.
+`PositionUnhealthy`, `DeadlinePassed`, `NativeCollateralMismatch`) with a clear message.
 - Derive `maxDebtIn` / `maxCollateralIn` from a real quote plus a slippage buffer; do not use spot.
 - Account decimals carefully: WETH is 18, USDC is 6.
 - Surface the account address (`accountOf`) and its health (`currentLtvWad` vs `maxLtvWad`).
@@ -854,12 +856,12 @@ The venue is chosen per call: pass the `MorphoLendingAdapter` to route through M
 `AaveLendingAdapter` to route through the Aave v3 Pool, the `AaveV4LendingAdapter` to route through
 an Aave v4 Spoke, or the `CompoundV3LendingAdapter` to route through a Compound v3 Comet. Nothing else
 in the flow changes: all implement the same `ILendingAdapter` surface
-and the router orchestrates them identically. Each adapter must be allowlisted by governance
-(`router.setAdapterAllowed(adapter, true)`) before it can be used to *add* exposure; closing and
-delevering never require an allowlisted adapter, so a position opened on any venue can always be
-unwound. Market selection within a venue is permissionless: the caller names the market through
-`Market.data` (§3.1), and whether a key resolves on a venue is read with
-`adapter.isSupportedMarket(market)`. The adapters are stateless and unowned; there is no `setMarket`.
+and the router orchestrates them identically. The router keeps no allowlist: any contract implementing
+`ILendingAdapter` can be passed, so the caller (or the app building the transaction) vets the adapter
+it names, exactly as it vets the market (§9). Market selection within a venue is likewise permissionless:
+the caller names the market through `Market.data` (§3.1), and whether a key resolves on a venue is read
+with `adapter.isSupportedMarket(market)`. The adapters are stateless and unowned; there is no
+`setMarket`.
 
 `AaveLendingAdapter` is constructed from an Aave v3 `IPoolAddressesProvider`
 (`constructor(IPoolAddressesProvider provider)`); it resolves and stores the Pool
@@ -877,7 +879,7 @@ blends the reads and can break a later close/decrease (see §3.2).
 `AaveV4LendingAdapter` targets Aave v4's **hub-and-spoke** architecture and is constructed against a
 single **Spoke** (`constructor(ISpoke spoke)`); the Spoke is `lendingProtocol()` and
 the call target for every market it routes. To serve a second Spoke, deploy a second adapter instance
-and allowlist it. A v4 market is keyed by a per-Spoke `reserveId` rather than an asset address, so the
+and pass it. A v4 market is keyed by a per-Spoke `reserveId` rather than an asset address, so the
 caller names it with `Market.data = abi.encode(collateralReserveId, debtReserveId)`; on every call the
 adapter validates against the live Spoke that each reserve exists (`MarketNotSupported` otherwise),
 that its `underlying` matches the currency (`ReserveMismatch`), and that both reserves are on the same
@@ -955,7 +957,7 @@ is WETH (18 decimals), the reverse of the long examples in §6.
 
 ```solidity
 // Open a short ETH position on Aave: supply USDC, borrow WETH.
-// `aaveAdapter` is an allowlisted AaveLendingAdapter; `usdcWethKey` is the v4 pool the swap routes
+// `aaveAdapter` is the AaveLendingAdapter; `usdcWethKey` is the v4 pool the swap routes
 // through (currencies sorted: USDC < WETH).
 function openShortEth(
     address usdc,
@@ -992,7 +994,7 @@ function openShortEth(
 `IncreaseParams` carries no direction field: passing `Market(collateral: USDC, debt: WETH)` is what makes
 this a short. Everything else (increase, add collateral, decrease, close, reading state) works exactly
 as in §5 and §6, with the adapter set to the Aave adapter and the decimals swapped. The example routes
-through Aave v3; to route the identical short through Aave v4, pass an allowlisted `AaveV4LendingAdapter`
+through Aave v3; to route the identical short through Aave v4, pass the `AaveV4LendingAdapter`
 and set `data` to `abi.encode(usdcReserveId, wethReserveId)` (the Main Spoke ids are in §10). The
 router, account, params, and decimals are otherwise unchanged.
 
@@ -1063,34 +1065,38 @@ coming from swap slippage on each leg), and closing one leg leaves the other unt
 
 - **Soulbound accounts.** Owner and manager are immutable; there is no re-initialization or transfer.
 Only the manager (router) or owner can move an account's funds, and only to the manager or owner.
-- **Adapter trust.** Adapters are governance-curated and an allowlisted adapter is fully trusted:
-governance is responsible for vetting adapters it allowlists (a malicious adapter could drain funds
-routed through it). The account routes calls only to the adapter's declared `lendingProtocol()` with a
-regular call (never a delegatecall), acts as its own `onBehalf`, and constrains every fund recipient to
-the owner or manager. These are durable structural guarantees, not a defense against a malicious
-adapter, which the allowlist is what actually gates.
-- **Market trust is the caller's.** Market selection is permissionless: an allowlisted adapter routes
-any market its venue has, and the adapter validates only that the key names a real venue market, not
-that the market is sound. On Aave and Compound the venue's own governance lists markets, so the
+- **Adapter trust is the caller's.** There is no adapter allowlist and no router governance: the
+adapter named in a call is fully trusted by the account executing its encoded calls. That trust is
+scoped to the caller: the router derives the account from the authenticated caller, so a malicious
+adapter can drain only the account of whoever passed it, and the owner escape hatch already lets an
+owner do anything to their own account. Front ends should therefore hardcode the adapters they have
+reviewed, never take an adapter address from untrusted input, and treat a transaction naming an
+unknown adapter like an `execute` plan from an untrusted builder (§4.1). The account's structural
+guarantees remain: it routes calls only to the adapter's declared `lendingProtocol()` with a regular
+call (never a delegatecall), acts as its own `onBehalf`, and constrains every fund recipient to the
+owner or manager.
+- **Market trust is the caller's.** Market selection is permissionless: an adapter routes any market
+its venue has, and the adapter validates only that the key names a real venue market, not that the
+market is sound. On Aave and Compound the venue's own governance lists markets, so the
 universe is venue-vetted. On Morpho Blue anyone can create a market with any oracle, IRM, and LLTV, so
 a caller (or the front end building its calldata) must vet the market it names: confirm the id, oracle,
 and TVL with `cast`, and only offer markets you have reviewed. The router's curated flows fail closed
 on a non-standard token (a fee-on-transfer or rebasing asset trips the fill and settle assertions), but
 a bad oracle is a position-level risk the caller accepts by naming that market.
-- **Governance.** The router's adapter allowlist is governance-controlled; the adapters themselves have
-no owner and no configuration. Governance transfers are two-step and reject the zero address. Production
-deployments should put governance behind a timelock or multisig.
+- **No governance.** Neither the router nor the adapters have an owner or any post-deployment
+configuration. There is no privileged role to compromise, and nothing router-side can pause, redirect,
+or switch off a position.
 - **Market lifecycle.** There is no market registry to retire or re-point. A key stays routable exactly
 as long as its venue market exists: every call re-validates against the live venue, so a Compound
 collateral delisting or an Aave v4 reserve-layout change is reflected immediately (`MarketNotSupported`
 or `ReserveMismatch` on the next call). Withdraw and repay never gate on the venue-side reads beyond
 key validation, and the owner `execute` escape hatch acts on the lending protocol directly, so a position
 on a market the venue itself has withdrawn remains exitable.
-- **Exit is always available.** Closing and delevering do not require an allowlisted adapter, and the
-owner `execute` escape hatch can act directly on the lending protocol, so funds are never trapped by
-router-side configuration.
+- **Exit is always available.** Closing and delevering use the same caller-chosen adapter as opening,
+and the owner `execute` escape hatch can act directly on the lending protocol, so funds are never
+trapped by router-side configuration (there is none).
 - **Venue is swappable behind `ILendingAdapter`.** The lending venue is an implementation detail of
-the adapter; a position can migrate to a new venue by allowlisting a new adapter, with no router or
+the adapter; a new venue is supported by deploying a new adapter and passing it, with no router or
 account changes.
 - **Lending and oracle risk is inherited.** Health, liquidation, and pricing are the lending
 protocol's responsibility (Morpho Blue, Aave v3, Aave v4, or Compound v3, depending on the adapter);
@@ -1103,7 +1109,8 @@ the margin layer adds no independent oracle.
 
 > **ABI notice.** The mainnet margin suite listed below was deployed before the permissionless
 > market-key rework this guide describes: its `Market` has no `data` field, its adapters expose
-> `setMarket` and an owner, and its router events carry no `marketData`. Do not build calldata from
+> `setMarket` and an owner, its router has governance and an adapter allowlist, and its router events
+> carry no `marketData`. Do not build calldata from
 > this guide against those addresses. Integrate against them with the guide revision that matches
 > their commit (`0df9a61`), or wait for the redeploy of this ABI, at which point this table will be
 > re-pinned.
@@ -1138,7 +1145,7 @@ Superseded margin deployments remain live onchain but should not be integrated a
 `0x000000000075e82F7B7DdC5DD1B4984b560eF5D4` (2026-08-12, pre-audit-fixes),
 `0x00000000000Dc78b00e36d3a7997Bd9c4cd9F1f0`, and `0x0000000007e3176429aDd4F6f0280D5DbD11aEC8`
 (earlier APIs), each with its own adapter set. Positions opened on them stay exitable through their
-own router or the owner escape hatch; retire their adapter allowlists via governance when ready.
+own router or the owner escape hatch.
 
 Morpho WETH/USDC market (collateral WETH, loan USDC), the canonical liquid market; its adapter key is
 `Market.data = abi.encode(oracle, irm, lltv)` with oracle `0x0F948CBa8231Db7898ef36A4212581Ad7b1B4580`,
@@ -1218,14 +1225,13 @@ struct AddCollateralParams { // addCollateral
 | Function                                             | Access               | Notes                                 |
 | ---------------------------------------------------- | -------------------- | ------------------------------------- |
 | `increasePosition(IncreaseParams) payable`           | anyone               | own account; a second increase adds leverage |
-| `decreasePosition(DecreaseParams)`                   | anyone               | own account; partial delever or full close (`debtToRepay == max`); no allowlist requirement |
+| `decreasePosition(DecreaseParams)`                   | anyone               | own account; partial delever or full close (`debtToRepay == max`) |
 | `addCollateral(AddCollateralParams) payable`         | anyone               | own account                           |
 | `execute(bytes unlockData, uint256 deadline) payable`| anyone               | own accounts; arbitrary plan (§4.1)   |
 | `accountOf(address owner, uint256 subId) view`       | anyone               | predicted account address             |
-| `governance() view` / `pendingGovernance() view`     | anyone               | current / pending governance          |
-| `isAdapterAllowed(ILendingAdapter) view`             | anyone               | allowlist status                      |
-| `setAdapterAllowed(ILendingAdapter, bool)`           | governance           | curate allowlist                      |
-| `transferGovernance(address)` / `acceptGovernance()` | governance / pending | two-step handoff                      |
+| `createAccount(address owner, uint256 subId)`        | anyone               | deploys the deterministic account (idempotent) |
+
+The router has no governance functions: no allowlist, no owner, and no admin surface.
 
 
 ### MarginAccount functions
@@ -1265,14 +1271,12 @@ listed Comet collateral asset. Its `lendingProtocol()` is the bound Comet.
 | router   | `IneffectiveLtvBound(Ltv)`                                       | a non-zero `maxLtvAfter` is at or above 100% (`1e18`), so it could never bind (supply a bound below 100%, or 0 to skip)   |
 | router   | `PositionUnhealthy()`                                            | resulting LTV exceeds the bound                                                                                           |
 | router   | `NoDebtToRepay()`                                                | a partial decrease targeted a debt-free position (nothing to repay; exit with a full close instead)                       |
-| router   | `AdapterNotAllowed(address)`                                     | adapter not on the allowlist (exposure-increasing flows)                                                                  |
 | router   | `NativeCollateralMismatch()`                                     | native ETH sent but collateral is not WETH                                                                                |
 | router   | `IncompleteFill(uint256 requested, uint256 received)`            | the exact-output position swap (increase or decrease/close) under-filled (thin pool); the swap is all-or-nothing           |
 | router   | `NoActiveAccount()`                                              | an `execute` plan ran an account-scoped action with no preceding `SET_ACCOUNT`                                            |
 | V4Router | `V4TooMuchRequestedPerHopSingle(uint256 minPrice, uint256 priceX36)` | a swap's realized per-hop price fell below the caller's `minHopPriceX36` bound                                        |
 | account  | `NotAuthorized()`                                                | caller is neither manager nor owner                                                                                       |
 | account  | `ReceiverNotAllowed(address)`                                    | recipient is neither manager nor owner                                                                                    |
-| Owner    | `NotOwner(address)` / `ZeroOwner()` / `NotPendingOwner(address)` | router governance guards                                                                                                  |
 | adapter (all) | `MarketNotSupported(Currency, Currency)`                    | an encode/read for a key the venue has no market for: Morpho market not created, Aave v3 asset not a reserve, Aave v4 reserve id unconfigured, Compound collateral not listed |
 | adapter (all) | `InvalidMarketData(uint256 length)`                         | `Market.data` is not the adapter's canonical shape (Morpho 96 bytes, Aave v4 64 bytes, Aave v3 and Compound empty)     |
 | adapter (Compound) | `DebtNotBaseToken(Currency, address)`                  | an encode/read whose `debt` is not the bound Comet's base token                                                           |
@@ -1287,9 +1291,7 @@ listed Comet collateral asset. Its `lendingProtocol()` is the bound Comet.
 `PositionUpdated` (a resulting-state snapshot emitted after every supply/withdraw/borrow/repay on
 every router path: curated flows, `execute` plans, and the unlock-free `addCollateral` / zero-debt
 close), `PositionIncreased`, `PositionDecreased` (a full close is a
-`PositionDecreased` with the position emptied), `CollateralAdded`, `AdapterAllowed`,
-`GovernanceTransferStarted`, `GovernanceTransferred` (router; `GovernanceTransferred` also fires at
-construction, from the zero address, for the initial governance). `PositionIncreased`,
+`PositionDecreased` with the position emptied), and `CollateralAdded` (router). `PositionIncreased`,
 `PositionDecreased`, and `PositionUpdated` carry the market key (`collateral`, `debt`, `marketData`) so
 two same-pair markets on one venue stay distinguishable. The adapters emit no events. Account events:
 `CollateralSupplied`, `CollateralWithdrawn`, `Borrowed`,
