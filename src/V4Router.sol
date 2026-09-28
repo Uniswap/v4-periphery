@@ -35,19 +35,19 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         // swap actions and payment actions in different blocks for gas efficiency
         if (action < Actions.SETTLE) {
             if (action == Actions.SWAP_EXACT_IN) {
-                IV4Router.ExactInputParams calldata swapParams = params.decodeSwapExactInParams();
+                IV4Router.ExactInputParams memory swapParams = params.decodeSwapExactInParams();
                 _swapExactInput(swapParams);
                 return;
             } else if (action == Actions.SWAP_EXACT_IN_SINGLE) {
-                IV4Router.ExactInputSingleParams calldata swapParams = params.decodeSwapExactInSingleParams();
+                IV4Router.ExactInputSingleParams memory swapParams = params.decodeSwapExactInSingleParams();
                 _swapExactInputSingle(swapParams);
                 return;
             } else if (action == Actions.SWAP_EXACT_OUT) {
-                IV4Router.ExactOutputParams calldata swapParams = params.decodeSwapExactOutParams();
+                IV4Router.ExactOutputParams memory swapParams = params.decodeSwapExactOutParams();
                 _swapExactOutput(swapParams);
                 return;
             } else if (action == Actions.SWAP_EXACT_OUT_SINGLE) {
-                IV4Router.ExactOutputSingleParams calldata swapParams = params.decodeSwapExactOutSingleParams();
+                IV4Router.ExactOutputSingleParams memory swapParams = params.decodeSwapExactOutSingleParams();
                 _swapExactOutputSingle(swapParams);
                 return;
             }
@@ -81,7 +81,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         revert UnsupportedAction(action);
     }
 
-    function _swapExactInputSingle(IV4Router.ExactInputSingleParams calldata params) private {
+    function _swapExactInputSingle(IV4Router.ExactInputSingleParams memory params) private {
         uint128 amountIn = params.amountIn;
         if (amountIn == ActionConstants.OPEN_DELTA) {
             amountIn =
@@ -99,7 +99,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         }
     }
 
-    function _swapExactInput(IV4Router.ExactInputParams calldata params) private {
+    function _swapExactInput(IV4Router.ExactInputParams memory params) private {
         unchecked {
             // Caching for gas savings
             uint256 pathLength = params.path.length;
@@ -107,7 +107,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             Currency currencyIn = params.currencyIn;
             uint128 amountIn = params.amountIn;
             if (amountIn == ActionConstants.OPEN_DELTA) amountIn = _getFullCredit(currencyIn).toUint128();
-            PathKey calldata pathKey;
+            PathKey memory pathKey;
 
             uint256 perHopPriceLength = params.minHopPriceX36.length;
             if (perHopPriceLength != 0 && perHopPriceLength != pathLength) revert InvalidHopPriceLength();
@@ -134,7 +134,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         }
     }
 
-    function _swapExactOutputSingle(IV4Router.ExactOutputSingleParams calldata params) private {
+    function _swapExactOutputSingle(IV4Router.ExactOutputSingleParams memory params) private {
         uint128 amountOut = params.amountOut;
         if (amountOut == ActionConstants.OPEN_DELTA) {
             amountOut =
@@ -158,14 +158,14 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         }
     }
 
-    function _swapExactOutput(IV4Router.ExactOutputParams calldata params) private {
+    function _swapExactOutput(IV4Router.ExactOutputParams memory params) private {
         unchecked {
             // Caching for gas savings
             uint256 pathLength = params.path.length;
             uint128 amountIn;
             uint128 amountOut = params.amountOut;
             Currency currencyOut = params.currencyOut;
-            PathKey calldata pathKey;
+            PathKey memory pathKey;
 
             if (amountOut == ActionConstants.OPEN_DELTA) {
                 amountOut = _getFullDebt(currencyOut).toUint128();
@@ -215,7 +215,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     ///      Inheriting routers override this to reject pools they must not trade in.
     function _validatePoolKey(PoolKey memory poolKey) internal view virtual {}
 
-    function _swap(PoolKey memory poolKey, bool zeroForOne, int256 amountSpecified, bytes calldata hookData)
+    function _swap(PoolKey memory poolKey, bool zeroForOne, int256 amountSpecified, bytes memory hookData)
         private
         returns (BalanceDelta delta)
     {

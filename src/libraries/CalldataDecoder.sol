@@ -174,76 +174,40 @@ library CalldataDecoder {
         hookData = params.toBytes(3);
     }
 
-    /// @dev equivalent to: abi.decode(params, (IV4Router.ExactInputParams))
+    /// @notice Decodes ExactInputParams from `params`
     function decodeSwapExactInParams(bytes calldata params)
         internal
         pure
-        returns (IV4Router.ExactInputParams calldata swapParams)
+        returns (IV4Router.ExactInputParams memory swapParams)
     {
-        // ExactInputParams is a variable length struct so we just have to look up its location
-        assembly ("memory-safe") {
-            // only safety checks for the minimum length, where path and minHopPriceX36 are empty
-            // 0xe0 = 7 * 0x20 -> 3 elements, path offset, minHopPriceX36 offset, path length 0, and minHopPriceX36 length 0
-            if lt(params.length, 0xe0) {
-                mstore(0, SLICE_ERROR_SELECTOR)
-                revert(0x1c, 4)
-            }
-            swapParams := add(params.offset, calldataload(params.offset))
-        }
+        return abi.decode(params, (IV4Router.ExactInputParams));
     }
 
-    /// @dev equivalent to: abi.decode(params, (IV4Router.ExactInputSingleParams))
+    /// @notice Decodes ExactInputSingleParams from `params`
     function decodeSwapExactInSingleParams(bytes calldata params)
         internal
         pure
-        returns (IV4Router.ExactInputSingleParams calldata swapParams)
+        returns (IV4Router.ExactInputSingleParams memory swapParams)
     {
-        // ExactInputSingleParams is a variable length struct so we just have to look up its location
-        assembly ("memory-safe") {
-            // only safety checks for the minimum length, where hookData is empty
-            // 0x160 = 11 * 0x20 -> 9 elements, bytes offset, and bytes length 0
-            if lt(params.length, 0x160) {
-                mstore(0, SLICE_ERROR_SELECTOR)
-                revert(0x1c, 4)
-            }
-            swapParams := add(params.offset, calldataload(params.offset))
-        }
+        return abi.decode(params, (IV4Router.ExactInputSingleParams));
     }
 
-    /// @dev equivalent to: abi.decode(params, (IV4Router.ExactOutputParams))
+    /// @notice Decodes ExactOutputParams from `params`
     function decodeSwapExactOutParams(bytes calldata params)
         internal
         pure
-        returns (IV4Router.ExactOutputParams calldata swapParams)
+        returns (IV4Router.ExactOutputParams memory swapParams)
     {
-        // ExactOutputParams is a variable length struct so we just have to look up its location
-        assembly ("memory-safe") {
-            // only safety checks for the minimum length, where path and minHopPriceX36 are empty
-            // 0xe0 = 7 * 0x20 -> 3 elements, path offset, minHopPriceX36 offset, path length 0, and minHopPriceX36 length 0
-            if lt(params.length, 0xe0) {
-                mstore(0, SLICE_ERROR_SELECTOR)
-                revert(0x1c, 4)
-            }
-            swapParams := add(params.offset, calldataload(params.offset))
-        }
+        return abi.decode(params, (IV4Router.ExactOutputParams));
     }
 
-    /// @dev equivalent to: abi.decode(params, (IV4Router.ExactOutputSingleParams))
+    /// @notice Decodes ExactOutputSingleParams from `params`
     function decodeSwapExactOutSingleParams(bytes calldata params)
         internal
         pure
-        returns (IV4Router.ExactOutputSingleParams calldata swapParams)
+        returns (IV4Router.ExactOutputSingleParams memory swapParams)
     {
-        // ExactOutputSingleParams is a variable length struct so we just have to look up its location
-        assembly ("memory-safe") {
-            // only safety checks for the minimum length, where hookData is empty
-            // 0x160 = 11 * 0x20 -> 9 elements, bytes offset, and bytes length 0
-            if lt(params.length, 0x160) {
-                mstore(0, SLICE_ERROR_SELECTOR)
-                revert(0x1c, 4)
-            }
-            swapParams := add(params.offset, calldataload(params.offset))
-        }
+        return abi.decode(params, (IV4Router.ExactOutputSingleParams));
     }
 
     /// @dev equivalent to: abi.decode(params, (Currency)) in calldata
