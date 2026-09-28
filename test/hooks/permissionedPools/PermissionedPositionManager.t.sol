@@ -35,13 +35,13 @@ import {PermissionsAdapter, IERC20} from "../../../src/hooks/permissionedPools/P
 import {PermissionFlags, PermissionFlag} from "../../../src/hooks/permissionedPools/libraries/PermissionFlags.sol";
 import {INotifier} from "../../../src/interfaces/INotifier.sol";
 import {MockUnsubscribeRevertingSubscriber} from "../../mocks/MockUnsubscribeRevertingSubscriber.sol";
+import {MockFlashAttackSubscriber} from "../../mocks/MockFlashAttackSubscriber.sol";
 import {MockBurnRevertingSubscriber} from "../../mocks/MockBurnRevertingSubscriber.sol";
 import {MockReentrantSubscriber} from "../../mocks/MockReentrantSubscriber.sol";
 import {MockApprovalHijackSubscriber} from "../../mocks/MockApprovalHijackSubscriber.sol";
 import {MockRemoveLiquidityDataHook} from "./mocks/MockRemoveLiquidityDataHook.sol";
 import {HookMiner} from "../../shared/HookMiner.sol";
 import {Deploy} from "../../shared/Deploy.sol";
-import {MockSubscriber} from "../../mocks/MockSubscriber.sol";
 
 contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
@@ -768,6 +768,97 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         // Use the literal selector to avoid pulling in PermissionedPositionManager imports here.
         // bytes4(keccak256("NoVerifiedAdapter()")) = 0x36a01ad4
         vm.expectRevert(bytes4(keccak256("NoVerifiedAdapter()")));
+        lpm.modifyLiquidities(calls, block.timestamp + 1);
+    }
+
+    /// @dev Creates a factory adapter over a fresh token and returns it, WITHOUT verifying it. Loops until the
+    ///      adapter address sorts below `permissionsAdapter0` so it can be used as currency0 (validated first).
+    function _createUnverifiedAdapterBelow(address ceiling) internal returns (PermissionsAdapter unverified) {
+        Currency ordinary = deployMintAndApproveCurrency(false);
+        while (true) {
+            unverified = PermissionsAdapter(
+                permissionsAdapterFactory.createPermissionsAdapter(
+                    IERC20(Currency.unwrap(ordinary)), address(this), mockAllowListChecker
+                )
+            );
+            if (address(unverified) < ceiling) break;
+        }
+        // Sanity: created in the factory but not verified.
+        assertEq(permissionsAdapterFactory.permissionsAdapterOf(address(unverified)), Currency.unwrap(ordinary));
+        assertEq(permissionsAdapterFactory.verifiedPermissionsAdapterOf(address(unverified)), address(0));
+    }
+
+    /// @dev A pool pairing a verified adapter with a factory-created-but-unverified adapter must reject the mint:
+    ///      an unverified adapter is not an ordinary token and cannot skip its LIQUIDITY_ALLOWED and hook checks.
+    function test_mint_reverts_when_paired_with_unverified_adapter() public {
+        PermissionsAdapter unverified = _createUnverifiedAdapterBelow(address(permissionsAdapter0));
+
+        // unverified adapter is currency0 (sorts lower), so it is validated first.
+        PoolKey memory k = PoolKey({
+            currency0: Currency.wrap(address(unverified)),
+            currency1: Currency.wrap(address(permissionsAdapter0)),
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(address(0))
+        });
+        manager.initialize(k, SQRT_PRICE_1_1);
+
+        PositionConfig memory config = PositionConfig({poolKey: k, tickLower: -120, tickUpper: 120});
+        bytes memory calls = getMintEncoded(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        vm.expectRevert(bytes4(keccak256("NoVerifiedAdapter()")));
+        lpm.modifyLiquidities(calls, block.timestamp + 1);
+    }
+
+    function test_mint_reverts_when_paired_with_non_contract_currency() public {
+        // A code-less non-adapter address (a not-yet-deployed adapter address), sorted below the adapter so it
+        // is currency0 and is validated first.
+        address phantom = address(0xBEEF);
+        assertEq(phantom.code.length, 0);
+
+        PoolKey memory k = PoolKey({
+            currency0: Currency.wrap(phantom),
+            currency1: Currency.wrap(address(permissionsAdapter0)),
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(address(0))
+        });
+        manager.initialize(k, SQRT_PRICE_1_1);
+
+        PositionConfig memory config = PositionConfig({poolKey: k, tickLower: -120, tickUpper: 120});
+        bytes memory calls = getMintEncoded(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        vm.expectRevert(bytes4(keccak256("NonContractCurrency()")));
+        lpm.modifyLiquidities(calls, block.timestamp + 1);
+    }
+
+    /// @dev Once the adapter is verified it clears the NoVerifiedAdapter gate. The mint then reverts with
+    ///      InvalidHook instead (the zero-address hooks used here are not on the verified adapter's allowlist),
+    ///      confirming verification — not the hook check — was what blocked the mint above.
+    function test_mint_pastVerificationGate_after_adapter_is_verified() public {
+        PermissionsAdapter unverified = _createUnverifiedAdapterBelow(address(permissionsAdapter0));
+
+        // Verify it: the factory requires the adapter to hold a nonzero balance of its underlying.
+        IERC20 underlying = IERC20(permissionsAdapterFactory.permissionsAdapterOf(address(unverified)));
+        underlying.approve(address(unverified), 1);
+        unverified.depositForVerification(1);
+        permissionsAdapterFactory.verifyPermissionsAdapter(address(unverified));
+        assertEq(permissionsAdapterFactory.verifiedPermissionsAdapterOf(address(unverified)), address(underlying));
+
+        PoolKey memory k = PoolKey({
+            currency0: Currency.wrap(address(unverified)),
+            currency1: Currency.wrap(address(permissionsAdapter0)),
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(address(0))
+        });
+        manager.initialize(k, SQRT_PRICE_1_1);
+
+        PositionConfig memory config = PositionConfig({poolKey: k, tickLower: -120, tickUpper: 120});
+        bytes memory calls = getMintEncoded(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        // Past the NoVerifiedAdapter gate now; blocked only by the (unrelated) hook allowlist.
+        vm.expectRevert(InvalidHook.selector);
         lpm.modifyLiquidities(calls, block.timestamp + 1);
     }
 
@@ -1618,8 +1709,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     }
 
     function test_permissioned_increase_reverts_when_only_one_currency_hook_revoked() public {
-        // Use key2 (permissioned/permissioned) to exercise the `&&` short-circuit in _checkAllowedHooks.
-        // Each side's mapping entry must independently block an increase.
+        // Use key2 (permissioned/permissioned): each currency is validated independently, so either side's
+        // revoked hook allowlist must block the increase on its own.
         _test_permissioned_increase_reverts_when_only_one_currency_hook_revoked(key2, true);
         _test_permissioned_increase_reverts_when_only_one_currency_hook_revoked(key2, false);
     }
@@ -1647,12 +1738,12 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     }
 
     // =============================================================================
-    // Owner LIQUIDITY_ALLOWED enforcement on liquidity increases (ECO-347 / Cantina #17)
+    // Owner LIQUIDITY_ALLOWED enforcement on liquidity increases
     // =============================================================================
     //
     // An ERC-721-approved operator that retains LIQUIDITY_ALLOWED must not be able to grow
     // a delisted owner's position by paying with their own funds. `_increase` and
-    // `_increaseFromDeltas` re-check `_checkRecipientAllowed(currency, ownerOf(tokenId))`.
+    // `_increaseFromDeltas` re-check the owner's LIQUIDITY_ALLOWED via `_validateLiquidityCurrency`.
 
     function test_permissioned_increase_reverts_when_owner_liquidity_revoked_via_operator() public {
         _test_permissioned_increase_reverts_when_owner_liquidity_revoked_via_operator(key0);
@@ -1770,7 +1861,9 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
     /// @dev V4 rounds in favor of the pool: a mint+burn roundtrip loses up to 1 wei per side.
     uint256 private constant _ROUNDTRIP_TOLERANCE = 1;
-    bytes4 private constant _UNWIND_SELECTOR = 0xb0a281b0;
+    // Literal `unwindPosition(uint256,uint128,uint128,bytes)` selector; the concrete type is deliberately not
+    // imported here (it is pinned to a different compiler profile, which conflicts with the test profile).
+    bytes4 internal constant _UNWIND_SELECTOR = 0xb0a281b0;
     bytes4 private constant _WITHDRAW_CLAIM_SELECTOR = 0xf77de3fc;
 
     event CurrencyUnwound(
@@ -2437,20 +2530,51 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         IERC721(address(lpm)).ownerOf(tokenId);
     }
 
-    /// @dev Admin force-exit succeeds even when the LP grants operator approval to a malicious
-    ///      reentrant subscriber that tries to re-attach a fresh subscriber during
-    ///      `notifyUnsubscribe`. The re-entry is blocked by `subscribe`'s `onlyIfPoolManagerLocked`
-    ///      modifier (we're inside an active unlock callback when `_unsubscribe` runs).
-    function test_unwindPosition_with_reentrant_subscriber_blocks_reentry() public {
+    /// @dev Admin force-exit succeeds even when the LP attaches a subscriber that leaves an UNSETTLED
+    ///      PoolManager delta during `notifyUnsubscribe` (mints 1 wei of the native-ETH 6909 claim to
+    ///      itself and returns cleanly). The gas-capped try/catch in `_unsubscribe` has nothing to catch,
+    ///      so the delta must not be created inside an open unlock — otherwise the enclosing `unlock` would
+    ///      revert with `CurrencyNotSettled` after the callback and brick the force-exit. Regression test
+    ///      for the flash-accounting griefing vector: `_unsubscribe` runs with the manager locked, so the
+    ///      subscriber's `mint` reverts with `ManagerLocked` inside the callback and is absorbed.
+    function test_unwindPosition_with_flashAttackSubscriber_succeeds() public {
         uint256 tokenId = lpm.nextTokenId();
         _test_permissioned_mint_allowed_user(key2);
 
-        // The would-be replacement subscriber. If reentry succeeded, this would be attached
-        // and its `notifyBurn` revert would brick the burn.
+        MockFlashAttackSubscriber sub = new MockFlashAttackSubscriber(manager);
+        vm.prank(alice);
+        INotifier(address(lpm)).subscribe(tokenId, address(sub), "");
+        assertEq(address(INotifier(address(lpm)).subscriber(tokenId)), address(sub));
+
+        // address(this) is admin of both adapters (default setUp).
+        // Before the fix this reverts with CurrencyNotSettled and `ok` is false.
+        (bool ok,) =
+            address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId, uint128(0), uint128(0), bytes("")));
+        assertEq(ok, true);
+
+        // subscriber detached, NFT burned. `notifyUnsubscribeCount` is not asserted: with the manager
+        // locked the subscriber's `mint` reverts inside the callback, so the whole callback (and its
+        // counter increment) is rolled back and swallowed by the try/catch.
+        assertEq(address(INotifier(address(lpm)).subscriber(tokenId)), address(0));
+        vm.expectRevert();
+        IERC721(address(lpm)).ownerOf(tokenId);
+    }
+
+    /// @dev Admin force-exit succeeds even when the LP grants operator approval to a malicious
+    ///      reentrant subscriber that re-attaches a fresh subscriber during `notifyUnsubscribe`.
+    ///      `_unsubscribe` runs with the manager locked, so `subscribe`'s `onlyIfPoolManagerLocked`
+    ///      guard passes and the re-attach succeeds; the force-clear in `unwindPosition` then removes
+    ///      the replacement before BURN_POSITION, so its reverting `notifyBurn` never runs.
+    function test_unwindPosition_with_reentrant_subscriber_reattach_is_force_cleared() public {
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        // The replacement the reentrant subscriber re-attaches; its `notifyBurn` reverts, so if it
+        // survived to BURN_POSITION it would brick the force-exit.
         MockBurnRevertingSubscriber replacement = new MockBurnRevertingSubscriber();
 
-        // The malicious subscriber that the LP attaches. On notifyUnsubscribe it tries to
-        // re-attach `replacement` via posm.subscribe.
+        // The malicious subscriber that the LP attaches. On notifyUnsubscribe it re-attaches
+        // `replacement` via posm.subscribe.
         MockReentrantSubscriber sub = new MockReentrantSubscriber(INotifier(address(lpm)), address(replacement));
 
         vm.prank(alice);
@@ -2462,11 +2586,19 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         vm.prank(alice);
         IERC721(address(lpm)).setApprovalForAll(address(sub), true);
 
+        // Pin that the re-attach actually happens: this is exactly what the force-clear must neutralize.
+        // If the force-clear were removed, `replacement` would survive and its notifyBurn would brick the burn.
+        vm.expectEmit(true, true, false, true, address(lpm));
+        emit INotifier.Subscription(tokenId, address(replacement));
+        // ...and pin that the force-clear then unsubscribes it before the burn, so indexers stay balanced.
+        vm.expectEmit(true, true, false, true, address(lpm));
+        emit INotifier.Unsubscription(tokenId, address(replacement));
+
         (bool ok,) =
             address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId, uint128(0), uint128(0), bytes("")));
         assertEq(ok, true);
 
-        // Subscriber fully detached — no re-attach happened, despite the reentry attempt.
+        // The re-attached subscriber was force-cleared before the burn, so the position is fully detached.
         assertEq(address(INotifier(address(lpm)).subscriber(tokenId)), address(0));
         vm.expectRevert();
         IERC721(address(lpm)).ownerOf(tokenId);
@@ -2474,9 +2606,10 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
     /// @dev Admin force-exit succeeds even when the LP's subscriber overwrites the admin's temporary
     ///      ERC-721 approval during `notifyUnsubscribe`. `approve` has no `onlyIfPoolManagerLocked` guard so
-    ///      the write lands, but UNSUBSCRIBE runs in its own unlock and the approval is re-applied after that
-    ///      unlock closes, so BURN_POSITION still passes `onlyIfApproved`. Here the subscriber is the
-    ///      position owner, so `approve` passes on the `msg.sender == owner` branch.
+    ///      the write lands, but `unwindPosition` sets `getApproved` again after `_unsubscribe` returns and
+    ///      before BURN_POSITION, so the hijacked value is overwritten and the burn still passes
+    ///      `onlyIfApproved`. Here the subscriber is the position owner, so `approve` passes on the
+    ///      `msg.sender == owner` branch.
     function test_unwindPosition_with_approvalHijackingSubscriber_succeeds() public {
         MockApprovalHijackSubscriber sub = new MockApprovalHijackSubscriber(address(lpm), true, address(0));
         // a contract LP needs LIQUIDITY_ALLOWED on both underlyings to hold the position
@@ -2549,73 +2682,33 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
     // ===== Action handler authorization =====
 
-    /// @dev A third party cannot detach a subscriber via the UNSUBSCRIBE action.
-    function test_handleAction_unsubscribe_reverts_for_unauthorized_caller() public {
+    /// @notice MINT_6909 and UNWIND_WITH_FALLBACK are reachable directly through the public `modifyLiquidities`
+    ///         router (they share the base action dispatcher). That is safe only because PermPosm never holds a
+    ///         standing 6909 claim between calls: with nothing parked, a direct call cannot extract any value.
+    ///         This test pins that invariant. If a future change ever leaves PermPosm holding a standing claim,
+    ///         the UNWIND_WITH_FALLBACK leg here stops reverting, which is the signal that these actions once
+    ///         again need a guard (e.g. the removed `_isUnwinding` flag).
+    function test_unwindActions_onPublicRouter_cannotExtractValue() public {
         uint256 tokenId = lpm.nextTokenId();
         _test_permissioned_mint_allowed_user(key2);
 
-        MockSubscriber sub = new MockSubscriber(IPositionManager(address(lpm)));
-        vm.prank(alice);
-        INotifier(address(lpm)).subscribe(tokenId, address(sub), "");
+        // UNWIND_WITH_FALLBACK burns PermPosm's own claim and takes the real asset to `to`. PermPosm holds no
+        // standing claim, so `burn(address(this), id, 1)` has nothing to burn and the whole batch reverts.
+        Plan memory deliver = Planner.init();
+        deliver.add(Actions.UNWIND_WITH_FALLBACK, abi.encode(key2.currency0, unauthorizedUser, uint256(1)));
+        bytes memory deliverCalls = deliver.encode();
+        vm.expectRevert();
+        lpm.modifyLiquidities(deliverCalls, block.timestamp + 1);
 
-        Plan memory planner = Planner.init();
-        planner.add(Actions.UNSUBSCRIBE, abi.encode(tokenId));
-        bytes memory calls = planner.encode();
+        // MINT_6909 mints PermPosm's full positive delta to itself. With no delta, `_getFullCredit` is 0 and the
+        // mint is a no-op: the batch succeeds but parks no claim on PermPosm and hands nothing to the caller.
+        Plan memory settle = Planner.init();
+        settle.add(Actions.MINT_6909, abi.encode(key2.currency0));
+        lpm.modifyLiquidities(settle.encode(), block.timestamp + 1);
+        assertEq(manager.balanceOf(address(lpm), key2.currency0.toId()), 0, "PermPosm parked no claim");
+        assertEq(manager.balanceOf(unauthorizedUser, key2.currency0.toId()), 0, "caller received no claim");
 
-        vm.prank(unauthorizedUser);
-        vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, unauthorizedUser));
-        lpm.modifyLiquidities(calls, block.timestamp + 1);
-
-        // subscriber stays attached
-        assertEq(address(INotifier(address(lpm)).subscriber(tokenId)), address(sub));
-    }
-
-    /// @dev The position owner can use the UNSUBSCRIBE action directly.
-    function test_handleAction_unsubscribe_succeeds_for_owner() public {
-        uint256 tokenId = lpm.nextTokenId();
-        _test_permissioned_mint_allowed_user(key2);
-
-        MockSubscriber sub = new MockSubscriber(IPositionManager(address(lpm)));
-        vm.prank(alice);
-        INotifier(address(lpm)).subscribe(tokenId, address(sub), "");
-
-        Plan memory planner = Planner.init();
-        planner.add(Actions.UNSUBSCRIBE, abi.encode(tokenId));
-        bytes memory calls = planner.encode();
-
-        vm.prank(alice);
-        lpm.modifyLiquidities(calls, block.timestamp + 1);
-
-        assertEq(address(INotifier(address(lpm)).subscriber(tokenId)), address(0));
-    }
-
-    /// @dev UNWIND_WITH_FALLBACK is restricted to permissions-adapter admins of the position's pool.
-    function test_handleAction_unwindWithFallback_reverts_for_non_admin() public {
-        uint256 tokenId = lpm.nextTokenId();
-        _test_permissioned_mint_allowed_user(key2);
-
-        Plan memory planner = Planner.init();
-        planner.add(Actions.UNWIND_WITH_FALLBACK, abi.encode(key2, key2.currency0, unauthorizedUser, tokenId));
-        bytes memory calls = planner.encode();
-
-        vm.prank(unauthorizedUser);
-        vm.expectRevert(Unauthorized.selector);
-        lpm.modifyLiquidities(calls, block.timestamp + 1);
-    }
-
-    /// @dev UNWIND_WITH_FALLBACK rejects a currency that does not belong to the supplied PoolKey,
-    ///      preventing spoofed `CurrencyUnwound` events even from a legitimate adapter admin.
-    function test_handleAction_unwindWithFallback_reverts_for_mismatched_currency() public {
-        uint256 tokenId = lpm.nextTokenId();
-        _test_permissioned_mint_allowed_user(key2);
-
-        // currency1 is the non-permissioned ERC-20 and is not part of key2.
-        Plan memory planner = Planner.init();
-        planner.add(Actions.UNWIND_WITH_FALLBACK, abi.encode(key2, currency1, alice, tokenId));
-        bytes memory calls = planner.encode();
-
-        // address(this) is the admin of both adapters in default setUp.
-        vm.expectRevert(Unauthorized.selector);
-        lpm.modifyLiquidities(calls, block.timestamp + 1);
+        // Alice's position is untouched.
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
     }
 }

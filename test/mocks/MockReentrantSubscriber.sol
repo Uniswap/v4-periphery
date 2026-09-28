@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.26;
 
 import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
 import {INotifier} from "../../src/interfaces/INotifier.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PositionInfo} from "../../src/libraries/PositionInfoLibrary.sol";
 
-/// @notice On `notifyUnsubscribe`, attempts to re-attach a fresh subscriber via
-///         `posm.subscribe(...)`. Used to verify that the re-entry is blocked by the
-///         existing `onlyIfPoolManagerLocked` guard on `subscribe` when `unsubscribe`
-///         runs from inside an unlock callback.
+/// @notice On `notifyUnsubscribe`, re-attaches a fresh subscriber via `posm.subscribe(...)`.
+///         `unwindPosition` unsubscribes with the manager locked, so `subscribe`'s
+///         `onlyIfPoolManagerLocked` guard passes and the re-attach succeeds; used to verify that
+///         `unwindPosition`'s force-clear removes the re-attached subscriber before the burn.
 contract MockReentrantSubscriber is ISubscriber {
     INotifier public immutable posm;
     address public immutable reentrantTarget;
@@ -22,8 +22,8 @@ contract MockReentrantSubscriber is ISubscriber {
     function notifySubscribe(uint256, bytes memory) external pure {}
 
     function notifyUnsubscribe(uint256 tokenId) external {
-        // Should revert with PoolManagerMustBeLocked when called from inside an active
-        // unlock callback — that's the protection we're testing.
+        // The manager is locked here, so subscribe's onlyIfPoolManagerLocked guard passes and this
+        // re-attach succeeds; unwindPosition's force-clear removes it before BURN_POSITION.
         posm.subscribe(tokenId, reentrantTarget, "");
     }
 
