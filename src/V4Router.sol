@@ -81,8 +81,17 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         revert UnsupportedAction(action);
     }
 
+    /// @notice Maps a swap action's amount before it is used, so an inheriting router can
+    ///         resolve its own sentinel values into a concrete amount at execution time
+    /// @dev Applied before the `OPEN_DELTA` check, so returning 0 still means open delta
+    /// @param amount The raw amount taken from the swap params
+    /// @return The amount to use for the swap
+    function _mapSwapAmount(uint128 amount) internal view virtual returns (uint128) {
+        return amount;
+    }
+
     function _swapExactInputSingle(IV4Router.ExactInputSingleParams memory params) private {
-        uint128 amountIn = params.amountIn;
+        uint128 amountIn = _mapSwapAmount(params.amountIn);
         if (amountIn == ActionConstants.OPEN_DELTA) {
             amountIn =
                 _getFullCredit(params.zeroForOne ? params.poolKey.currency0 : params.poolKey.currency1).toUint128();
@@ -105,7 +114,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             uint256 pathLength = params.path.length;
             uint128 amountOut;
             Currency currencyIn = params.currencyIn;
-            uint128 amountIn = params.amountIn;
+            uint128 amountIn = _mapSwapAmount(params.amountIn);
             if (amountIn == ActionConstants.OPEN_DELTA) amountIn = _getFullCredit(currencyIn).toUint128();
             PathKey memory pathKey;
 
@@ -135,7 +144,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     }
 
     function _swapExactOutputSingle(IV4Router.ExactOutputSingleParams memory params) private {
-        uint128 amountOut = params.amountOut;
+        uint128 amountOut = _mapSwapAmount(params.amountOut);
         if (amountOut == ActionConstants.OPEN_DELTA) {
             amountOut =
                 _getFullDebt(params.zeroForOne ? params.poolKey.currency1 : params.poolKey.currency0).toUint128();
@@ -163,7 +172,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             // Caching for gas savings
             uint256 pathLength = params.path.length;
             uint128 amountIn;
-            uint128 amountOut = params.amountOut;
+            uint128 amountOut = _mapSwapAmount(params.amountOut);
             Currency currencyOut = params.currencyOut;
             PathKey memory pathKey;
 
