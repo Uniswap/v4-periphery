@@ -81,13 +81,9 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         revert UnsupportedAction(action);
     }
 
-    /// @notice Maps a swap action's amount before it is used, so an inheriting router can resolve a
-    ///         route-level sentinel (e.g. a callback register populated by a prior command) into a
-    ///         concrete amount at execution time.
-    /// @dev Applied to the amount read from the swap params (`amountIn` for exact-input,
-    ///      `amountOut` for exact-output) before the `OPEN_DELTA` sentinel is interpreted, so the
-    ///      default identity mapping preserves existing behavior exactly. A value that maps to
-    ///      `OPEN_DELTA` (0) is still treated as the open-delta sentinel by the swap helpers.
+    /// @notice Maps a swap action's amount before it is used, so an inheriting router can
+    ///         resolve its own sentinel values into a concrete amount at execution time
+    /// @dev Applied before the `OPEN_DELTA` check, so returning 0 still means open delta
     /// @param amount The raw amount taken from the swap params
     /// @return The amount to use for the swap
     function _mapSwapAmount(uint128 amount) internal view virtual returns (uint128) {
