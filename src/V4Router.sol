@@ -152,8 +152,9 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         }
         BalanceDelta delta = _swap(params.poolKey, params.zeroForOne, int256(uint256(amountOut)), params.hookData);
         // exact output is all-or-nothing: a pool can deliver less than requested if it runs out of
-        // liquidity before the price limit. Reverting on a shortfall keeps "exact output" exact;
-        // over-delivery (possible only via hook pools) is allowed.
+        // liquidity before the price limit, and never more, since v4-core folds a hook's specified-side
+        // delta into the amount it swaps and afterSwap can only adjust the unspecified side. Reverting
+        // on a shortfall keeps "exact output" exact.
         uint128 amountOutActual = _swapOutput(delta, params.zeroForOne);
         if (amountOutActual < amountOut) revert V4ExactOutputUnfilled(amountOut, amountOutActual);
         uint128 amountIn = _swapInput(delta, params.zeroForOne);
