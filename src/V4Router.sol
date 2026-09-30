@@ -112,6 +112,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         unchecked {
             // Caching for gas savings
             uint256 pathLength = params.path.length;
+            if (pathLength == 0) revert EmptyPath();
             uint128 amountOut;
             Currency currencyIn = params.currencyIn;
             uint128 amountIn = _mapSwapAmount(params.amountIn);
@@ -171,6 +172,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         unchecked {
             // Caching for gas savings
             uint256 pathLength = params.path.length;
+            if (pathLength == 0) revert EmptyPath();
             uint128 amountIn;
             uint128 amountOut = _mapSwapAmount(params.amountOut);
             Currency currencyOut = params.currencyOut;
