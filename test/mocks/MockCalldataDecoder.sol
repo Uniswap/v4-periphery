@@ -180,6 +180,10 @@ contract MockCalldataDecoder {
         });
     }
 
+    function toBytes(bytes calldata params, uint256 arg) external pure returns (bytes memory) {
+        return params.toBytes(arg);
+    }
+
     function decodeUint256(bytes calldata params) external pure returns (uint256) {
         return params.decodeUint256();
     }

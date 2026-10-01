@@ -112,6 +112,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         unchecked {
             // Caching for gas savings
             uint256 pathLength = params.path.length;
+            if (pathLength == 0) revert EmptyPath();
             uint128 amountOut;
             Currency currencyIn = params.currencyIn;
             uint128 amountIn = _mapSwapAmount(params.amountIn);
@@ -151,12 +152,15 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         }
         BalanceDelta delta = _swap(params.poolKey, params.zeroForOne, int256(uint256(amountOut)), params.hookData);
         // exact output is all-or-nothing: a pool can deliver less than requested if it runs out of
-        // liquidity before the price limit. Reverting on a shortfall keeps "exact output" exact;
-        // over-delivery (possible only via hook pools) is allowed.
+        // liquidity before the price limit, and never more, since v4-core folds a hook's specified-side
+        // delta into the amount it swaps and afterSwap can only adjust the unspecified side. Reverting
+        // on a shortfall keeps "exact output" exact.
         uint128 amountOutActual = _swapOutput(delta, params.zeroForOne);
         if (amountOutActual < amountOut) revert V4ExactOutputUnfilled(amountOut, amountOutActual);
         uint128 amountIn = _swapInput(delta, params.zeroForOne);
         if (amountIn > params.amountInMaximum) revert V4TooMuchRequested(params.amountInMaximum, amountIn);
+        // A zero-cost (fully hook-funded) swap leaves pre-funded input in the router; plans using
+        // payerIsUser=false or native input must return the full remaining input currency balance.
         // a hook can fund the whole input, leaving a positive output against a zero input. The realized
         // price is then infinite and clears every finite bound, so skip the division rather than panic.
         if (params.minHopPriceX36 != 0 && amountIn != 0) {
@@ -171,6 +175,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         unchecked {
             // Caching for gas savings
             uint256 pathLength = params.path.length;
+            if (pathLength == 0) revert EmptyPath();
             uint128 amountIn;
             uint128 amountOut = _mapSwapAmount(params.amountOut);
             Currency currencyOut = params.currencyOut;
@@ -211,6 +216,8 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 // PoolManager rejects. The untouched currencies carry no delta, so settlement is a
                 // no-op for them and amountIn of 0 trivially clears amountInMaximum below.
                 // The upstream pools are never swapped, so their hooks never run.
+                // A zero-cost (fully hook-funded) route leaves pre-funded input in the router; plans using
+                // payerIsUser=false or native input must return the full remaining input currency balance.
                 if (amountIn == 0) break;
                 amountOut = amountIn;
                 currencyOut = pathKey.intermediateCurrency;

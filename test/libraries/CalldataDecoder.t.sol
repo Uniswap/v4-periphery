@@ -431,4 +431,36 @@ contract CalldataDecoderTest is Test {
             result[i] = params[i];
         }
     }
+
+    function test_fuzz_toBytes_roundTrips(uint256 word, bytes calldata data) public view {
+        bytes memory params = abi.encode(word, data);
+        assertEq(decoder.toBytes(params, 1), data);
+    }
+
+    function test_fuzz_toBytes_revertsWhenHeadWordIsOutOfBounds(bytes calldata params, uint256 arg) public {
+        // the head word at index `arg` lies outside the slice, including indices large enough to wrap 32 * arg
+        vm.assume(arg >= params.length / 32);
+
+        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        decoder.toBytes(params, arg);
+    }
+
+    function test_toBytes_revertsWhenHeadWordIsImmediatelyOutOfBounds() public {
+        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        decoder.toBytes(abi.encode(uint256(0)), 1);
+    }
+
+    function test_toBytes_revertsWhenHeadWordOffsetWraps() public {
+        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        decoder.toBytes(abi.encode(bytes("")), 2 ** 251);
+    }
+
+    function test_decodeBurnParams_revertsWhenHookDataHeadIsOutOfBounds() public {
+        // three static words and no fourth: the head word holding the hookData offset is missing, so the
+        // decoder must not read it from whatever follows the slice
+        bytes memory params = abi.encode(uint256(1), uint128(2), uint128(3));
+
+        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        decoder.decodeBurnParams(params);
+    }
 }
