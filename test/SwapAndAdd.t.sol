@@ -134,6 +134,55 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
+    /// @dev Reconstruct the token1 debt from the mint and swap, then check the real burn is minimal.
+    function test_add_singleToken0_trimsOnlyNeededLiquidity() public {
+        (uint160 initialPrice,,,) = manager.getSlot0(key.toId());
+        vm.recordLogs();
+        (, uint128 finalLiquidity,,) = zap.add(_addParams(10e18, 0));
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 modifyLiquidityTopic = keccak256("ModifyLiquidity(bytes32,address,int24,int24,int256,bytes32)");
+        bytes32 swapTopic = keccak256("Swap(bytes32,address,int128,int128,uint160,uint128,int24,uint24)");
+        uint128 minted;
+        uint128 trimmed;
+        uint160 trimPrice;
+        uint256 received1;
+        uint256 mintCount;
+        uint256 trimCount;
+        uint256 swapCount;
+        for (uint256 i; i < logs.length; i++) {
+            if (logs[i].emitter != address(manager)) continue;
+            if (logs[i].topics[0] == modifyLiquidityTopic) {
+                (,, int256 liquidityDelta,) = abi.decode(logs[i].data, (int24, int24, int256, bytes32));
+                if (liquidityDelta > 0) {
+                    minted = uint128(uint256(liquidityDelta));
+                    mintCount++;
+                } else if (liquidityDelta < 0) {
+                    trimmed = uint128(uint256(-liquidityDelta));
+                    trimCount++;
+                }
+            } else if (logs[i].topics[0] == swapTopic) {
+                (, int128 amount1, uint160 sqrtPriceX96,,,) =
+                    abi.decode(logs[i].data, (int128, int128, uint160, uint128, int24, uint24));
+                assertGt(amount1, 0, "swap buys token1");
+                received1 = uint256(uint128(amount1));
+                trimPrice = sqrtPriceX96;
+                swapCount++;
+            }
+        }
+        assertEq(mintCount, 1, "one position mint");
+        assertEq(swapCount, 1, "one reconciliation swap");
+        assertEq(trimCount, 1, "one trim burn");
+        assertEq(minted - trimmed, finalLiquidity, "the burn is from the new position");
+
+        uint160 sqrtLower = TickMath.getSqrtPriceAtTick(TICK_LOWER);
+        uint256 needed1 = SqrtPriceMath.getAmount1Delta(sqrtLower, initialPrice, minted, true);
+        assertGt(needed1, received1, "the swap leaves a token1 debt");
+        uint256 debt1 = needed1 - received1;
+        assertGe(SqrtPriceMath.getAmount1Delta(sqrtLower, trimPrice, trimmed, false), debt1);
+        assertLt(SqrtPriceMath.getAmount1Delta(sqrtLower, trimPrice, trimmed - 1, false), debt1);
+    }
+
     function test_add_mixedRatio() public {
         (uint256 tokenId, uint128 liq,,) = zap.add(_addParams(3e18, 10e18));
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
