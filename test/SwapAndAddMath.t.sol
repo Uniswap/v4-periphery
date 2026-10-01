@@ -275,6 +275,74 @@ contract SwapAndAddMathTest is Test {
         return SqrtPriceMath.getAmount1Delta(sl, hi, dl, false);
     }
 
+    /// @dev The inverse must cover the debt without burning enough liquidity for an extra token unit.
+    function test_toFree_token1_singleUnitIsMinimalAtUpperEdge() public pure {
+        uint160 sl = TickMath.getSqrtPriceAtTick(-600);
+        uint160 hi = TickMath.getSqrtPriceAtTick(0);
+        uint256 dl = SwapAndAddMath.getLiquidityToTrim(hi, sl, hi, true, 1);
+
+        assertEq(dl, 34);
+        assertEq(freed1(sl, hi, uint128(dl)), 1);
+        assertEq(freed1(sl, hi, uint128(dl - 1)), 0);
+    }
+
+    function test_toFree_token1_singleUnitIsMinimalInsideRange() public pure {
+        uint160 sl = TickMath.getSqrtPriceAtTick(-60);
+        uint160 sp = TickMath.getSqrtPriceAtTick(0);
+        uint160 su = TickMath.getSqrtPriceAtTick(60);
+        uint256 dl = SwapAndAddMath.getLiquidityToTrim(sp, sl, su, true, 1);
+
+        assertEq(dl, 334);
+        assertEq(freed1(sl, sp, uint128(dl)), 1);
+        assertEq(freed1(sl, sp, uint128(dl - 1)), 0);
+    }
+
+    function test_toFree_token0_singleUnitIsMinimalBelowOneToOne() public pure {
+        uint160 lo = TickMath.getSqrtPriceAtTick(-600);
+        uint160 su = TickMath.getSqrtPriceAtTick(0);
+        uint256 dl = SwapAndAddMath.getLiquidityToTrim(lo, lo, su, false, 1);
+
+        assertEq(dl, 33);
+        assertEq(freed0(lo, su, uint128(dl)), 1);
+        assertEq(freed0(lo, su, uint128(dl - 1)), 0);
+    }
+
+    function test_toFree_token0_singleUnitIsMinimalAboveOneToOne() public pure {
+        uint160 lo = TickMath.getSqrtPriceAtTick(0);
+        uint160 su = TickMath.getSqrtPriceAtTick(600);
+        uint256 dl = SwapAndAddMath.getLiquidityToTrim(lo, lo, su, false, 1);
+
+        assertEq(dl, 34);
+        assertEq(freed0(lo, su, uint128(dl)), 1);
+        assertEq(freed0(lo, su, uint128(dl - 1)), 0);
+    }
+
+    function testFuzz_toFree_token1_minimalAtFixedPrice(uint160 slSeed, uint160 hiSeed, uint256 debtSeed) public pure {
+        uint160 sl = uint160(bound(slSeed, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE - 1));
+        uint160 hi = uint160(bound(hiSeed, uint256(sl) + 1, TickMath.MAX_SQRT_PRICE));
+        uint256 maxDebt = freed1(sl, hi, type(uint128).max);
+        if (maxDebt == 0) return;
+        uint256 debt = bound(debtSeed, 1, maxDebt);
+
+        uint256 dl = SwapAndAddMath.getLiquidityToTrim(hi, sl, hi, true, debt);
+        if (dl > type(uint128).max) return; // the caller caps at the liquidity it added
+        assertGe(freed1(sl, hi, uint128(dl)), debt);
+        assertLt(freed1(sl, hi, uint128(dl - 1)), debt, "one less must under-free token1");
+    }
+
+    function testFuzz_toFree_token0_minimalBelowOneToOne(uint160 loSeed, uint160 suSeed, uint256 debtSeed) public pure {
+        uint160 su = uint160(bound(suSeed, TickMath.MIN_SQRT_PRICE + 1, FixedPoint96.Q96));
+        uint160 lo = uint160(bound(loSeed, TickMath.MIN_SQRT_PRICE, uint256(su) - 1));
+        uint256 maxDebt = freed0(lo, su, type(uint128).max);
+        if (maxDebt == 0) return;
+        uint256 debt = bound(debtSeed, 1, maxDebt);
+
+        uint256 dl = SwapAndAddMath.getLiquidityToTrim(lo, lo, su, false, debt);
+        if (dl > type(uint128).max) return; // the caller caps at the liquidity it added
+        assertGe(freed0(lo, su, uint128(dl)), debt);
+        assertLt(freed0(lo, su, uint128(dl - 1)), debt, "one less must under-free token0");
+    }
+
     /// @dev A burn of the round-up `dl` must free >= amountOut. sp == sl makes the clamp a pass-through.
     function testFuzz_toFree_token0_neverUnderFrees(uint160 loSeed, uint160 suSeed, uint256 amountSeed) public pure {
         uint160 lo = uint160(bound(loSeed, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE - 1));

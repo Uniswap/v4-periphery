@@ -145,9 +145,10 @@ library SwapAndAddMath {
 
     /// @notice Computes the liquidity to burn so that v4's rounded-down burn output covers
     ///         `amountToCover` of the deficit token.
-    /// @dev Ceiling inverse over `amountToCover + 1`, so the freed amount is always sufficient. At or
-    ///      past the range's far side the position holds none of the deficit token, so no finite burn
-    ///      frees any: returns type(uint256).max for the caller's cap.
+    /// @dev Ceiling inverse over `amountToCover`: a rounded-down burn covers an integer debt when
+    ///      its unrounded output is at least that debt. At or past the range's far side the position
+    ///      holds none of the deficit token, so no finite burn frees any: returns type(uint256).max
+    ///      for the caller's cap.
     /// @param sqrtPriceX96 Current pool sqrt price.
     /// @param sqrtPriceLowerX96 Sqrt price at the position's lower tick.
     /// @param sqrtPriceUpperX96 Sqrt price at the position's upper tick.
@@ -168,7 +169,7 @@ library SwapAndAddMath {
             // token1 occupies [sqrtLower, min(price, sqrtUpper)]: amount1 = L * (hi - lo) / Q96
             uint160 clampedUpper = sqrtPriceX96 < sqrtPriceUpperX96 ? sqrtPriceX96 : sqrtPriceUpperX96;
             liquidityToTrim =
-                FullMath.mulDivRoundingUp(amountToCover + 1, FixedPoint96.Q96, clampedUpper - sqrtPriceLowerX96);
+                FullMath.mulDivRoundingUp(amountToCover, FixedPoint96.Q96, clampedUpper - sqrtPriceLowerX96);
         } else {
             // token0 occupies [max(price, sqrtLower), sqrtUpper]: amount0 = L * Q96 * (hi - lo) / (hi * lo)
             uint160 clampedLower = sqrtPriceX96 > sqrtPriceLowerX96 ? sqrtPriceX96 : sqrtPriceLowerX96;
@@ -176,7 +177,7 @@ library SwapAndAddMath {
             // If the product fits below Q96, divide once. The split's intermediate would round up from below 1 and over-trim
             if (sqrtPriceUpperX96 <= FixedPoint96.Q96) {
                 liquidityToTrim = FullMath.mulDivRoundingUp(
-                    amountToCover + 1,
+                    amountToCover,
                     uint256(clampedLower) * sqrtPriceUpperX96,
                     uint256(sqrtPriceUpperX96 - clampedLower) * FixedPoint96.Q96
                 );
@@ -186,8 +187,7 @@ library SwapAndAddMath {
             uint256 intermediate = FullMath.mulDivRoundingUp(clampedLower, sqrtPriceUpperX96, FixedPoint96.Q96);
             // can overflow and revert when the price is within sqrt units of sqrtUpper with a large
             // deficit (self-inflicted and atomic, a safe known limit)
-            liquidityToTrim =
-                FullMath.mulDivRoundingUp(amountToCover + 1, intermediate, sqrtPriceUpperX96 - clampedLower);
+            liquidityToTrim = FullMath.mulDivRoundingUp(amountToCover, intermediate, sqrtPriceUpperX96 - clampedLower);
         }
     }
 
