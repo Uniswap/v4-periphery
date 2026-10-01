@@ -116,10 +116,12 @@ contract CalldataDecoderTest is Test {
         _assertEq(swapParams.minHopPriceX36, _swapParams.minHopPriceX36);
     }
 
+    /// @notice `abi.decode` derives its bounds from the data it is handed rather than from a fixed
+    ///         minimum, so the boundary is the 5-word struct head: below it the head cannot be read.
     function test_decodeSwapExactInParams_minLengthBoundary() public {
-        // 0xdf = 0xe0 - 1, one byte below the minimum — should revert
-        bytes memory params = new bytes(0xdf);
-        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        // 0x9f = 0xa0 - 1, one byte below the struct head — should revert
+        bytes memory params = new bytes(0x9f);
+        vm.expectRevert();
         decoder.decodeSwapExactInParams(params);
     }
 
@@ -149,10 +151,12 @@ contract CalldataDecoderTest is Test {
         _assertEq(swapParams.minHopPriceX36, _swapParams.minHopPriceX36);
     }
 
+    /// @notice `abi.decode` derives its bounds from the data it is handed rather than from a fixed
+    ///         minimum, so the boundary is the 5-word struct head: below it the head cannot be read.
     function test_decodeSwapExactOutParams_minLengthBoundary() public {
-        // 0xdf = 0xe0 - 1, one byte below the minimum — should revert
-        bytes memory params = new bytes(0xdf);
-        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        // 0x9f = 0xa0 - 1, one byte below the struct head — should revert
+        bytes memory params = new bytes(0x9f);
+        vm.expectRevert();
         decoder.decodeSwapExactOutParams(params);
     }
 
@@ -426,5 +430,37 @@ contract CalldataDecoderTest is Test {
         for (uint256 i = 0; i < params.length - 2; i++) {
             result[i] = params[i];
         }
+    }
+
+    function test_fuzz_toBytes_roundTrips(uint256 word, bytes calldata data) public view {
+        bytes memory params = abi.encode(word, data);
+        assertEq(decoder.toBytes(params, 1), data);
+    }
+
+    function test_fuzz_toBytes_revertsWhenHeadWordIsOutOfBounds(bytes calldata params, uint256 arg) public {
+        // the head word at index `arg` lies outside the slice, including indices large enough to wrap 32 * arg
+        vm.assume(arg >= params.length / 32);
+
+        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        decoder.toBytes(params, arg);
+    }
+
+    function test_toBytes_revertsWhenHeadWordIsImmediatelyOutOfBounds() public {
+        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        decoder.toBytes(abi.encode(uint256(0)), 1);
+    }
+
+    function test_toBytes_revertsWhenHeadWordOffsetWraps() public {
+        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        decoder.toBytes(abi.encode(bytes("")), 2 ** 251);
+    }
+
+    function test_decodeBurnParams_revertsWhenHookDataHeadIsOutOfBounds() public {
+        // three static words and no fourth: the head word holding the hookData offset is missing, so the
+        // decoder must not read it from whatever follows the slice
+        bytes memory params = abi.encode(uint256(1), uint128(2), uint128(3));
+
+        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        decoder.decodeBurnParams(params);
     }
 }
