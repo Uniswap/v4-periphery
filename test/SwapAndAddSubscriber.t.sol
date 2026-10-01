@@ -128,6 +128,8 @@ contract SwapAndAddSubscriberTest is PosmTestSetup {
             route: "",
             routeFunding: new ISwapAndAdd.TokenAmount[](0),
             minLiquidityAdded: minLiq,
+            sqrtPriceMinX96: 0,
+            sqrtPriceMaxX96: type(uint160).max,
             recipient: address(this),
             hookData: "",
             deadline: block.timestamp + 1
@@ -159,6 +161,8 @@ contract SwapAndAddSubscriberTest is PosmTestSetup {
                 tokenId: tokenId,
                 route: "",
                 minLiquidityAdded: 1,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: address(this),
                 hookData: "",
                 deadline: block.timestamp + 1
@@ -183,6 +187,8 @@ contract SwapAndAddSubscriberTest is PosmTestSetup {
                 route: "",
                 routeFunding: new ISwapAndAdd.TokenAmount[](0),
                 minLiquidity: 1,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: address(this),
                 hookData: "",
                 deadline: block.timestamp + 1
@@ -230,6 +236,8 @@ contract SwapAndAddSubscriberTest is PosmTestSetup {
                 route: "",
                 routeFunding: new ISwapAndAdd.TokenAmount[](0),
                 minLiquidity: 1,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: address(this),
                 hookData: "",
                 deadline: block.timestamp + 1

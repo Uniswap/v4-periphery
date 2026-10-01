@@ -55,6 +55,9 @@ contract SwapAndAddGasTest is PosmTestSetup {
         );
 
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+
+        // warm the standing allowances so snapshots measure steady-state operations
+        zap.add(_addParams(1e18, 1e18));
     }
 
     function _approveZap(Currency c) internal {
@@ -72,6 +75,8 @@ contract SwapAndAddGasTest is PosmTestSetup {
             route: "",
             routeFunding: new ISwapAndAdd.TokenAmount[](0),
             minLiquidity: 0,
+            sqrtPriceMinX96: 0,
+            sqrtPriceMaxX96: type(uint160).max,
             recipient: address(this),
             hookData: "",
             deadline: block.timestamp + 1
@@ -90,6 +95,8 @@ contract SwapAndAddGasTest is PosmTestSetup {
             route: "",
             routeFunding: new ISwapAndAdd.TokenAmount[](0),
             minLiquidityAdded: 0,
+            sqrtPriceMinX96: 0,
+            sqrtPriceMaxX96: type(uint160).max,
             recipient: address(this),
             hookData: "",
             deadline: block.timestamp + 1
@@ -134,7 +141,8 @@ contract SwapAndAddGasTest is PosmTestSetup {
 
     /// @dev Measures the route plumbing on top of a near-balanced add.
     function test_gas_add_routed() public {
-        route.config(Currency.unwrap(currency1), Currency.unwrap(currency0), FixedPoint96.Q96, 10000, 5e18, false);
+        // 0.5% worse than mid, so the route lands near the ratio and the reconcile swap and trim still run
+        route.config(Currency.unwrap(currency1), Currency.unwrap(currency0), FixedPoint96.Q96, 9950, 5e18, false);
         ISwapAndAdd.AddParams memory p = _addParams(0, 10e18);
         p.route = ROUTE_PAYLOAD;
         zap.add(p);
@@ -167,6 +175,8 @@ contract SwapAndAddGasTest is PosmTestSetup {
                 tokenId: tokenId,
                 route: "",
                 minLiquidityAdded: 0,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: address(this),
                 hookData: "",
                 deadline: block.timestamp + 1
@@ -190,6 +200,8 @@ contract SwapAndAddGasTest is PosmTestSetup {
                 route: "",
                 routeFunding: new ISwapAndAdd.TokenAmount[](0),
                 minLiquidity: 0,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: address(this),
                 hookData: "",
                 deadline: block.timestamp + 1

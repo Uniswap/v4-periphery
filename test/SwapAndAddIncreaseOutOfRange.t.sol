@@ -66,6 +66,8 @@ contract SwapAndAddIncreaseOutOfRangeTest is PosmTestSetup {
                 route: "",
                 routeFunding: new ISwapAndAdd.TokenAmount[](0),
                 minLiquidity: 0,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: address(this),
                 hookData: "",
                 deadline: block.timestamp + 1
@@ -87,6 +89,8 @@ contract SwapAndAddIncreaseOutOfRangeTest is PosmTestSetup {
                 route: "",
                 routeFunding: new ISwapAndAdd.TokenAmount[](0),
                 minLiquidityAdded: 0,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: address(this),
                 hookData: "",
                 deadline: block.timestamp + 1
@@ -183,6 +187,8 @@ contract SwapAndAddIncreaseOutOfRangeTest is PosmTestSetup {
                 route: "",
                 routeFunding: new ISwapAndAdd.TokenAmount[](0),
                 minLiquidityAdded: 0,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: operator, // requested self, must be overridden to the owner
                 hookData: "",
                 deadline: block.timestamp + 1
@@ -213,6 +219,8 @@ contract SwapAndAddIncreaseOutOfRangeTest is PosmTestSetup {
                 route: "",
                 routeFunding: new ISwapAndAdd.TokenAmount[](0),
                 minLiquidityAdded: 0,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
                 recipient: stranger,
                 hookData: "",
                 deadline: block.timestamp + 1

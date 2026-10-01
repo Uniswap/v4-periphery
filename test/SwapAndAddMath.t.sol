@@ -17,7 +17,7 @@ contract SwapAndAddMathTest is Test {
 
     // getAmountsForLiquidity: round-up amounts
 
-    /// @dev Below range is token0 only, above is token1 only, in range is both, unsorted bounds normalize.
+    /// @dev Below range is token0 only, above is token1 only, in range is both.
     function test_getAmountsForLiquidity_branches() public pure {
         uint160 sl = TickMath.getSqrtPriceAtTick(-600);
         uint160 su = TickMath.getSqrtPriceAtTick(600);
@@ -34,11 +34,26 @@ contract SwapAndAddMathTest is Test {
         (a0, a1) = SwapAndAddMath.getAmountsForLiquidityRoundingUp(TickMath.getSqrtPriceAtTick(0), sl, su, liq);
         assertGt(a0, 0, "in range: token0");
         assertGt(a1, 0, "in range: token1");
+    }
 
-        (uint256 a0s, uint256 a1s) =
-            SwapAndAddMath.getAmountsForLiquidityRoundingUp(TickMath.getSqrtPriceAtTick(0), su, sl, liq);
-        assertEq(a0s, a0, "unsorted bounds normalized (amount0)");
-        assertEq(a1s, a1, "unsorted bounds normalized (amount1)");
+    /// @dev The sizer's two rounding floors can return a liquidity whose round-up amounts exceed BOTH
+    ///      budgets by one wei. Inputs pinned to the wei (OZ N-08): one-tick 0.01% range, budgets equal
+    ///      to the exact amounts for `sized - 1`. `_planLiquidity` steps down one unit for this case.
+    function test_getLiquidityFeeAware_canOvershootBothBudgets() public pure {
+        uint160 sp = 79229262514264337593543964551;
+        uint160 sl = TickMath.getSqrtPriceAtTick(0);
+        uint160 su = TickMath.getSqrtPriceAtTick(1);
+        uint256 b0 = 1481158881979609612901196;
+        uint256 b1 = 569452233024260127727281;
+
+        uint128 sized = SwapAndAddMath.getLiquidityFeeAware(sp, sl, su, b0, b1, 0, 100);
+        (uint256 a0, uint256 a1) = SwapAndAddMath.getAmountsForLiquidityRoundingUp(sp, sl, su, sized);
+        assertEq(a0, b0 + 1, "token0 one wei over budget");
+        assertEq(a1, b1 + 1, "token1 one wei over budget");
+
+        (a0, a1) = SwapAndAddMath.getAmountsForLiquidityRoundingUp(sp, sl, su, sized - 1);
+        assertEq(a0, b0, "sized - 1 fits budget0 exactly");
+        assertEq(a1, b1, "sized - 1 fits budget1 exactly");
     }
 
     /// @dev The round-up amounts must sit within one wei above a clamp-formulated round-down oracle:
@@ -390,6 +405,33 @@ contract SwapAndAddMathTest is Test {
         uint256 dl = SwapAndAddMath.getLiquidityToTrim(hi, sl, hi, true, a);
         if (dl > type(uint128).max) return;
         assertGe(freed1(sl, hi, uint128(dl)), a, "token1 inverse under-freed");
+    }
+
+    /// @dev At or past the far side the position holds none of the deficit token, so no finite burn
+    ///      frees any: the inverse returns type(uint256).max for the caller's cap to absorb.
+    function test_toFree_atOrPastFarSideReturnsMax() public pure {
+        uint160 sl = TickMath.getSqrtPriceAtTick(-600);
+        uint160 su = TickMath.getSqrtPriceAtTick(600);
+        // token1 deficit: far side is the lower edge
+        assertEq(SwapAndAddMath.getLiquidityToTrim(sl, sl, su, true, 1), type(uint256).max, "token1 at lower");
+        assertEq(SwapAndAddMath.getLiquidityToTrim(sl - 1, sl, su, true, 1), type(uint256).max, "token1 past lower");
+        assertLt(SwapAndAddMath.getLiquidityToTrim(sl + 1, sl, su, true, 1), type(uint256).max, "token1 inside");
+        // token0 deficit: far side is the upper edge
+        assertEq(SwapAndAddMath.getLiquidityToTrim(su, sl, su, false, 1), type(uint256).max, "token0 at upper");
+        assertEq(SwapAndAddMath.getLiquidityToTrim(su + 1, sl, su, false, 1), type(uint256).max, "token0 past upper");
+        assertLt(SwapAndAddMath.getLiquidityToTrim(su - 1, sl, su, false, 1), type(uint256).max, "token0 inside");
+    }
+
+    /// @dev Below tick ~-665k the split inverse's intermediate rounded up from below 1 and over-trimmed by
+    ///      up to ~2^32. The undivided path is exact: the minimal sufficient burn, and one less under-frees.
+    function test_toFree_lowPriceToken0_isTight() public pure {
+        uint160 sl = TickMath.getSqrtPriceAtTick(-800_000);
+        uint160 su = TickMath.getSqrtPriceAtTick(-799_940);
+        uint256 debt = 1e18;
+        uint256 dl = SwapAndAddMath.getLiquidityToTrim(sl, sl, su, false, debt);
+        assertEq(dl, 1422, "minimal sufficient burn");
+        assertGe(SqrtPriceMath.getAmount0Delta(sl, su, uint128(dl), false), debt, "frees the debt");
+        assertLt(SqrtPriceMath.getAmount0Delta(sl, su, uint128(dl - 1), false), debt, "one less under-frees");
     }
 
     /// @dev Documented limit: a price within sqrt-units of sqrtUpper plus an enormous token0 debt

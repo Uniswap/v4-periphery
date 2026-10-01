@@ -1,11 +1,11 @@
 {
-  "SwapAndAdd_add_balanced": "552631",
-  "SwapAndAdd_add_mixedRatio": "699952",
-  "SwapAndAdd_add_native": "543142",
-  "SwapAndAdd_add_routed": "578411",
-  "SwapAndAdd_add_singleSided": "690728",
-  "SwapAndAdd_compound": "386460",
-  "SwapAndAdd_increase_noFees": "364992",
-  "SwapAndAdd_increase_withAccruedFees": "397098",
-  "SwapAndAdd_rebalance": "552736"
+  "SwapAndAdd_add_balanced": "302573",
+  "SwapAndAdd_add_mixedRatio": "454045",
+  "SwapAndAdd_add_native": "454864",
+  "SwapAndAdd_add_routed": "488645",
+  "SwapAndAdd_add_singleSided": "444821",
+  "SwapAndAdd_compound": "388027",
+  "SwapAndAdd_increase_noFees": "366752",
+  "SwapAndAdd_increase_withAccruedFees": "398858",
+  "SwapAndAdd_rebalance": "562266"
 }
