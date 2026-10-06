@@ -17,7 +17,8 @@ import {IMulticall_v4} from "./IMulticall_v4.sol";
 ///
 ///      Integration surface:
 ///      - Routes must use explicit input amounts. Balance-relative commands are unsafe because the
-///        zap forwards its full native balance to the router.
+///        zap forwards its full native balance to the router on native pools or when ETH is sent.
+///        Where native has an ERC20 alias (e.g. Arc's USDC), do not mix the two in one operation.
 ///      - Non-pool route outputs must appear in `routeFunding` to be swept. A zero amount is enough.
 ///      - `minLiquidity` / `minLiquidityAdded` is the liquidity floor, applied post-trim.
 ///        The sqrt price band bounds the price we size at (checked after the route).
@@ -275,4 +276,10 @@ interface ISwapAndAdd is IMulticall_v4 {
     function compound(CompoundParams calldata params)
         external
         returns (uint128 liquidityAdded, uint256 amount0, uint256 amount1);
+
+    /// @notice Permissionlessly sweep any token from the contract
+    /// @dev Requires that no operations are ongoing
+    /// @param token the currency to sweep, address(0) for native
+    /// @param recipient recipient of the swept funds
+    function sweep(Currency token, address recipient) external payable;
 }

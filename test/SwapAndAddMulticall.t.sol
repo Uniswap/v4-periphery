@@ -726,4 +726,38 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         assertEq(address(zap).balance, 0, "no native at rest after the op");
         assertGe(signer.balance, balBefore - 1e17 + donation, "donation swept to the op's recipient");
     }
+
+    /// @dev A trailing native sweep returns the value a permit-only batch would otherwise strand.
+    function test_multicall_permitsOnlyValueBatch_sweepRecoversValue() public {
+        IAllowanceTransfer.PermitBatch memory b = _batch(_oneToken(currency1));
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeCall(IPermit2Forwarder.permitBatch, (signer, b, _sign(b, signerPk)));
+        calls[1] = abi.encodeCall(ISwapAndAdd.sweep, (CurrencyLibrary.ADDRESS_ZERO, signer));
+
+        uint256 balBefore = signer.balance;
+        vm.prank(signer);
+        zap.multicall{value: 0.05 ether}(calls);
+
+        assertEq(address(zap).balance, 0, "no native at rest");
+        assertEq(signer.balance, balBefore, "batch value returned to the signer");
+    }
+
+    /// @dev sweep is payable, unlike compound, so it composes into a value batch after a native op.
+    function test_multicall_valueBatch_nativeAddThenSweep() public {
+        // a non-pool token for this op, stranded in the contract
+        MockERC20(Currency.unwrap(currency0)).mint(address(zap), 1e18);
+        uint256 c0Before = currency0.balanceOf(signer);
+
+        vm.startPrank(signer);
+        permit2.approve(Currency.unwrap(currency1), address(zap), type(uint160).max, type(uint48).max);
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeCall(ISwapAndAdd.add, (_addParams(nativeKey, 1e17, 1e17)));
+        calls[1] = abi.encodeCall(ISwapAndAdd.sweep, (currency0, signer));
+        zap.multicall{value: 1e17}(calls);
+        vm.stopPrank();
+
+        assertEq(currency0.balanceOf(signer), c0Before + 1e18, "stranded token swept in the batch");
+        assertEq(currency0.balanceOf(address(zap)), 0, "no token0 at rest");
+        assertEq(address(zap).balance, 0, "no native at rest");
+    }
 }
