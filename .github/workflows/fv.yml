@@ -1,0 +1,46 @@
+name: Formal Verification
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths:
+      - "fv/swap-and-add/**"
+      - "src/libraries/SwapAndAddMath.sol"
+      - "test/SwapAndAddMathLeanModel.t.sol"
+      - "lib/v4-core"
+      - ".github/workflows/fv.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  swap-and-add:
+    name: SwapAndAdd Lean proofs
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: bullfrogsec/bullfrog@1831f79cce8ad602eef14d2163873f27081ebfb3 # v0.8.4
+
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      # Installs the toolchain from lean-toolchain, fetches the Mathlib cache, and builds.
+      # --wfail fails the build on any warning, including a proof left as `sorry`.
+      - name: Build proofs
+        uses: leanprover/lean-action@f061402b660e0c34644504b324e830f2991d4865 # v1.6.1
+        with:
+          lake-package-directory: fv/swap-and-add/SwapAndAddFV
+          build-args: --wfail
+          test: false
+          lint: false
+
+      # The committed vectors must be what the current models generate. The Forge Tests workflow
+      # replays them against the Solidity (test/SwapAndAddMathLeanModel.t.sol).
+      - name: Check test vectors are up to date
+        working-directory: fv/swap-and-add/SwapAndAddFV
+        run: |
+          lake exe vectors
+          git diff --exit-code -- ../vectors
