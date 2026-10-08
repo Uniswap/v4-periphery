@@ -6,6 +6,8 @@ import {Test} from "forge-std/Test.sol";
 import {PathKey} from "../src/libraries/PathKey.sol";
 import {Deploy, IV4Quoter} from "../test/shared/Deploy.sol";
 import {BaseV4Quoter} from "../src/base/BaseV4Quoter.sol";
+import {IV4Router} from "../src/interfaces/IV4Router.sol";
+import {QuoterRevert} from "../src/libraries/QuoterRevert.sol";
 import {MockMsgSenderHook} from "./mocks/MockMsgSenderHook.sol";
 
 // v4-core
@@ -552,6 +554,36 @@ contract QuoterTest is Test, Deployers {
         uint160 sqrtRatioBX96 = TickMath.getSqrtPriceAtTick(tickUpper);
         liquidity =
             LiquidityAmounts.getLiquidityForAmounts(sqrtRatioX96, sqrtRatioAX96, sqrtRatioBX96, amount0, amount1);
+    }
+
+    /// @dev An empty path never swaps, so without a guard the quote would echo the exact amount back as a 1:1
+    /// trade that V4Router then rejects with EmptyPath. The quoter must fail the same way.
+    function testQuoter_quoteExactInput_revertsOnEmptyPath() public {
+        IV4Quoter.QuoteExactParams memory params;
+        params.exactCurrency = Currency.wrap(address(token0));
+        params.path = new PathKey[](0);
+        params.exactAmount = 10000;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                QuoterRevert.UnexpectedRevertBytes.selector, abi.encodeWithSelector(IV4Router.EmptyPath.selector)
+            )
+        );
+        quoter.quoteExactInput(params);
+    }
+
+    function testQuoter_quoteExactOutput_revertsOnEmptyPath() public {
+        IV4Quoter.QuoteExactParams memory params;
+        params.exactCurrency = Currency.wrap(address(token0));
+        params.path = new PathKey[](0);
+        params.exactAmount = 10000;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                QuoterRevert.UnexpectedRevertBytes.selector, abi.encodeWithSelector(IV4Router.EmptyPath.selector)
+            )
+        );
+        quoter.quoteExactOutput(params);
     }
 
     function getExactInputParams(MockERC20[] memory _tokenPath, uint256 amountIn)
