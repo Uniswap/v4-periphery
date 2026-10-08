@@ -8,6 +8,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {IV4Quoter} from "../interfaces/IV4Quoter.sol";
+import {IV4Router} from "../interfaces/IV4Router.sol";
 import {PathKey} from "../libraries/PathKey.sol";
 import {QuoterRevert} from "../libraries/QuoterRevert.sol";
 import {BaseV4Quoter} from "../base/BaseV4Quoter.sol";
@@ -93,6 +94,7 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
     /// @dev external function called within the _unlockCallback, to simulate an exact input swap, then revert with the result
     function _quoteExactInput(QuoteExactParams calldata params) external selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
+        if (pathLength == 0) revert IV4Router.EmptyPath();
         BalanceDelta swapDelta;
         uint128 amountIn = params.exactAmount;
         Currency inputCurrency = params.exactCurrency;
@@ -125,6 +127,7 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
     /// @dev external function called within the _unlockCallback, to simulate an exact output swap, then revert with the result
     function _quoteExactOutput(QuoteExactParams calldata params) external selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
+        if (pathLength == 0) revert IV4Router.EmptyPath();
         BalanceDelta swapDelta;
         uint128 amountOut = params.exactAmount;
         Currency outputCurrency = params.exactCurrency;

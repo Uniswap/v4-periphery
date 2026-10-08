@@ -3,13 +3,13 @@
   "Quoter_exactInputSingle_zeroForOne_multiplePositions": "152407",
   "Quoter_exactOutputSingle_oneForZero": "79521",
   "Quoter_exactOutputSingle_zeroForOne": "84774",
-  "Quoter_quoteExactInput_oneHop_1TickLoaded": "123746",
-  "Quoter_quoteExactInput_oneHop_initializedAfter": "148371",
-  "Quoter_quoteExactInput_oneHop_startingInitialized": "81646",
-  "Quoter_quoteExactInput_twoHops": "206749",
-  "Quoter_quoteExactOutput_oneHop_1TickLoaded": "123262",
-  "Quoter_quoteExactOutput_oneHop_2TicksLoaded": "153917",
-  "Quoter_quoteExactOutput_oneHop_initializedAfter": "123289",
-  "Quoter_quoteExactOutput_oneHop_startingInitialized": "99583",
-  "Quoter_quoteExactOutput_twoHops": "206524"
+  "Quoter_quoteExactInput_oneHop_1TickLoaded": "123771",
+  "Quoter_quoteExactInput_oneHop_initializedAfter": "148396",
+  "Quoter_quoteExactInput_oneHop_startingInitialized": "81671",
+  "Quoter_quoteExactInput_twoHops": "206774",
+  "Quoter_quoteExactOutput_oneHop_1TickLoaded": "123287",
+  "Quoter_quoteExactOutput_oneHop_2TicksLoaded": "153942",
+  "Quoter_quoteExactOutput_oneHop_initializedAfter": "123314",
+  "Quoter_quoteExactOutput_oneHop_startingInitialized": "99608",
+  "Quoter_quoteExactOutput_twoHops": "206549"
 }
