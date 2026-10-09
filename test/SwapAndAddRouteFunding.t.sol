@@ -159,6 +159,38 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         assertEq(tokenX.balanceOf(address(zap)), 0);
     }
 
+    /// @dev route: consume `inputAmount` of currency0, pay out X (a non-pool token) to the zap
+    function _configXOutputRoute(uint256 inputAmount) internal {
+        tokenX.mint(address(route), 1e24);
+        route.config(Currency.unwrap(currency0), address(tokenX), 1 << 96, 10000, inputAmount, true);
+    }
+
+    /// @dev An undeclared non-pool route output stays at rest, where anyone can sweep it.
+    function test_add_undeclaredRouteOutput_restsUntilSwept() public {
+        _configXOutputRoute(1e18);
+        zap.add(_addP(5e18, 5e18, ROUTE_PAYLOAD, new ISwapAndAdd.TokenAmount[](0)));
+        assertEq(tokenX.balanceOf(address(zap)), 1e18, "undeclared output rests in the zap");
+
+        address stranger = makeAddr("stranger");
+        vm.prank(stranger);
+        zap.sweep(Currency.wrap(address(tokenX)), stranger);
+        assertEq(tokenX.balanceOf(stranger), 1e18, "claimable by anyone");
+        assertEq(tokenX.balanceOf(address(zap)), 0, "no X at rest");
+    }
+
+    /// @dev A sweep in the same batch recovers the undeclared output atomically.
+    function test_add_undeclaredRouteOutput_sweptInSameBatch() public {
+        _configXOutputRoute(1e18);
+        ISwapAndAdd.AddParams memory p = _addP(5e18, 5e18, ROUTE_PAYLOAD, new ISwapAndAdd.TokenAmount[](0));
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeCall(ISwapAndAdd.add, (p));
+        calls[1] = abi.encodeCall(ISwapAndAdd.sweep, (Currency.wrap(address(tokenX)), recipient));
+        zap.multicall(calls);
+
+        assertEq(tokenX.balanceOf(recipient), 1e18, "output swept to the recipient");
+        assertEq(tokenX.balanceOf(address(zap)), 0, "no X at rest");
+    }
+
     /// @dev a zero-amount entry pulls nothing but wires and sweeps the token (donation claim)
     function test_add_funding_zeroAmountEntry_claimsDonation() public {
         tokenX.transfer(address(zap), 5e18); // donation / stuck tokens

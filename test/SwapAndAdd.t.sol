@@ -34,6 +34,7 @@ import {MockPosmDebtHook} from "./mocks/MockPosmDebtHook.sol";
 import {MockDebtPlantingRoute} from "./mocks/MockDebtPlantingRoute.sol";
 import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
+import {ReentrancyLock} from "../src/base/ReentrancyLock.sol";
 
 /// @notice SwapAndAdd tests. Empty-route cases exercise the same-pool path, routed cases drive a
 ///         MockSwapRoute. End-to-end tests against the real Universal Router live in test-integration/.
@@ -214,6 +215,9 @@ contract SwapAndAddTest is PosmTestSetup {
         compoundParams.recipient = address(zap);
         vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InvalidRecipient.selector, address(zap)));
         zap.compound(compoundParams);
+
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InvalidRecipient.selector, address(zap)));
+        zap.sweep(currency0, address(zap));
     }
 
     /// @dev Every entrypoint rejects the zero address up front, so no sweep can silently burn leftovers.
@@ -239,6 +243,9 @@ contract SwapAndAddTest is PosmTestSetup {
         compoundParams.recipient = address(0);
         vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InvalidRecipient.selector, address(0)));
         zap.compound(compoundParams);
+
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InvalidRecipient.selector, address(0)));
+        zap.sweep(CurrencyLibrary.ADDRESS_ZERO, address(0));
     }
 
     /// @dev receive() accepts native only from known senders, so a stray transfer cannot join a sweep.
@@ -249,6 +256,60 @@ contract SwapAndAddTest is PosmTestSetup {
         vm.prank(address(manager));
         (bool okPm,) = address(zap).call{value: 1 ether}("");
         assertTrue(okPm, "PoolManager may send native");
+    }
+
+    // sweep (permissionless recovery of at-rest balances)
+
+    /// @dev Anyone can claim the contract's whole at-rest balance of a token.
+    function test_sweep_anyCallerClaimsWholeBalance() public {
+        currency0.transfer(address(zap), 3e18); // donation or stranded payout
+        address stranger = makeAddr("stranger");
+
+        vm.prank(stranger);
+        zap.sweep(currency0, stranger);
+
+        assertEq(currency0.balanceOf(stranger), 3e18, "whole balance swept");
+        assertEq(currency0.balanceOf(address(zap)), 0, "nothing left at rest");
+    }
+
+    /// @dev A native sweep includes the call's own value, so a payable sweep cannot strand ETH.
+    function test_sweep_native_includesMsgValue() public {
+        vm.deal(address(zap), 1 ether); // forced ETH bypasses receive()
+        address stranger = makeAddr("stranger");
+        vm.deal(stranger, 0.5 ether);
+
+        vm.prank(stranger);
+        zap.sweep{value: 0.5 ether}(CurrencyLibrary.ADDRESS_ZERO, stranger);
+
+        assertEq(stranger.balance, 1.5 ether, "forced ETH and msg.value swept");
+        assertEq(address(zap).balance, 0, "no native at rest");
+    }
+
+    /// @dev An empty balance is a no-op, not a zero-amount transfer that some tokens reject.
+    function test_sweep_emptyBalance_noTransfer() public {
+        vm.recordLogs();
+        zap.sweep(currency1, address(this));
+        assertEq(vm.getRecordedLogs().length, 0, "no transfer attempted");
+    }
+
+    /// @dev The lock spans every callback of an operation, so a recipient paid mid-operation cannot
+    ///      sweep, neither directly nor through multicall.
+    function test_sweep_blockedDuringOperation() public {
+        ISwapAndAdd.AddParams memory ap = _addParams(1e18, 1e18);
+        ap.poolKey = nativeKey;
+        (uint256 tokenId,,,) = zap.add{value: 1e18}(ap);
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+
+        // the native cash-out pays the recipient between the burn and the main unlock
+        SweepReentrantRecipient receiver = new SweepReentrantRecipient(zap);
+        ISwapAndAdd.RebalanceParams memory rp = _rebalanceParams(tokenId, -0.1 ether, 0);
+        rp.recipient = address(receiver);
+        zap.rebalance(rp);
+
+        assertEq(receiver.directError(), ReentrancyLock.ContractLocked.selector, "direct sweep locked");
+        assertEq(receiver.multicallError(), ReentrancyLock.ContractLocked.selector, "multicall sweep locked");
+        assertGe(address(receiver).balance, 0.1 ether, "cash-out still paid");
+        assertEq(address(zap).balance, 0, "no native at rest");
     }
 
     // increase (grow an existing position)
@@ -908,6 +969,50 @@ contract SwapAndAddTest is PosmTestSetup {
         assertGt(liqDonated, liqBase, "reclaimed donation joined the caller's budget");
     }
 
+    /// @dev Where native has an ERC20 alias (Arc's USDC), the native balance is the alias budget. An op
+    ///      without native must not forward it, or the route's Permit2 pull of the alias finds nothing.
+    function test_add_route_nativeAliasPool_keepsAliasBudgetForTheRoute() public {
+        MockNativeAlias nativeAlias = new MockNativeAlias();
+        address sink = makeAddr("sink");
+        MockAliasSellRoute aliasRoute = new MockAliasSellRoute(permit2, sink);
+        ISwapAndAdd aliasZap = ISwapAndAdd(
+            deployCode(
+                "SwapAndAdd.sol:SwapAndAdd", abi.encode(manager, permit2, lpm, IUniversalRouter(address(aliasRoute)))
+            )
+        );
+
+        Currency aliasCurrency = Currency.wrap(address(nativeAlias));
+        bool aliasIs0 = aliasCurrency < currency1;
+        PoolKey memory k = PoolKey({
+            currency0: aliasIs0 ? aliasCurrency : currency1,
+            currency1: aliasIs0 ? currency1 : aliasCurrency,
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(address(0))
+        });
+        manager.initialize(k, SQRT_PRICE_1_1);
+        nativeAlias.approve(address(modifyLiquidityRouter), type(uint256).max);
+        modifyLiquidityRouter.modifyLiquidity(
+            k, ModifyLiquidityParams({tickLower: -600, tickUpper: 600, liquidityDelta: 100e18, salt: 0}), ""
+        );
+
+        nativeAlias.approve(address(permit2), type(uint256).max);
+        permit2.approve(address(nativeAlias), address(aliasZap), type(uint160).max, type(uint48).max);
+        permit2.approve(Currency.unwrap(currency1), address(aliasZap), type(uint160).max, type(uint48).max);
+        MockERC20(Currency.unwrap(currency1)).mint(address(aliasRoute), 10e18);
+        aliasRoute.config(address(nativeAlias), Currency.unwrap(currency1), 2e18);
+
+        ISwapAndAdd.AddParams memory p = _addParams(aliasIs0 ? 4e18 : 0, aliasIs0 ? 0 : 4e18);
+        p.poolKey = k;
+        p.route = ROUTE_PAYLOAD;
+        p.minLiquidity = 1;
+        (, uint128 liq,,) = aliasZap.add(p);
+
+        assertGt(liq, 0, "liquidity minted");
+        assertEq(sink.balance, 2e18, "the route pulled the alias it was quoted");
+        assertEq(address(aliasZap).balance, 0, "no native or alias at rest");
+    }
+
     /// @notice The route under-converts, so the same-pool reconcile fills the remaining deficit.
     function test_add_route_underConverts() public {
         _configRoute(9970, 3e18); // ~mid-0.3%, under the ~5e18 ideal for a 10e18 single-token1 budget
@@ -1528,5 +1633,94 @@ contract SwapAndAddTest is PosmTestSetup {
         modifyLiquidityRouter.modifyLiquidity(
             thin, ModifyLiquidityParams({tickLower: -6000, tickUpper: 6000, liquidityDelta: 1e15, salt: 0}), ""
         );
+    }
+}
+
+/// @dev Native recipient that tries to sweep from inside the operation paying it.
+contract SweepReentrantRecipient {
+    ISwapAndAdd internal immutable zap;
+    bytes4 public directError;
+    bytes4 public multicallError;
+
+    constructor(ISwapAndAdd _zap) {
+        zap = _zap;
+    }
+
+    receive() external payable {
+        try zap.sweep(CurrencyLibrary.ADDRESS_ZERO, address(this)) {}
+        catch (bytes memory err) {
+            directError = bytes4(err);
+        }
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeCall(ISwapAndAdd.sweep, (CurrencyLibrary.ADDRESS_ZERO, address(this)));
+        try zap.multicall(calls) {}
+        catch (bytes memory err) {
+            multicallError = bytes4(err);
+        }
+    }
+}
+
+/// @dev An ERC20 alias of native (like Arc's USDC): balances are the holders' native balances.
+contract MockNativeAlias {
+    Vm internal constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
+    uint8 public constant decimals = 18;
+    mapping(address owner => mapping(address spender => uint256)) public allowance;
+
+    function balanceOf(address account) external view returns (uint256) {
+        return account.balance;
+    }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        _move(msg.sender, to, amount);
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        uint256 allowed = allowance[from][msg.sender];
+        if (allowed != type(uint256).max) allowance[from][msg.sender] = allowed - amount;
+        _move(from, to, amount);
+        return true;
+    }
+
+    function _move(address from, address to, uint256 amount) internal {
+        require(from.balance >= amount, "alias: insufficient balance");
+        VM.deal(from, from.balance - amount);
+        VM.deal(to, to.balance + amount);
+    }
+}
+
+/// @dev Router stand-in that pays for its swap with a Permit2 pull from the caller, like a real route.
+contract MockAliasSellRoute {
+    IAllowanceTransfer internal immutable permit2;
+    address internal immutable sink;
+    address internal sell;
+    address internal buy;
+    uint256 internal amountIn;
+
+    constructor(IAllowanceTransfer _permit2, address _sink) {
+        permit2 = _permit2;
+        sink = _sink;
+    }
+
+    function config(address _sell, address _buy, uint256 _amountIn) external {
+        sell = _sell;
+        buy = _buy;
+        amountIn = _amountIn;
+    }
+
+    function execute(bytes calldata commands, bytes[] calldata) external payable {
+        // native SWEEP (0x04) returns the router's native balance to the caller
+        if (commands.length == 1 && uint8(commands[0]) == 0x04) {
+            (bool ok,) = msg.sender.call{value: address(this).balance}("");
+            require(ok, "route: sweep failed");
+            return;
+        }
+        permit2.transferFrom(msg.sender, sink, uint160(amountIn), sell);
+        MockERC20(buy).transfer(msg.sender, amountIn);
     }
 }

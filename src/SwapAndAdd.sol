@@ -70,6 +70,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         uint256 budget0;
         uint256 budget1;
         bytes route;
+        bool forwardNative;
         uint256 minLiquidity;
         uint160 sqrtPriceMinX96;
         uint160 sqrtPriceMaxX96;
@@ -129,6 +130,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             budget0: params.amount0In,
             budget1: params.amount1In,
             route: params.route,
+            forwardNative: params.poolKey.currency0.isAddressZero() || msg.value != 0,
             minLiquidity: params.minLiquidity,
             sqrtPriceMinX96: params.sqrtPriceMinX96,
             sqrtPriceMaxX96: params.sqrtPriceMaxX96,
@@ -174,6 +176,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             budget0: _resolveBudget(key.currency0, params.additional0, recipient),
             budget1: _resolveBudget(key.currency1, params.additional1, recipient),
             route: params.route,
+            forwardNative: key.currency0.isAddressZero() || msg.value != 0,
             minLiquidity: params.minLiquidity,
             sqrtPriceMinX96: params.sqrtPriceMinX96,
             sqrtPriceMaxX96: params.sqrtPriceMaxX96,
@@ -206,6 +209,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             recipient,
             params.hookData
         );
+        if (msg.value != 0) cp.forwardNative = true;
 
         // accrued fees are collected inside the unlock callback
         _pull(cp.key, params.amount0In, params.amount1In, params.routeFunding, params.route);
@@ -239,6 +243,12 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         emit Compounded(recipient, params.tokenId, msg.sender, liquidityAdded, amount0, amount1);
     }
 
+    /// @inheritdoc ISwapAndAdd
+    function sweep(Currency token, address recipient) external payable isNotLocked {
+        _validateRecipient(recipient);
+        _sweep(token, recipient);
+    }
+
     /// @dev Shared CoreParams for grow-in-place operations. Budgets are set in the callback after
     ///      fee collection.
     function _growCore(
@@ -259,6 +269,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             budget0: 0, // Populated after fee collection in callback
             budget1: 0, // Populated after fee collection in callback
             route: route,
+            forwardNative: key.currency0.isAddressZero(),
             minLiquidity: minLiquidity,
             sqrtPriceMinX96: sqrtPriceMinX96,
             sqrtPriceMaxX96: sqrtPriceMaxX96,
@@ -503,8 +514,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     /// @dev Executes the Universal Router payload and reclaims unspent native ETH from the router.
     function _executeRoute(CoreParams memory cp) internal {
         (bytes memory commands, bytes[] memory inputs) = abi.decode(cp.route, (bytes, bytes[]));
-        // the contract holds only this operation's native budget
-        uint256 value = address(this).balance;
+        // only ops with a native budget forward: an ERC20 alias of native (double entry) shares the balance
+        uint256 value = cp.forwardNative ? address(this).balance : 0;
 
         universalRouter.execute{value: value}(commands, inputs);
 
