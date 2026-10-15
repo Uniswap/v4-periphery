@@ -10,6 +10,7 @@ import {ISpoke} from "./interfaces/external/aave-v4/ISpoke.sol";
 import {PositionAmountResolver} from "./base/PositionAmountResolver.sol";
 import {Market} from "./types/Market.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
+import {Units} from "./libraries/Units.sol";
 import {PositionData} from "./types/PositionData.sol";
 
 /// @title AaveV4LendingAdapter
@@ -61,12 +62,6 @@ import {PositionData} from "./types/PositionData.sol";
 ///           reserve-layout change is caught immediately rather than at a re-registration.
 /// @custom:security-contact security@uniswap.org
 contract AaveV4LendingAdapter is ILendingAdapter, PositionAmountResolver {
-    // WAD scale for loan-to-value ratios (1e18 == 100%).
-    uint256 private constant WAD = 1e18;
-    // Aave expresses collateral factors in basis points (1e4 == 100%).
-    uint256 private constant BPS = 1e4;
-    // RAY scale: v4 reports total debt value scaled by RAY (1e27).
-    uint256 private constant RAY = 1e27;
     // `Market.data` is abi.encode(uint256 collateralReserveId, uint256 debtReserveId): two words.
     uint256 private constant MARKET_DATA_LENGTH = 64;
 
@@ -271,7 +266,7 @@ contract AaveV4LendingAdapter is ILendingAdapter, PositionAmountResolver {
         ISpoke.Reserve memory reserve = spoke.getReserve(collateralReserveId);
         ISpoke.DynamicReserveConfig memory dynamicConfig =
             spoke.getDynamicReserveConfig(collateralReserveId, reserve.dynamicConfigKey);
-        return toLtv(uint256(dynamicConfig.collateralFactor) * WAD / BPS);
+        return toLtv(uint256(dynamicConfig.collateralFactor) * Units.WAD / Units.BPS);
     }
 
     /// @notice Current LTV from the Spoke's account-level totals. `totalCollateralValue` is in Value
@@ -288,7 +283,7 @@ contract AaveV4LendingAdapter is ILendingAdapter, PositionAmountResolver {
         // `totalCollateralValue * RAY` is a plain uint256 multiply outside mulDiv's full-precision path
         // and would overflow for a large collateral value. mulDiv here cannot overflow, and the LTV is
         // recovered exactly by the final RAY division.
-        return toLtv(Math.mulDiv(data.totalDebtValueRay, WAD, data.totalCollateralValue) / RAY);
+        return toLtv(Math.mulDiv(data.totalDebtValueRay, Units.WAD, data.totalCollateralValue) / Units.RAY);
     }
 
     /// @notice Decodes a market key and validates it against the live Spoke, returning the reserve ids

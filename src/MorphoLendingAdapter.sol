@@ -13,6 +13,7 @@ import {ILendingAdapter} from "./interfaces/ILendingAdapter.sol";
 import {PositionAmountResolver} from "./base/PositionAmountResolver.sol";
 import {Market} from "./types/Market.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
+import {Units} from "./libraries/Units.sol";
 import {PositionData} from "./types/PositionData.sol";
 
 /// @title MorphoLendingAdapter
@@ -36,8 +37,6 @@ contract MorphoLendingAdapter is ILendingAdapter, PositionAmountResolver {
     using MarketParamsLib for MarketParams;
     using MorphoBalancesLib for IMorpho;
 
-    // WAD scale for loan-to-value ratios.
-    uint256 private constant WAD = 1e18;
     // Morpho oracle price scale: price() quotes 1 collateral asset in loan token, scaled by 1e36.
     uint256 private constant ORACLE_PRICE_SCALE = 1e36;
     // `Market.data` is abi.encode(address oracle, address irm, uint256 lltv): three words.
@@ -232,7 +231,7 @@ contract MorphoLendingAdapter is ILendingAdapter, PositionAmountResolver {
     /// @return The current LTV as an `Ltv` (WAD, 1e18 == 100%).
     function _ltv(uint256 debt, uint256 collateralValue) internal pure returns (Ltv) {
         if (collateralValue == 0) return toLtv(debt == 0 ? 0 : type(uint256).max);
-        return toLtv(debt * WAD / collateralValue);
+        return toLtv(debt * Units.WAD / collateralValue);
     }
 
     /// @notice Resolves a market key to the Morpho `MarketParams` it names, reverting unless the

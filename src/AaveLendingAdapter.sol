@@ -12,6 +12,7 @@ import {IPoolDataProvider} from "./interfaces/external/aave/IPoolDataProvider.so
 import {PositionAmountResolver} from "./base/PositionAmountResolver.sol";
 import {Market} from "./types/Market.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
+import {Units} from "./libraries/Units.sol";
 import {PositionData} from "./types/PositionData.sol";
 
 /// @title AaveLendingAdapter
@@ -52,10 +53,6 @@ import {PositionData} from "./types/PositionData.sol";
 ///           `InvalidMarketData` for non-empty `data`, never returning a silent default market.
 /// @custom:security-contact security@uniswap.org
 contract AaveLendingAdapter is ILendingAdapter, PositionAmountResolver {
-    // WAD scale for loan-to-value ratios.
-    uint256 private constant WAD = 1e18;
-    // Aave expresses LTV and liquidation thresholds in basis points (1e4 == 100%).
-    uint256 private constant BPS = 1e4;
     // Aave interest rate mode for variable-rate debt (1 = stable, deprecated; 2 = variable).
     uint256 private constant VARIABLE_RATE = 2;
 
@@ -309,13 +306,13 @@ contract AaveLendingAdapter is ILendingAdapter, PositionAmountResolver {
     /// @return The current LTV as an `Ltv` (WAD, 1e18 == 100%).
     function _currentLtv(uint256 totalDebtBase, uint256 totalCollateralBase) internal pure returns (Ltv) {
         if (totalCollateralBase == 0) return toLtv(totalDebtBase == 0 ? 0 : type(uint256).max);
-        return toLtv(totalDebtBase * WAD / totalCollateralBase);
+        return toLtv(totalDebtBase * Units.WAD / totalCollateralBase);
     }
 
     /// @notice Converts an Aave liquidation threshold (basis points) to a WAD-scaled `Ltv`.
     /// @param thresholdBps The liquidation threshold in basis points (1e4 == 100%).
     /// @return The threshold as an `Ltv` (WAD, 1e18 == 100%).
     function _thresholdToLtv(uint256 thresholdBps) internal pure returns (Ltv) {
-        return toLtv(thresholdBps * WAD / BPS);
+        return toLtv(thresholdBps * Units.WAD / Units.BPS);
     }
 }

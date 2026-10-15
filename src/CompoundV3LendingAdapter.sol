@@ -10,6 +10,7 @@ import {IComet} from "./interfaces/external/compound-v3/IComet.sol";
 import {PositionAmountResolver} from "./base/PositionAmountResolver.sol";
 import {Market} from "./types/Market.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
+import {Units} from "./libraries/Units.sol";
 import {PositionData} from "./types/PositionData.sol";
 
 /// @title CompoundV3LendingAdapter
@@ -59,9 +60,6 @@ import {PositionData} from "./types/PositionData.sol";
 ///           escape hatch.
 /// @custom:security-contact security@uniswap.org
 contract CompoundV3LendingAdapter is ILendingAdapter, PositionAmountResolver {
-    // WAD scale for loan-to-value ratios and collateral factors (Comet expresses factors in WAD).
-    uint256 private constant WAD = 1e18;
-
     /// @notice The Comet instance this adapter routes to. The single call target for every market;
     ///         all `encode*` functions return this address as `target`.
     IComet public immutable comet;
@@ -308,7 +306,7 @@ contract CompoundV3LendingAdapter is ILendingAdapter, PositionAmountResolver {
     /// @return The current LTV as an `Ltv` (WAD, 1e18 == 100%).
     function _ltv(uint256 debtValue, uint256 collateralValue) internal pure returns (Ltv) {
         if (collateralValue == 0) return toLtv(debtValue == 0 ? 0 : type(uint256).max);
-        return toLtv(Math.mulDiv(debtValue, WAD, collateralValue));
+        return toLtv(Math.mulDiv(debtValue, Units.WAD, collateralValue));
     }
 
     /// @notice Validates a market key against the bound Comet and returns the collateral's asset info

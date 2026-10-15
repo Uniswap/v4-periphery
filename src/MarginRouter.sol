@@ -28,6 +28,7 @@ import {MarginCalldataDecoder} from "./libraries/MarginCalldataDecoder.sol";
 import {TransientPlanState} from "./libraries/TransientPlanState.sol";
 import {Market} from "./types/Market.sol";
 import {Ltv} from "./types/Ltv.sol";
+import {Units} from "./libraries/Units.sol";
 import {PositionData} from "./types/PositionData.sol";
 
 /// @title MarginRouter
@@ -68,11 +69,6 @@ contract MarginRouter is
     using SafeCast for uint256;
     using CurrencyLibrary for Currency;
     using SafeERC20 for IERC20;
-
-    // 1e18 == 100% LTV. A resulting-health bound at or above this can never be exceeded by a real LTV,
-    // so passing one (e.g. type(uint256).max, the codebase's "no limit" sentinel elsewhere) would
-    // satisfy a "bound is set" check yet leave ASSERT_HEALTH a no-op; a supplied bound must sit below it.
-    uint256 private constant WAD = 1e18;
 
     /// @dev Reverts `DeadlinePassed` if `block.timestamp` has passed `deadline`.
     modifier checkDeadline(uint256 deadline) {
@@ -154,7 +150,7 @@ contract MarginRouter is
             if (Ltv.unwrap(params.maxLtvAfter) == 0) revert SlippageBoundRequired();
             // reject a bound that cannot bind (>= 100%): it satisfies the require above yet leaves
             // ASSERT_HEALTH a no-op, so the "mandatory" partial-decrease health bound stays real
-            if (Ltv.unwrap(params.maxLtvAfter) >= WAD) revert IneffectiveLtvBound(params.maxLtvAfter);
+            if (Ltv.unwrap(params.maxLtvAfter) >= Units.WAD) revert IneffectiveLtvBound(params.maxLtvAfter);
         }
 
         account = accountOf(msgSender(), params.subId);
@@ -391,7 +387,7 @@ contract MarginRouter is
         if (params.maxDebtIn == 0) revert SlippageBoundRequired();
         // maxLtvAfter stays optional here (zero skips the check), but a supplied bound must be able to
         // bind: reject >= 100%, which would otherwise read as "set" yet disable ASSERT_HEALTH
-        if (Ltv.unwrap(params.maxLtvAfter) != 0 && Ltv.unwrap(params.maxLtvAfter) >= WAD) {
+        if (Ltv.unwrap(params.maxLtvAfter) != 0 && Ltv.unwrap(params.maxLtvAfter) >= Units.WAD) {
             revert IneffectiveLtvBound(params.maxLtvAfter);
         }
 
