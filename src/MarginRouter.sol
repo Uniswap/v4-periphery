@@ -25,6 +25,7 @@ import {ILendingAdapter} from "./interfaces/ILendingAdapter.sol";
 import {MarginAccountFactory} from "./MarginAccountFactory.sol";
 import {MarginActions} from "./libraries/MarginActions.sol";
 import {MarginCalldataDecoder} from "./libraries/MarginCalldataDecoder.sol";
+import {TransientPlanState} from "./libraries/TransientPlanState.sol";
 import {Market} from "./types/Market.sol";
 import {Ltv} from "./types/Ltv.sol";
 import {PositionData} from "./types/PositionData.sol";
@@ -67,13 +68,6 @@ contract MarginRouter is
     using SafeCast for uint256;
     using CurrencyLibrary for Currency;
     using SafeERC20 for IERC20;
-
-    // transient slot holding the account for the current unlock, set from the authenticated caller
-    bytes32 private constant ACTIVE_ACCOUNT_SLOT = keccak256("uniswap.marginRouter.activeAccount");
-
-    // transient slot holding the amount the current unlock's last ACCOUNT_REPAY actually repaid, so
-    // the curated partial decrease can assert its repay executed after the unlock returns
-    bytes32 private constant LAST_REPAID_SLOT = keccak256("uniswap.marginRouter.lastRepaid");
 
     // 1e18 == 100% LTV. A resulting-health bound at or above this can never be exceeded by a real LTV,
     // so passing one (e.g. type(uint256).max, the codebase's "no limit" sentinel elsewhere) would
@@ -190,8 +184,6 @@ contract MarginRouter is
         // a swap runs from here (the debt-free full close returned above), so the input cap is mandatory
         if (params.maxCollateralIn == 0) revert SlippageBoundRequired();
 
-        _setActiveAccount(account);
-
         bytes memory actions = abi.encodePacked(
             uint8(MarginActions.ROUTE_SWAP),
             uint8(MarginActions.ASSERT_ACCOUNT_BALANCE),
@@ -239,9 +231,9 @@ contract MarginRouter is
         // measure the router's own collateral gain across the unlock: zero for a partial decrease (it
         // withdraws exactly the swap cost), the realized PnL for a full close
         uint256 balanceBefore = params.market.collateral.balanceOfSelf();
-        _setLastRepaid(0); // fail-closed: the plan's ACCOUNT_REPAY overwrites this with what it repaid
-        poolManager.unlock(abi.encode(actions, actionParams));
-        _setActiveAccount(address(0));
+        // fail-closed: the plan's ACCOUNT_REPAY overwrites this with what it actually repaid
+        TransientPlanState.setLastRepaid(0);
+        _unlockAs(account, actions, actionParams);
 
         // the pre-unlock debt check cannot see a repay that lands inside the unlock (venues accept
         // permissionless onBehalf repays, and route-path code can execute one): with the debt cleared
@@ -249,7 +241,7 @@ contract MarginRouter is
         // event would report a repay that never happened. Gate the partial branch on the MEASURED
         // repay rather than the pre-read; a full close tolerates the no-op (it sweeps the over-bought
         // debt back below) and execute plans rely on it, so only this curated branch asserts.
-        if (!fullClose && _lastRepaid() == 0) revert NoDebtToRepay();
+        if (!fullClose && TransientPlanState.lastRepaid() == 0) revert NoDebtToRepay();
 
         // a full close whose route over-bought the debt (buffered for accrual) leaves the excess in the
         // account after repay-all; return it to the caller so nothing is stranded
@@ -349,7 +341,7 @@ contract MarginRouter is
         // transaction (transient storage persists for the whole tx, not per external call). The
         // NoActiveAccount guard is the backstop, and any residual value is scoped to this locker's
         // own account regardless, so this is defense in depth.
-        _setActiveAccount(address(0));
+        TransientPlanState.setActiveAccount(address(0));
     }
 
     /// @inheritdoc IMarginRouter
@@ -404,7 +396,6 @@ contract MarginRouter is
         }
 
         account = createAccount(msgSender(), params.subId);
-        _setActiveAccount(account);
 
         // snapshot debt before drawing leverage so debtDrawn is correct whether this opens a fresh
         // position or increases an existing one
@@ -458,8 +449,19 @@ contract MarginRouter is
         // check, so callers relying only on `maxDebtIn` are unaffected
         actionParams[5] = abi.encode(params.adapter, params.market, params.maxLtvAfter);
 
+        _unlockAs(account, actions, actionParams);
+    }
+
+    /// @notice Runs a plan inside one PoolManager unlock with `account` bound as the active account
+    ///         for its account-scoped actions, then clears the binding so it cannot leak into a later
+    ///         call in the same transaction.
+    /// @param account The caller's MarginAccount the plan operates on.
+    /// @param actions The packed opcode string.
+    /// @param actionParams The encoded parameters, one per opcode.
+    function _unlockAs(address account, bytes memory actions, bytes[] memory actionParams) private {
+        TransientPlanState.setActiveAccount(account);
         poolManager.unlock(abi.encode(actions, actionParams));
-        _setActiveAccount(address(0));
+        TransientPlanState.setActiveAccount(address(0));
     }
 
     /// @notice Dispatches one action from the current plan to its handler. Called by
@@ -477,13 +479,13 @@ contract MarginRouter is
         if (action == MarginActions.SET_ACCOUNT) {
             // account derived from the authenticated caller and this subId, never from calldata;
             // createAccount is idempotent, so re-selecting a live sub-account just re-binds it
-            _setActiveAccount(createAccount(msgSender(), params.decodeSubId()));
+            TransientPlanState.setActiveAccount(createAccount(msgSender(), params.decodeSubId()));
         } else if (action == MarginActions.ROUTE_SWAP) {
             _routeSwap(params);
         } else if (MarginActions.isAccountScoped(action)) {
             // needs a preceding SET_ACCOUNT; the fixed entry points bind the account before the
             // unlock, so only a hand-built plan can reach this revert
-            address account = _activeAccount();
+            address account = TransientPlanState.activeAccount();
             if (account == address(0)) revert NoActiveAccount();
             _handleAccountAction(action, params, account);
         } else {
@@ -619,7 +621,7 @@ contract MarginRouter is
         uint256 repaid = IMarginAccount(account).repay(adapter, market, amount);
         // recorded transiently so the curated partial decrease can assert the repay executed once
         // the unlock returns; execute plans never read it
-        _setLastRepaid(repaid);
+        TransientPlanState.setLastRepaid(repaid);
         _emitPosition(adapter, market, account);
     }
 
@@ -753,44 +755,6 @@ contract MarginRouter is
             currency.transfer(address(poolManager), amount);
         } else {
             permit2.transferFrom(payer, address(poolManager), amount.toUint160(), Currency.unwrap(currency));
-        }
-    }
-
-    /// @notice Stores the active account for the current unlock in transient storage (EIP-1153).
-    ///         It is always derived from the authenticated caller stored by `ReentrancyLock`, never
-    ///         from calldata, so margin handlers operate only on the caller's own account.
-    /// @param account The MarginAccount address to store, or `address(0)` to clear after unlock.
-    function _setActiveAccount(address account) private {
-        bytes32 slot = ACTIVE_ACCOUNT_SLOT;
-        assembly ("memory-safe") {
-            tstore(slot, account)
-        }
-    }
-
-    /// @notice Reads the active account from transient storage (EIP-1153). Returns `address(0)`
-    ///         when no unlock is in progress.
-    /// @return account The MarginAccount address active for the current unlock.
-    function _activeAccount() private view returns (address account) {
-        bytes32 slot = ACTIVE_ACCOUNT_SLOT;
-        assembly ("memory-safe") {
-            account := tload(slot)
-        }
-    }
-
-    /// @notice Records the amount the last ACCOUNT_REPAY actually repaid in transient storage
-    ///         (EIP-1153), so the curated partial decrease can assert its repay executed.
-    function _setLastRepaid(uint256 repaid) private {
-        bytes32 slot = LAST_REPAID_SLOT;
-        assembly ("memory-safe") {
-            tstore(slot, repaid)
-        }
-    }
-
-    /// @notice Reads the amount the last ACCOUNT_REPAY actually repaid from transient storage.
-    function _lastRepaid() private view returns (uint256 repaid) {
-        bytes32 slot = LAST_REPAID_SLOT;
-        assembly ("memory-safe") {
-            repaid := tload(slot)
         }
     }
 }
