@@ -8,6 +8,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ILendingAdapter} from "./interfaces/ILendingAdapter.sol";
 import {IComet} from "./interfaces/external/compound-v3/IComet.sol";
 import {PositionAmountResolver} from "./base/PositionAmountResolver.sol";
+import {Call} from "./types/Call.sol";
 import {Market} from "./types/Market.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
 import {Units} from "./libraries/Units.sol";
@@ -123,25 +124,18 @@ contract CompoundV3LendingAdapter is ILendingAdapter, PositionAmountResolver {
 
     /// @inheritdoc ILendingAdapter
     /// @dev Encodes `IComet.supply(collateral, amount)`. Comet supplies from and credits
-    ///      `msg.sender` (the account), so the collateral is posted on behalf of the account. The
-    ///      `value` field is always 0 (Comet is non-payable).
+    ///      `msg.sender` (the account), so the collateral is posted on behalf of the account, and it
+    ///      counts a supplied collateral asset as collateral automatically, so the supply is the whole
+    ///      sequence.
     function encodeSupplyCollateral(address account, Market calldata market, uint256 amount)
         external
         view
-        returns (address, uint256, bytes memory)
+        returns (Call[] memory calls)
     {
         _resolve(market);
         account; // the account is Comet's msg.sender; supply credits it, no onBehalf argument exists
-        return (address(comet), 0, abi.encodeCall(IComet.supply, (Currency.unwrap(market.collateral), amount)));
-    }
-
-    /// @inheritdoc ILendingAdapter
-    /// @dev No-op: Comet counts a supplied collateral asset as collateral automatically, so there is
-    ///      no separate enable step. Returns empty `callData`, which the account skips, without
-    ///      decoding the key: the account calls this only after `encodeSupplyCollateral` has validated
-    ///      it.
-    function encodeEnableCollateral(address, Market calldata) external pure returns (address, uint256, bytes memory) {
-        return (address(0), 0, "");
+        calls = new Call[](1);
+        calls[0] = Call({value: 0, data: abi.encodeCall(IComet.supply, (Currency.unwrap(market.collateral), amount))});
     }
 
     /// @inheritdoc ILendingAdapter
@@ -152,16 +146,14 @@ contract CompoundV3LendingAdapter is ILendingAdapter, PositionAmountResolver {
     function encodeWithdrawCollateral(address account, Market calldata market, uint256 amount, address receiver)
         external
         view
-        returns (address, uint256, bytes memory)
+        returns (Call[] memory calls)
     {
         _resolve(market);
         if (account != msg.sender) revert AccountMismatch(account, msg.sender);
-        return
-            (
-                address(comet),
-                0,
-                abi.encodeCall(IComet.withdrawTo, (receiver, Currency.unwrap(market.collateral), amount))
-            );
+        calls = new Call[](1);
+        calls[0] = Call({
+            value: 0, data: abi.encodeCall(IComet.withdrawTo, (receiver, Currency.unwrap(market.collateral), amount))
+        });
     }
 
     /// @inheritdoc ILendingAdapter
@@ -172,11 +164,12 @@ contract CompoundV3LendingAdapter is ILendingAdapter, PositionAmountResolver {
     function encodeBorrow(address account, Market calldata market, uint256 amount)
         external
         view
-        returns (address, uint256, bytes memory)
+        returns (Call[] memory calls)
     {
         _resolve(market);
         account; // Comet delivers the borrow to msg.sender (the account); no receiver argument exists
-        return (address(comet), 0, abi.encodeCall(IComet.withdraw, (Currency.unwrap(market.debt), amount)));
+        calls = new Call[](1);
+        calls[0] = Call({value: 0, data: abi.encodeCall(IComet.withdraw, (Currency.unwrap(market.debt), amount))});
     }
 
     /// @inheritdoc ILendingAdapter
@@ -185,18 +178,19 @@ contract CompoundV3LendingAdapter is ILendingAdapter, PositionAmountResolver {
     ///      (`borrowBalanceOf`, re-accrued to `block.timestamp` in the view), so a full repay
     ///      (`type(uint256).max`) or an over-sized repay clears the debt exactly and never converts the
     ///      overshoot into a base SUPPLY position (Comet turns any base supplied beyond the borrow into
-    ///      a positive base balance rather than reverting). When the account has no borrow, encodes the
-    ///      empty skip signal rather than a zero supply, matching the other adapters' no-op contract.
+    ///      a positive base balance rather than reverting). When the account has no borrow, encodes no
+    ///      calls rather than a zero supply, matching the other adapters' no-op contract.
     function encodeRepay(address account, Market calldata market, uint256 amount)
         external
         view
-        returns (address, uint256, bytes memory)
+        returns (Call[] memory calls)
     {
         _resolve(market);
         uint256 owed = comet.borrowBalanceOf(account);
-        if (owed == 0) return (address(comet), 0, "");
+        if (owed == 0) return new Call[](0);
         uint256 repayAmount = amount > owed ? owed : amount;
-        return (address(comet), 0, abi.encodeCall(IComet.supply, (Currency.unwrap(market.debt), repayAmount)));
+        calls = new Call[](1);
+        calls[0] = Call({value: 0, data: abi.encodeCall(IComet.supply, (Currency.unwrap(market.debt), repayAmount))});
     }
 
     /// @inheritdoc ILendingAdapter

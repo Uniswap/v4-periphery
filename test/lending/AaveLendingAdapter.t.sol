@@ -10,6 +10,7 @@ import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {IPool} from "../../src/interfaces/external/aave/IPool.sol";
 import {IPoolAddressesProvider} from "../../src/interfaces/external/aave/IPoolAddressesProvider.sol";
 import {PositionAmountResolver} from "../../src/base/PositionAmountResolver.sol";
+import {Call} from "../../src/types/Call.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Ltv} from "../../src/types/Ltv.sol";
 import {MockAavePool, MockAaveAddressesProvider, MockAaveDataProvider} from "../mocks/MockAavePool.sol";
@@ -159,10 +160,11 @@ contract AaveLendingAdapterTest is Test {
         assertEq(Ltv.unwrap(adapter.maxLtvWad(market)), USDC_LIQ_THRESHOLD_BPS * WAD / 1e4, "maxLtv via new provider");
     }
 
-    function test_encodeSupplyCollateral_targetSelectorAndArgs() public view {
-        (address target, uint256 value, bytes memory data) = adapter.encodeSupplyCollateral(account, market, 1_000e6);
-        assertEq(target, address(pool));
-        assertEq(value, 0);
+    function test_encodeSupplyCollateral_selectorAndArgs() public view {
+        Call[] memory calls = adapter.encodeSupplyCollateral(account, market, 1_000e6);
+        assertEq(calls.length, 2);
+        assertEq(calls[0].value, 0);
+        bytes memory data = calls[0].data;
         assertEq(bytes4(data), IPool.supply.selector);
         (address asset, uint256 amount, address onBehalfOf, uint16 referralCode) = this.decodeSupply(data);
         assertEq(asset, address(usdc));
@@ -173,10 +175,11 @@ contract AaveLendingAdapterTest is Test {
 
     /// @dev M-02 fix: the adapter encodes an explicit post-supply collateral enable so a prior aToken
     ///      balance (e.g. a dust grief) cannot leave the reserve unflagged.
-    function test_encodeEnableCollateral_encodesSetUserUseReserveAsCollateral() public view {
-        (address target, uint256 value, bytes memory data) = adapter.encodeEnableCollateral(account, market);
-        assertEq(target, address(pool));
-        assertEq(value, 0);
+    function test_encodeSupplyCollateral_secondCallEnablesReserveAsCollateral() public view {
+        Call[] memory calls = adapter.encodeSupplyCollateral(account, market, 1_000e6);
+        assertEq(calls.length, 2);
+        assertEq(calls[1].value, 0);
+        bytes memory data = calls[1].data;
         assertEq(bytes4(data), IPool.setUserUseReserveAsCollateral.selector);
         (address asset, bool useAsCollateral) = abi.decode(this.sliceSelector(data), (address, bool));
         assertEq(asset, address(usdc), "enables the collateral reserve");
@@ -187,10 +190,10 @@ contract AaveLendingAdapterTest is Test {
         address receiver = makeAddr("receiver");
         // Aave withdraw burns the caller's own aTokens, so the account must be the caller
         vm.prank(account);
-        (address target, uint256 value, bytes memory data) =
-            adapter.encodeWithdrawCollateral(account, market, 500e6, receiver);
-        assertEq(target, address(pool));
-        assertEq(value, 0);
+        Call[] memory calls = adapter.encodeWithdrawCollateral(account, market, 500e6, receiver);
+        assertEq(calls.length, 1);
+        assertEq(calls[0].value, 0);
+        bytes memory data = calls[0].data;
         assertEq(bytes4(data), IPool.withdraw.selector);
         (address asset, uint256 amount, address to) = this.decodeWithdraw(data);
         assertEq(asset, address(usdc));
@@ -205,9 +208,10 @@ contract AaveLendingAdapterTest is Test {
     }
 
     function test_encodeBorrow_onBehalfIsAccountAndNoReceiver() public view {
-        (address target, uint256 value, bytes memory data) = adapter.encodeBorrow(account, market, 0.5e18);
-        assertEq(target, address(pool));
-        assertEq(value, 0);
+        Call[] memory calls = adapter.encodeBorrow(account, market, 0.5e18);
+        assertEq(calls.length, 1);
+        assertEq(calls[0].value, 0);
+        bytes memory data = calls[0].data;
         assertEq(bytes4(data), IPool.borrow.selector);
         (address asset, uint256 amount, uint256 rateMode, uint16 referralCode, address onBehalfOf) =
             this.decodeBorrow(data);
@@ -222,9 +226,10 @@ contract AaveLendingAdapterTest is Test {
 
     function test_encodeRepay_exactAmount() public {
         _seedPosition(0, 1e18); // the encoder no-ops without live variable debt
-        (address target, uint256 value, bytes memory data) = adapter.encodeRepay(account, market, 0.25e18);
-        assertEq(target, address(pool));
-        assertEq(value, 0);
+        Call[] memory calls = adapter.encodeRepay(account, market, 0.25e18);
+        assertEq(calls.length, 1);
+        assertEq(calls[0].value, 0);
+        bytes memory data = calls[0].data;
         assertEq(bytes4(data), IPool.repay.selector);
         (address asset, uint256 amount, uint256 rateMode, address onBehalfOf) = this.decodeRepay(data);
         assertEq(asset, address(weth));
@@ -235,8 +240,9 @@ contract AaveLendingAdapterTest is Test {
 
     function test_encodeRepay_max() public {
         _seedPosition(0, 1e18); // the encoder no-ops without live variable debt
-        (,, bytes memory data) = adapter.encodeRepay(account, market, type(uint256).max);
-        (, uint256 amount,,) = this.decodeRepay(data);
+        Call[] memory calls = adapter.encodeRepay(account, market, type(uint256).max);
+        assertEq(calls.length, 1);
+        (, uint256 amount,,) = this.decodeRepay(calls[0].data);
         assertEq(amount, type(uint256).max); // max repays the full variable debt natively
     }
 
@@ -244,10 +250,8 @@ contract AaveLendingAdapterTest is Test {
         // no debt seeded: Aave's repay would revert NoDebtOfSelectedType, so the encoder returns the
         // empty skip signal and a generic repay-then-withdraw exit plan runs against a debt-free
         // position, matching the interface-wide no-op contract
-        (address target, uint256 value, bytes memory data) = adapter.encodeRepay(account, market, type(uint256).max);
-        assertEq(target, address(pool));
-        assertEq(value, 0);
-        assertEq(data.length, 0, "debt-free repay must be an empty no-op");
+        Call[] memory calls = adapter.encodeRepay(account, market, type(uint256).max);
+        assertEq(calls.length, 0, "debt-free repay must be an empty no-op");
     }
 
     // -------------------------------------------------------------------------
@@ -304,14 +308,15 @@ contract AaveLendingAdapterTest is Test {
     /// @dev Permissionless selection: the reversed pair routes against its own reserves with no
     ///      registration step, and `maxLtvWad` reads the reserve now on the collateral side.
     function test_reversedPair_routesWithoutRegistration() public view {
-        (address target,, bytes memory data) = adapter.encodeSupplyCollateral(account, reversedMarket, 1e18);
-        assertEq(target, address(pool));
-        (address asset,, address onBehalfOf,) = this.decodeSupply(data);
+        Call[] memory calls = adapter.encodeSupplyCollateral(account, reversedMarket, 1e18);
+        assertEq(calls.length, 2);
+        (address asset,, address onBehalfOf,) = this.decodeSupply(calls[0].data);
         assertEq(asset, address(weth), "reversed pair supplies WETH");
         assertEq(onBehalfOf, account);
 
-        (,, data) = adapter.encodeBorrow(account, reversedMarket, 1_000e6);
-        (asset,,,,) = this.decodeBorrow(data);
+        calls = adapter.encodeBorrow(account, reversedMarket, 1_000e6);
+        assertEq(calls.length, 1);
+        (asset,,,,) = this.decodeBorrow(calls[0].data);
         assertEq(asset, address(usdc), "reversed pair borrows USDC");
 
         assertEq(Ltv.unwrap(adapter.maxLtvWad(reversedMarket)), WETH_LIQ_THRESHOLD_BPS * WAD / 1e4, "WETH threshold");
@@ -336,11 +341,6 @@ contract AaveLendingAdapterTest is Test {
     function test_encodeSupplyCollateral_revertsWhenMarketNotSupported() public {
         _expectMarketNotSupported(unlistedCollateralMarket);
         adapter.encodeSupplyCollateral(account, unlistedCollateralMarket, 1e6);
-    }
-
-    function test_encodeEnableCollateral_revertsWhenMarketNotSupported() public {
-        _expectMarketNotSupported(unlistedCollateralMarket);
-        adapter.encodeEnableCollateral(account, unlistedCollateralMarket);
     }
 
     function test_encodeWithdrawCollateral_revertsWhenMarketNotSupported() public {
@@ -390,8 +390,6 @@ contract AaveLendingAdapterTest is Test {
         Market memory m = unlistedDebtMarket;
         _expectMarketNotSupported(m);
         adapter.encodeSupplyCollateral(account, m, 1e6);
-        _expectMarketNotSupported(m);
-        adapter.encodeEnableCollateral(account, m);
         _expectMarketNotSupported(m);
         adapter.encodeWithdrawCollateral(account, m, 1e6, account);
         _expectMarketNotSupported(m);

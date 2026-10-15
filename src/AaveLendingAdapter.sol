@@ -10,6 +10,7 @@ import {IPool} from "./interfaces/external/aave/IPool.sol";
 import {IPoolAddressesProvider} from "./interfaces/external/aave/IPoolAddressesProvider.sol";
 import {IPoolDataProvider} from "./interfaces/external/aave/IPoolDataProvider.sol";
 import {PositionAmountResolver} from "./base/PositionAmountResolver.sol";
+import {Call} from "./types/Call.sol";
 import {Market} from "./types/Market.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
 import {Units} from "./libraries/Units.sol";
@@ -113,37 +114,27 @@ contract AaveLendingAdapter is ILendingAdapter, PositionAmountResolver {
     }
 
     /// @inheritdoc ILendingAdapter
-    /// @dev Encodes `IPool.supply` with `onBehalfOf = account` and referral code 0. The `value`
-    ///      field is always 0 because the Aave Pool entrypoints used here are non-payable.
+    /// @dev Encodes `IPool.supply` with `onBehalfOf = account` and referral code 0, followed by an
+    ///      explicit `setUserUseReserveAsCollateral(collateral, true)`. Aave does not reliably
+    ///      auto-enable a supplied reserve as collateral: `executeSupply` sets the flag only on the
+    ///      account's FIRST supply of the reserve, so any prior aToken balance (including an
+    ///      unsolicited dust transfer to the deterministic account address) would leave later supplies
+    ///      unflagged and the borrow unbacked. The enable acts on the calling account (the account
+    ///      executing the sequence) and is idempotent.
     function encodeSupplyCollateral(address account, Market calldata market, uint256 amount)
         external
         view
-        returns (address, uint256, bytes memory)
+        returns (Call[] memory calls)
     {
         _resolve(market);
-        return
-            (address(pool), 0, abi.encodeCall(IPool.supply, (Currency.unwrap(market.collateral), amount, account, 0)));
-    }
-
-    /// @inheritdoc ILendingAdapter
-    /// @dev Aave does not reliably auto-enable a supplied reserve as collateral: `executeSupply` sets
-    ///      the flag only on the account's FIRST supply of the reserve, so any prior aToken balance
-    ///      (including an unsolicited dust transfer to the deterministic account address) leaves later
-    ///      supplies unflagged and the borrow unbacked. Encode an explicit
-    ///      `setUserUseReserveAsCollateral(collateral, true)`, which acts on the calling account and is
-    ///      idempotent. The account parameter is unused: Aave keys this off `msg.sender`, which is the
-    ///      account executing the call.
-    function encodeEnableCollateral(address, Market calldata market)
-        external
-        view
-        returns (address, uint256, bytes memory)
-    {
-        _resolve(market);
-        return (
-            address(pool),
-            0,
-            abi.encodeCall(IPool.setUserUseReserveAsCollateral, (Currency.unwrap(market.collateral), true))
-        );
+        calls = new Call[](2);
+        calls[0] = Call({
+            value: 0, data: abi.encodeCall(IPool.supply, (Currency.unwrap(market.collateral), amount, account, 0))
+        });
+        calls[1] = Call({
+            value: 0,
+            data: abi.encodeCall(IPool.setUserUseReserveAsCollateral, (Currency.unwrap(market.collateral), true))
+        });
     }
 
     /// @inheritdoc ILendingAdapter
@@ -156,12 +147,14 @@ contract AaveLendingAdapter is ILendingAdapter, PositionAmountResolver {
     function encodeWithdrawCollateral(address account, Market calldata market, uint256 amount, address receiver)
         external
         view
-        returns (address, uint256, bytes memory)
+        returns (Call[] memory calls)
     {
         _resolve(market);
         if (account != msg.sender) revert AccountMismatch(account, msg.sender);
-        return
-            (address(pool), 0, abi.encodeCall(IPool.withdraw, (Currency.unwrap(market.collateral), amount, receiver)));
+        calls = new Call[](1);
+        calls[0] = Call({
+            value: 0, data: abi.encodeCall(IPool.withdraw, (Currency.unwrap(market.collateral), amount, receiver))
+        });
     }
 
     /// @inheritdoc ILendingAdapter
@@ -171,36 +164,34 @@ contract AaveLendingAdapter is ILendingAdapter, PositionAmountResolver {
     function encodeBorrow(address account, Market calldata market, uint256 amount)
         external
         view
-        returns (address, uint256, bytes memory)
+        returns (Call[] memory calls)
     {
         _resolve(market);
-        return (
-            address(pool),
-            0,
-            abi.encodeCall(IPool.borrow, (Currency.unwrap(market.debt), amount, VARIABLE_RATE, 0, account))
-        );
+        calls = new Call[](1);
+        calls[0] = Call({
+            value: 0,
+            data: abi.encodeCall(IPool.borrow, (Currency.unwrap(market.debt), amount, VARIABLE_RATE, 0, account))
+        });
     }
 
     /// @inheritdoc ILendingAdapter
     /// @dev Encodes `IPool.repay` in variable-rate mode with `onBehalfOf = account`. Passing
     ///      `amount == type(uint256).max` repays the account's full variable debt natively,
     ///      including accrued interest, leaving no dust. When the account holds no variable debt,
-    ///      encodes the empty skip signal instead: Aave's `repay` reverts `NoDebtOfSelectedType` on
-    ///      a debt-free account, and the no-op keeps a generic repay-then-withdraw exit plan
-    ///      runnable against a debt-free position.
+    ///      encodes no calls instead: Aave's `repay` reverts `NoDebtOfSelectedType` on a debt-free
+    ///      account, and the no-op keeps a generic repay-then-withdraw exit plan runnable against a
+    ///      debt-free position.
     function encodeRepay(address account, Market calldata market, uint256 amount)
         external
         view
-        returns (address, uint256, bytes memory)
+        returns (Call[] memory calls)
     {
         (, address vDebt) = _resolve(market);
-        if (IERC20(vDebt).balanceOf(account) == 0) return (address(pool), 0, "");
-        return
-            (
-                address(pool),
-                0,
-                abi.encodeCall(IPool.repay, (Currency.unwrap(market.debt), amount, VARIABLE_RATE, account))
-            );
+        if (IERC20(vDebt).balanceOf(account) == 0) return new Call[](0);
+        calls = new Call[](1);
+        calls[0] = Call({
+            value: 0, data: abi.encodeCall(IPool.repay, (Currency.unwrap(market.debt), amount, VARIABLE_RATE, account))
+        });
     }
 
     /// @inheritdoc ILendingAdapter

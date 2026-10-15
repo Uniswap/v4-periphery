@@ -11,6 +11,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {ILendingAdapter} from "./interfaces/ILendingAdapter.sol";
 import {PositionAmountResolver} from "./base/PositionAmountResolver.sol";
+import {Call} from "./types/Call.sol";
 import {Market} from "./types/Market.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
 import {Units} from "./libraries/Units.sol";
@@ -71,23 +72,17 @@ contract MorphoLendingAdapter is ILendingAdapter, PositionAmountResolver {
 
     /// @inheritdoc ILendingAdapter
     /// @dev Resolves the key to `MarketParams`, then encodes `IMorphoBase.supplyCollateral` with
-    ///      `onBehalf = account` and no callback data. The `value` field is always 0 because Morpho
-    ///      Blue is non-payable.
+    ///      `onBehalf = account` and no callback data. Morpho Blue treats supplied collateral as
+    ///      collateral automatically, so the supply is the whole sequence.
     function encodeSupplyCollateral(address account, Market calldata market, uint256 amount)
         external
         view
-        returns (address, uint256, bytes memory)
+        returns (Call[] memory calls)
     {
         MarketParams memory marketParams = _resolve(market);
-        return (address(morpho), 0, abi.encodeCall(IMorphoBase.supplyCollateral, (marketParams, amount, account, "")));
-    }
-
-    /// @inheritdoc ILendingAdapter
-    /// @dev No-op: Morpho Blue treats supplied collateral as collateral automatically, so there is no
-    ///      separate enable step. Returns empty `callData`, which the account skips, without decoding
-    ///      the key: the account calls this only after `encodeSupplyCollateral` has validated it.
-    function encodeEnableCollateral(address, Market calldata) external pure returns (address, uint256, bytes memory) {
-        return (address(0), 0, "");
+        calls = new Call[](1);
+        calls[0] =
+            Call({value: 0, data: abi.encodeCall(IMorphoBase.supplyCollateral, (marketParams, amount, account, ""))});
     }
 
     /// @inheritdoc ILendingAdapter
@@ -96,15 +91,13 @@ contract MorphoLendingAdapter is ILendingAdapter, PositionAmountResolver {
     function encodeWithdrawCollateral(address account, Market calldata market, uint256 amount, address receiver)
         external
         view
-        returns (address, uint256, bytes memory)
+        returns (Call[] memory calls)
     {
         MarketParams memory marketParams = _resolve(market);
-        return
-            (
-                address(morpho),
-                0,
-                abi.encodeCall(IMorphoBase.withdrawCollateral, (marketParams, amount, account, receiver))
-            );
+        calls = new Call[](1);
+        calls[0] = Call({
+            value: 0, data: abi.encodeCall(IMorphoBase.withdrawCollateral, (marketParams, amount, account, receiver))
+        });
     }
 
     /// @inheritdoc ILendingAdapter
@@ -114,16 +107,18 @@ contract MorphoLendingAdapter is ILendingAdapter, PositionAmountResolver {
     function encodeBorrow(address account, Market calldata market, uint256 amount)
         external
         view
-        returns (address, uint256, bytes memory)
+        returns (Call[] memory calls)
     {
         MarketParams memory marketParams = _resolve(market);
-        return (address(morpho), 0, abi.encodeCall(IMorphoBase.borrow, (marketParams, amount, 0, account, account)));
+        calls = new Call[](1);
+        calls[0] =
+            Call({value: 0, data: abi.encodeCall(IMorphoBase.borrow, (marketParams, amount, 0, account, account))});
     }
 
     /// @inheritdoc ILendingAdapter
     /// @dev Repay routing with two guards for boundaries Morpho Blue would otherwise reject:
     ///      - A debt-free position (zero borrow shares) has nothing to repay, and Morpho rejects a
-    ///        `(0 assets, 0 shares)` repay, so this returns empty `callData` the account skips. That
+    ///        `(0 assets, 0 shares)` repay, so this returns no calls and the account skips the step. That
     ///        lets a generic "repay then withdraw" exit plan run against a position with no outstanding
     ///        debt (funded only via `addCollateral`, repaid out of band, or previously liquidated).
     ///      - A request at or above the reported debt (`type(uint256).max`, or `>= expectedBorrowAssets`,
@@ -135,16 +130,18 @@ contract MorphoLendingAdapter is ILendingAdapter, PositionAmountResolver {
     function encodeRepay(address account, Market calldata market, uint256 amount)
         external
         view
-        returns (address, uint256, bytes memory)
+        returns (Call[] memory calls)
     {
         MarketParams memory marketParams = _resolve(market);
         uint256 shares = uint256(morpho.position(marketParams.id(), account).borrowShares);
-        if (shares == 0) return (address(morpho), 0, "");
+        if (shares == 0) return new Call[](0);
+        calls = new Call[](1);
         if (amount == type(uint256).max || amount >= morpho.expectedBorrowAssets(marketParams, account)) {
             // full repay: burn the account's entire borrow share balance (assets resolved by Morpho)
-            return (address(morpho), 0, abi.encodeCall(IMorphoBase.repay, (marketParams, 0, shares, account, "")));
+            calls[0] = Call({value: 0, data: abi.encodeCall(IMorphoBase.repay, (marketParams, 0, shares, account, ""))});
+        } else {
+            calls[0] = Call({value: 0, data: abi.encodeCall(IMorphoBase.repay, (marketParams, amount, 0, account, ""))});
         }
-        return (address(morpho), 0, abi.encodeCall(IMorphoBase.repay, (marketParams, amount, 0, account, "")));
     }
 
     /// @inheritdoc ILendingAdapter

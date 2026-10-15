@@ -11,6 +11,7 @@ import {LibClone} from "solady/utils/LibClone.sol";
 
 import {IMarginAccount} from "./interfaces/IMarginAccount.sol";
 import {ILendingAdapter} from "./interfaces/ILendingAdapter.sol";
+import {Call} from "./types/Call.sol";
 import {Market} from "./types/Market.sol";
 
 /// @title MarginAccount
@@ -22,12 +23,11 @@ import {Market} from "./types/Market.sol";
 ///         no transfer path: ownership is soulbound.
 ///
 ///         The account enforces what it can see: it passes its own address as the `account` argument
-///         to every encoder, validates the `to` it is handed against the manager and owner, and
-///         performs a regular call (never a delegatecall). It does NOT decode the calldata the adapter
-///         returns, so the call `target`, the `value`, and any recipient baked into those bytes are
-///         the adapter's word. Adapter honesty is an assumption this contract does not verify, and
-///         checking `target` against `adapter.lendingProtocol()` would not change that, since both
-///         sides of that comparison come from the same adapter.
+///         to every encoder, validates the `to` it is handed against the manager and owner, performs
+///         every call against the adapter's `lendingProtocol()`, and uses a regular call (never a
+///         delegatecall). It does NOT decode the calldata the adapter returns, so the `value` and any
+///         recipient baked into those bytes are the adapter's word. Adapter honesty is an assumption
+///         this contract does not verify.
 ///
 ///         The adapter is caller-chosen on every path; there is no allowlist. That is safe because the
 ///         manager derives the account from the authenticated caller, so a hostile adapter reaches
@@ -50,23 +50,19 @@ contract MarginAccount is IMarginAccount {
     }
 
     /// @inheritdoc IMarginAccount
-    /// @dev Approves the lending protocol for `amount` before the call and resets the allowance to
-    ///      zero afterward, so no residual approval lingers on the lending contract.
+    /// @dev Approves the lending protocol for `amount` around the adapter's sequence (the supply, plus
+    ///      the explicit collateral enable on venues that need one) and resets the allowance to zero
+    ///      afterward, so no residual approval lingers on the lending contract.
     function supplyCollateral(ILendingAdapter adapter, Market calldata market, uint256 amount)
         external
         returns (uint256)
     {
         _authCaller();
-        (address target, uint256 value, bytes memory callData) =
-            adapter.encodeSupplyCollateral(address(this), market, amount);
+        address target = adapter.lendingProtocol();
+        Call[] memory calls = adapter.encodeSupplyCollateral(address(this), market, amount);
         _setApproval(market.collateral, target, amount);
-        _execCall(target, value, callData);
+        _execCalls(target, calls);
         _setApproval(market.collateral, target, 0);
-        // Run the venue's post-supply collateral-enable (Aave needs an explicit, account-scoped
-        // enable; Morpho/Compound return empty and this is skipped). Moves no tokens, so no approval.
-        (address enableTarget, uint256 enableValue, bytes memory enableData) =
-            adapter.encodeEnableCollateral(address(this), market);
-        if (enableData.length != 0) _execCall(enableTarget, enableValue, enableData);
         emit CollateralSupplied(msg.sender, address(adapter), market.collateral, amount);
         return amount;
     }
@@ -85,9 +81,7 @@ contract MarginAccount is IMarginAccount {
         (address ownerAddr, address managerAddr) = _authCaller();
         _requireReceiver(to, ownerAddr, managerAddr);
         uint256 balanceBefore = market.collateral.balanceOfSelf();
-        (address target, uint256 value, bytes memory callData) =
-            adapter.encodeWithdrawCollateral(address(this), market, amount, to);
-        _execCall(target, value, callData);
+        _execCalls(adapter.lendingProtocol(), adapter.encodeWithdrawCollateral(address(this), market, amount, to));
         withdrawn = market.collateral.balanceOfSelf() - balanceBefore;
         if (withdrawn != 0) market.collateral.transfer(to, withdrawn);
         emit CollateralWithdrawn(msg.sender, address(adapter), market.collateral, withdrawn, to);
@@ -106,8 +100,7 @@ contract MarginAccount is IMarginAccount {
         (address ownerAddr, address managerAddr) = _authCaller();
         _requireReceiver(to, ownerAddr, managerAddr);
         uint256 balanceBefore = market.debt.balanceOfSelf();
-        (address target, uint256 value, bytes memory callData) = adapter.encodeBorrow(address(this), market, amount);
-        _execCall(target, value, callData);
+        _execCalls(adapter.lendingProtocol(), adapter.encodeBorrow(address(this), market, amount));
         borrowed = market.debt.balanceOfSelf() - balanceBefore;
         market.debt.transfer(to, borrowed);
         emit Borrowed(msg.sender, address(adapter), market.debt, borrowed, to);
@@ -115,21 +108,23 @@ contract MarginAccount is IMarginAccount {
 
     /// @inheritdoc IMarginAccount
     /// @dev Approves the lending protocol for `amount` (or the full balance for `type(uint256).max`)
-    ///      before the call and resets the allowance to zero afterward. `repaid` is measured as the
-    ///      debt token balance decrease, which is accurate for both partial and full-share repays.
+    ///      around the adapter's sequence and resets the allowance to zero afterward. `repaid` is
+    ///      measured as the debt token balance decrease, which is accurate for both partial and
+    ///      full-share repays.
     function repay(ILendingAdapter adapter, Market calldata market, uint256 amount) external returns (uint256 repaid) {
         _authCaller();
-        (address target, uint256 value, bytes memory callData) = adapter.encodeRepay(address(this), market, amount);
-        // No debt to repay: the adapter encoded a no-op (empty callData). Skip the call and report zero
-        // so a "repay then withdraw" exit plan runs cleanly against a position with no outstanding debt.
-        if (callData.length == 0) {
+        Call[] memory calls = adapter.encodeRepay(address(this), market, amount);
+        // No debt to repay: the adapter encoded no calls. Skip the step and report zero so a "repay
+        // then withdraw" exit plan runs cleanly against a position with no outstanding debt.
+        if (calls.length == 0) {
             emit Repaid(msg.sender, address(adapter), market.debt, 0);
             return 0;
         }
+        address target = adapter.lendingProtocol();
         uint256 balanceBefore = market.debt.balanceOfSelf();
         uint256 approveAmount = amount == type(uint256).max ? balanceBefore : amount;
         _setApproval(market.debt, target, approveAmount);
-        _execCall(target, value, callData);
+        _execCalls(target, calls);
         _setApproval(market.debt, target, 0);
         repaid = balanceBefore - market.debt.balanceOfSelf();
         emit Repaid(msg.sender, address(adapter), market.debt, repaid);
@@ -191,9 +186,19 @@ contract MarginAccount is IMarginAccount {
         IERC20(Currency.unwrap(currency)).forceApprove(target, amount);
     }
 
-    /// @notice Forwards the adapter-encoded call to `target` as this account with a regular call
-    ///         (never a delegatecall), reverting on failure via `Address.functionCallWithValue`.
-    /// @param target The call target, taken from the adapter's encoding.
+    /// @notice Performs an adapter-encoded sequence against `target`, in order, stopping at the first
+    ///         failure (each call reverts on failure via `_execCall`).
+    /// @param target The adapter's `lendingProtocol()`.
+    /// @param calls The sequence to perform.
+    function _execCalls(address target, Call[] memory calls) internal {
+        for (uint256 i = 0; i < calls.length; i++) {
+            _execCall(target, calls[i].value, calls[i].data);
+        }
+    }
+
+    /// @notice Forwards one call to `target` as this account with a regular call (never a
+    ///         delegatecall), reverting on failure via `Address.functionCallWithValue`.
+    /// @param target The adapter's `lendingProtocol()`.
     /// @param value The call value, taken from the adapter's encoding. Every in-tree adapter
     ///        returns zero today because the supported lending protocols don't support native
     ///        currency. However, future adapters may support native currency, so the account

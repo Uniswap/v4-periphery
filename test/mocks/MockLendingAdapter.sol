@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
+import {Call} from "../../src/types/Call.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Ltv, toLtv} from "../../src/types/Ltv.sol";
 import {PositionData} from "../../src/types/PositionData.sol";
@@ -17,22 +18,14 @@ contract MockLendingAdapter is ILendingAdapter {
     // markets flagged routable by tests, keyed by the hash of the full market key (pair plus data)
     mapping(bytes32 marketHash => bool supported) internal _supported;
 
-    // when set non-zero, encode* returns this instead of lendingProtocol (to exercise the
-    // account's target == lendingProtocol() check)
-    address public forcedTarget;
-
     // when set, describePosition reverts, simulating a venue oracle read that fails (e.g. downtime)
     bool public describeReverts;
 
-    // when set, encodeRepay returns empty callData, modeling a debt-free repay the account must skip
+    // when set, encodeRepay returns no calls, modeling a debt-free repay the account must skip
     bool public repayNoOp;
 
     constructor(address lendingProtocol_) {
         lendingProtocol = lendingProtocol_;
-    }
-
-    function setForcedTarget(address t) external {
-        forcedTarget = t;
     }
 
     function setDescribeReverts(bool v) external {
@@ -41,10 +34,6 @@ contract MockLendingAdapter is ILendingAdapter {
 
     function setRepayNoOp(bool v) external {
         repayNoOp = v;
-    }
-
-    function _callTarget() internal view returns (address) {
-        return forcedTarget == address(0) ? lendingProtocol : forcedTarget;
     }
 
     // --- test configuration ---
@@ -63,49 +52,46 @@ contract MockLendingAdapter is ILendingAdapter {
         return _supported[keccak256(abi.encode(m))];
     }
 
+    /// @dev The mock protocol treats supplied collateral as collateral automatically (like Morpho and
+    ///      Compound), so the supply is the whole sequence.
     function encodeSupplyCollateral(address account, Market calldata, uint256 amount)
         external
-        view
-        returns (address, uint256, bytes memory)
+        pure
+        returns (Call[] memory calls)
     {
-        return (_callTarget(), 0, abi.encodeWithSignature("supplyCollateral(address,uint256)", account, amount));
-    }
-
-    /// @dev The mock protocol treats supplied collateral as collateral automatically (like Morpho and
-    ///      Compound), so no post-supply enable is needed; return empty to signal skip.
-    function encodeEnableCollateral(address, Market calldata) external pure returns (address, uint256, bytes memory) {
-        return (address(0), 0, "");
+        calls = new Call[](1);
+        calls[0] = Call({value: 0, data: abi.encodeWithSignature("supplyCollateral(address,uint256)", account, amount)});
     }
 
     function encodeWithdrawCollateral(address account, Market calldata, uint256 amount, address receiver)
         external
-        view
-        returns (address, uint256, bytes memory)
+        pure
+        returns (Call[] memory calls)
     {
-        return (
-            _callTarget(),
-            0,
-            abi.encodeWithSignature("withdrawCollateral(address,uint256,address)", account, amount, receiver)
-        );
+        calls = new Call[](1);
+        calls[0] = Call({
+            value: 0,
+            data: abi.encodeWithSignature("withdrawCollateral(address,uint256,address)", account, amount, receiver)
+        });
     }
 
     function encodeBorrow(address account, Market calldata, uint256 amount)
         external
-        view
-        returns (address, uint256, bytes memory)
+        pure
+        returns (Call[] memory calls)
     {
         // borrow to the account; the account forwards to the validated receiver
-        return (_callTarget(), 0, abi.encodeWithSignature("borrow(address,uint256,address)", account, amount, account));
+        calls = new Call[](1);
+        calls[0] = Call({
+            value: 0, data: abi.encodeWithSignature("borrow(address,uint256,address)", account, amount, account)
+        });
     }
 
-    function encodeRepay(address account, Market calldata, uint256 amount)
-        external
-        view
-        returns (address, uint256, bytes memory)
-    {
-        // model an adapter that encodes a no-op for a debt-free position (empty callData the account skips)
-        if (repayNoOp) return (_callTarget(), 0, "");
-        return (_callTarget(), 0, abi.encodeWithSignature("repay(address,uint256)", account, amount));
+    function encodeRepay(address account, Market calldata, uint256 amount) external view returns (Call[] memory calls) {
+        // model an adapter that encodes a no-op for a debt-free position (no calls, which the account skips)
+        if (repayNoOp) return new Call[](0);
+        calls = new Call[](1);
+        calls[0] = Call({value: 0, data: abi.encodeWithSignature("repay(address,uint256)", account, amount)});
     }
 
     function positionOf(address account, Market calldata)

@@ -9,6 +9,7 @@ import {CompoundV3LendingAdapter} from "../../src/CompoundV3LendingAdapter.sol";
 import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {IComet} from "../../src/interfaces/external/compound-v3/IComet.sol";
 import {PositionAmountResolver} from "../../src/base/PositionAmountResolver.sol";
+import {Call} from "../../src/types/Call.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Ltv} from "../../src/types/Ltv.sol";
 import {PositionData} from "../../src/types/PositionData.sol";
@@ -55,8 +56,7 @@ contract CompoundV3LendingAdapterTest is Test {
         unlisted = Market({collateral: Currency.wrap(address(rando)), debt: Currency.wrap(address(usdc)), data: ""});
     }
 
-    /// @dev Asserts every validating entry point rejects `bad` with exactly `err`. `encodeEnableCollateral`
-    ///      is excluded: it is a documented pure no-op on Comet and decodes nothing.
+    /// @dev Asserts every validating entry point rejects `bad` with exactly `err`.
     function _assertRevertsEverywhere(Market memory bad, bytes memory err) internal {
         vm.expectRevert(err);
         adapter.encodeSupplyCollateral(account, bad, 1);
@@ -189,29 +189,24 @@ contract CompoundV3LendingAdapterTest is Test {
     // ---- encoders ----
 
     function test_encodeSupplyCollateral_suppliesCollateralToComet() public view {
-        (address target, uint256 value, bytes memory data) = adapter.encodeSupplyCollateral(account, market, 100e18);
-        assertEq(target, address(comet));
-        assertEq(value, 0);
+        Call[] memory calls = adapter.encodeSupplyCollateral(account, market, 100e18);
+        assertEq(calls.length, 1);
+        assertEq(calls[0].value, 0);
+        bytes memory data = calls[0].data;
         assertEq(data, abi.encodeCall(IComet.supply, (address(uni), 100e18)));
     }
 
-    /// @dev Comet counts supplied collateral automatically, so the enable step is the empty skip signal.
-    function test_encodeEnableCollateral_encodesNoOp() public view {
-        (address target, uint256 value, bytes memory data) = adapter.encodeEnableCollateral(account, market);
-        assertEq(target, address(0));
-        assertEq(value, 0);
-        assertEq(data.length, 0);
-    }
-
     function test_encodeBorrow_withdrawsBaseFromComet() public view {
-        (address target,, bytes memory data) = adapter.encodeBorrow(account, market, 500e6);
-        assertEq(target, address(comet));
+        Call[] memory calls = adapter.encodeBorrow(account, market, 500e6);
+        assertEq(calls.length, 1);
+        bytes memory data = calls[0].data;
         assertEq(data, abi.encodeCall(IComet.withdraw, (address(usdc), 500e6)));
     }
 
     function test_encodeWithdrawCollateral_withdrawsToReceiver() public view {
-        (address target,, bytes memory data) = adapter.encodeWithdrawCollateral(account, market, 100e18, stranger);
-        assertEq(target, address(comet));
+        Call[] memory calls = adapter.encodeWithdrawCollateral(account, market, 100e18, stranger);
+        assertEq(calls.length, 1);
+        bytes memory data = calls[0].data;
         assertEq(data, abi.encodeCall(IComet.withdrawTo, (stranger, address(uni), 100e18)));
     }
 
@@ -225,8 +220,9 @@ contract CompoundV3LendingAdapterTest is Test {
     function test_encodeRepay_partialSuppliesRequestedAmountUpToBorrow() public {
         comet.setBorrowBalance(account, 1_000e6);
         // a partial repay at or below the outstanding borrow supplies exactly the requested amount
-        (address target,, bytes memory data) = adapter.encodeRepay(account, market, 250e6);
-        assertEq(target, address(comet));
+        Call[] memory calls = adapter.encodeRepay(account, market, 250e6);
+        assertEq(calls.length, 1);
+        bytes memory data = calls[0].data;
         assertEq(data, abi.encodeCall(IComet.supply, (address(usdc), 250e6)));
     }
 
@@ -234,22 +230,24 @@ contract CompoundV3LendingAdapterTest is Test {
         comet.setBorrowBalance(account, 1_000e6);
         // an over-sized repay is capped at the borrow, so the overshoot is never supplied as base and
         // cannot be stranded as an unintended positive base-supply position
-        (,, bytes memory data) = adapter.encodeRepay(account, market, 2_000e6);
+        Call[] memory calls = adapter.encodeRepay(account, market, 2_000e6);
+        assertEq(calls.length, 1);
+        bytes memory data = calls[0].data;
         assertEq(data, abi.encodeCall(IComet.supply, (address(usdc), 1_000e6)));
     }
 
     function test_encodeRepay_zeroDebt_encodesNoOp() public view {
         // no borrow seeded: the encoder returns the empty skip signal rather than a zero supply,
         // matching the interface-wide no-op contract shared with the other adapters
-        (address target, uint256 value, bytes memory data) = adapter.encodeRepay(account, market, type(uint256).max);
-        assertEq(target, address(comet));
-        assertEq(value, 0);
-        assertEq(data.length, 0, "debt-free repay must be an empty no-op");
+        Call[] memory calls = adapter.encodeRepay(account, market, type(uint256).max);
+        assertEq(calls.length, 0, "debt-free repay must be an empty no-op");
     }
 
     function test_encodeRepay_maxSuppliesAccruedBorrow() public {
         comet.setBorrowBalance(account, 777e6);
-        (,, bytes memory data) = adapter.encodeRepay(account, market, type(uint256).max);
+        Call[] memory calls = adapter.encodeRepay(account, market, type(uint256).max);
+        assertEq(calls.length, 1);
+        bytes memory data = calls[0].data;
         assertEq(data, abi.encodeCall(IComet.supply, (address(usdc), 777e6)));
     }
 
@@ -335,7 +333,9 @@ contract CompoundV3LendingAdapterTest is Test {
         assertTrue(adapter.isSupportedMarket(unlisted), "routable once listed");
         assertEq(Ltv.unwrap(adapter.maxLtvWad(unlisted)), 0.6e18, "reads the new asset's liquidate factor");
         assertEq(Ltv.unwrap(adapter.maxLtvWad(market)), UNI_LIQUIDATE_CF, "existing market unaffected");
-        (,, bytes memory data) = adapter.encodeSupplyCollateral(account, unlisted, 1e18);
+        Call[] memory calls = adapter.encodeSupplyCollateral(account, unlisted, 1e18);
+        assertEq(calls.length, 1);
+        bytes memory data = calls[0].data;
         assertEq(data, abi.encodeCall(IComet.supply, (address(rando), 1e18)));
     }
 }

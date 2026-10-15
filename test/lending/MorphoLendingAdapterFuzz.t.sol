@@ -15,6 +15,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {MorphoLendingAdapter} from "../../src/MorphoLendingAdapter.sol";
 import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
+import {Call} from "../../src/types/Call.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Ltv} from "../../src/types/Ltv.sol";
 import {MockMorpho} from "../mocks/MockMorpho.sol";
@@ -119,9 +120,10 @@ contract MorphoLendingAdapterFuzzTest is Test {
 
     function testFuzz_encodeSupplyCollateral_shape(address account, uint256 amount) public {
         _create();
-        (address target, uint256 value, bytes memory data) = adapter.encodeSupplyCollateral(account, market, amount);
-        assertEq(target, address(morpho), "target must be morpho");
-        assertEq(value, 0, "value must be 0");
+        Call[] memory calls = adapter.encodeSupplyCollateral(account, market, amount);
+        assertEq(calls.length, 1, "supply must be one call");
+        assertEq(calls[0].value, 0, "value must be 0");
+        bytes memory data = calls[0].data;
         assertEq(bytes4(data), IMorphoBase.supplyCollateral.selector, "wrong selector");
         (uint256 decodedAmount, address onBehalf, uint256 innerDataLen) = this.decodeSupplyCollateral(data);
         assertEq(decodedAmount, amount, "amount mismatch");
@@ -135,10 +137,10 @@ contract MorphoLendingAdapterFuzzTest is Test {
 
     function testFuzz_encodeWithdrawCollateral_shape(address account, uint256 amount, address receiver) public {
         _create();
-        (address target, uint256 value, bytes memory data) =
-            adapter.encodeWithdrawCollateral(account, market, amount, receiver);
-        assertEq(target, address(morpho), "target must be morpho");
-        assertEq(value, 0, "value must be 0");
+        Call[] memory calls = adapter.encodeWithdrawCollateral(account, market, amount, receiver);
+        assertEq(calls.length, 1, "withdraw must be one call");
+        assertEq(calls[0].value, 0, "value must be 0");
+        bytes memory data = calls[0].data;
         assertEq(bytes4(data), IMorphoBase.withdrawCollateral.selector, "wrong selector");
         (uint256 decodedAmount, address onBehalf, address decodedReceiver) = this.decodeWithdrawCollateral(data);
         assertEq(decodedAmount, amount, "amount mismatch");
@@ -152,9 +154,10 @@ contract MorphoLendingAdapterFuzzTest is Test {
 
     function testFuzz_encodeBorrow_shape(address account, uint256 amount) public {
         _create();
-        (address target, uint256 value, bytes memory data) = adapter.encodeBorrow(account, market, amount);
-        assertEq(target, address(morpho), "target must be morpho");
-        assertEq(value, 0, "value must be 0");
+        Call[] memory calls = adapter.encodeBorrow(account, market, amount);
+        assertEq(calls.length, 1, "borrow must be one call");
+        assertEq(calls[0].value, 0, "value must be 0");
+        bytes memory data = calls[0].data;
         assertEq(bytes4(data), IMorphoBase.borrow.selector, "wrong selector");
         (, uint256 assets, uint256 shares, address onBehalf, address borrowReceiver) = this.decodeBorrow(data);
         assertEq(assets, amount, "assets must match amount");
@@ -187,9 +190,10 @@ contract MorphoLendingAdapterFuzzTest is Test {
         );
         (, uint256 reportedDebt) = adapter.positionOf(account, market);
         amount = bound(amount, 1, reportedDebt - 1);
-        (address target, uint256 value, bytes memory data) = adapter.encodeRepay(account, market, amount);
-        assertEq(target, address(morpho), "target must be morpho");
-        assertEq(value, 0, "value must be 0");
+        Call[] memory calls = adapter.encodeRepay(account, market, amount);
+        assertEq(calls.length, 1, "partial repay must be one call");
+        assertEq(calls[0].value, 0, "value must be 0");
+        bytes memory data = calls[0].data;
         assertEq(bytes4(data), IMorphoBase.repay.selector, "wrong selector");
         (uint256 assets, uint256 shares, address onBehalf) = this.decodeRepay(data);
         assertEq(assets, amount, "assets must match");
@@ -204,7 +208,9 @@ contract MorphoLendingAdapterFuzzTest is Test {
         borrowShares = uint128(bound(borrowShares, 1, type(uint128).max));
         Id id = marketParams.id();
         morpho.setPosition(id, account, Position({supplyShares: 0, borrowShares: borrowShares, collateral: 0}));
-        (,, bytes memory data) = adapter.encodeRepay(account, market, type(uint256).max);
+        Call[] memory calls = adapter.encodeRepay(account, market, type(uint256).max);
+        assertEq(calls.length, 1, "full repay must be one call");
+        bytes memory data = calls[0].data;
         (uint256 assets, uint256 shares, address onBehalf) = this.decodeRepay(data);
         assertEq(assets, 0, "full repay must have assets == 0");
         assertEq(shares, uint256(borrowShares), "shares must match position borrowShares");
@@ -215,9 +221,8 @@ contract MorphoLendingAdapterFuzzTest is Test {
     function testFuzz_encodeRepay_zeroDebt_encodesNoOp(address account, uint256 amount) public {
         _create();
         // no borrow position seeded for `account`: borrowShares == 0
-        (, uint256 value, bytes memory data) = adapter.encodeRepay(account, market, amount);
-        assertEq(value, 0);
-        assertEq(data.length, 0, "debt-free repay must be an empty no-op");
+        Call[] memory calls = adapter.encodeRepay(account, market, amount);
+        assertEq(calls.length, 0, "debt-free repay must be an empty no-op");
     }
 
     // -------------------------------------------------------------------------
@@ -248,9 +253,9 @@ contract MorphoLendingAdapterFuzzTest is Test {
 
         assertTrue(adapter.isSupportedMarket(key), "created market must be routable");
         assertEq(Ltv.unwrap(adapter.maxLtvWad(key)), lltv, "maxLtvWad reads the created lltv");
-        (address target,, bytes memory data) = adapter.encodeBorrow(address(this), key, amount);
-        assertEq(target, address(morpho), "target must be morpho");
-        (MarketParams memory encoded,,,,) = this.decodeBorrow(data);
+        Call[] memory calls = adapter.encodeBorrow(address(this), key, amount);
+        assertEq(calls.length, 1, "borrow must be one call");
+        (MarketParams memory encoded,,,,) = this.decodeBorrow(calls[0].data);
         assertEq(encoded.oracle, oracle, "encoded oracle");
         assertEq(encoded.irm, irm, "encoded irm");
         assertEq(encoded.lltv, lltv, "encoded lltv");

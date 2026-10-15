@@ -8,6 +8,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ILendingAdapter} from "./interfaces/ILendingAdapter.sol";
 import {ISpoke} from "./interfaces/external/aave-v4/ISpoke.sol";
 import {PositionAmountResolver} from "./base/PositionAmountResolver.sol";
+import {Call} from "./types/Call.sol";
 import {Market} from "./types/Market.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
 import {Units} from "./libraries/Units.sol";
@@ -32,11 +33,11 @@ import {PositionData} from "./types/PositionData.sol";
 ///         - The account acts as its own `onBehalfOf` AND is the direct caller, so
 ///           `Spoke._isPositionManager(account, account)` short-circuits to true. The v4 position
 ///           manager / intent apparatus (for third-party relayers) is therefore irrelevant here.
-///         - v4 `supply` does NOT auto-enable collateral, so `encodeSupplyCollateral` supplies and the
-///           account then runs `encodeEnableCollateral` (`setUsingAsCollateral`) through the shared
-///           post-supply hook. The account is the direct caller of both, so the supply pulls the
-///           underlying against the account's allowance to the Spoke. `setUsingAsCollateral` is
-///           idempotent, so re-emitting it on every supply is safe.
+///         - v4 `supply` does NOT auto-enable collateral, so `encodeSupplyCollateral` returns the supply
+///           followed by `setUsingAsCollateral`, which the account runs in the same sequence. The
+///           account is the direct caller of both, so the supply pulls the underlying against the
+///           account's allowance to the Spoke. `setUsingAsCollateral` is idempotent, so re-emitting it
+///           on every supply is safe.
 ///         - v4 `borrow` and `withdraw` deliver the underlying to `msg.sender` (the account). The
 ///           account holds the funds and forwards them to its validated receiver, so neither encoder
 ///           carries a recipient.
@@ -117,33 +118,21 @@ contract AaveV4LendingAdapter is ILendingAdapter, PositionAmountResolver {
     }
 
     /// @inheritdoc ILendingAdapter
-    /// @dev Encodes `Spoke.supply(collateralReserveId, amount, account)`. The account executes this
+    /// @dev Encodes `Spoke.supply(collateralReserveId, amount, account)` followed by
+    ///      `setUsingAsCollateral(collateralReserveId, true, account)`. The account executes both
     ///      itself, so the supply observes `msg.sender == account` and pulls the underlying against the
-    ///      account's allowance to the Spoke. v4 `supply` does not auto-enable collateral; the account
-    ///      runs `encodeEnableCollateral` immediately after (see below). `value` is 0 (the Spoke is
-    ///      non-payable).
+    ///      account's allowance to the Spoke. v4 `supply` does not auto-enable collateral, and the
+    ///      enable is idempotent, so re-running it on every supply (including a top-up) is safe.
     function encodeSupplyCollateral(address account, Market calldata market, uint256 amount)
         external
         view
-        returns (address, uint256, bytes memory)
+        returns (Call[] memory calls)
     {
         (uint256 collateralReserveId,) = _resolve(market);
-        return (address(spoke), 0, abi.encodeCall(ISpoke.supply, (collateralReserveId, amount, account)));
-    }
-
-    /// @inheritdoc ILendingAdapter
-    /// @dev v4 `supply` does not enable the reserve as collateral, so encode an explicit
-    ///      `setUsingAsCollateral(collateralReserveId, true, account)`. Idempotent, so re-running it on
-    ///      every supply (including a top-up) is safe. Split out of `encodeSupplyCollateral` so both
-    ///      Aave adapters enable collateral through the shared post-supply hook rather than a Spoke
-    ///      multicall.
-    function encodeEnableCollateral(address account, Market calldata market)
-        external
-        view
-        returns (address, uint256, bytes memory)
-    {
-        (uint256 collateralReserveId,) = _resolve(market);
-        return (address(spoke), 0, abi.encodeCall(ISpoke.setUsingAsCollateral, (collateralReserveId, true, account)));
+        calls = new Call[](2);
+        calls[0] = Call({value: 0, data: abi.encodeCall(ISpoke.supply, (collateralReserveId, amount, account))});
+        calls[1] =
+            Call({value: 0, data: abi.encodeCall(ISpoke.setUsingAsCollateral, (collateralReserveId, true, account))});
     }
 
     /// @inheritdoc ILendingAdapter
@@ -155,11 +144,12 @@ contract AaveV4LendingAdapter is ILendingAdapter, PositionAmountResolver {
     function encodeWithdrawCollateral(address account, Market calldata market, uint256 amount, address)
         external
         view
-        returns (address, uint256, bytes memory)
+        returns (Call[] memory calls)
     {
         (uint256 collateralReserveId,) = _resolve(market);
         if (account != msg.sender) revert AccountMismatch(account, msg.sender);
-        return (address(spoke), 0, abi.encodeCall(ISpoke.withdraw, (collateralReserveId, amount, account)));
+        calls = new Call[](1);
+        calls[0] = Call({value: 0, data: abi.encodeCall(ISpoke.withdraw, (collateralReserveId, amount, account))});
     }
 
     /// @inheritdoc ILendingAdapter
@@ -169,27 +159,29 @@ contract AaveV4LendingAdapter is ILendingAdapter, PositionAmountResolver {
     function encodeBorrow(address account, Market calldata market, uint256 amount)
         external
         view
-        returns (address, uint256, bytes memory)
+        returns (Call[] memory calls)
     {
         (, uint256 debtReserveId) = _resolve(market);
-        return (address(spoke), 0, abi.encodeCall(ISpoke.borrow, (debtReserveId, amount, account)));
+        calls = new Call[](1);
+        calls[0] = Call({value: 0, data: abi.encodeCall(ISpoke.borrow, (debtReserveId, amount, account))});
     }
 
     /// @inheritdoc ILendingAdapter
     /// @dev Encodes `Spoke.repay(debtReserveId, amount, account)`. Passing `amount == type(uint256).max`
     ///      repays the account's full debt: the Spoke caps an over-amount to the total debt (drawn plus
     ///      premium), leaving no dust. The max-uint cap applies on the Spoke directly, which is what the
-    ///      account calls. When the account holds no debt in the reserve, encodes the empty skip signal
-    ///      instead: the Spoke reverts `InvalidAmount` on a debt-free repay, and the no-op keeps a
-    ///      generic repay-then-withdraw exit plan runnable against a debt-free position.
+    ///      account calls. When the account holds no debt in the reserve, encodes no calls instead:
+    ///      the Spoke reverts `InvalidAmount` on a debt-free repay, and the no-op keeps a generic
+    ///      repay-then-withdraw exit plan runnable against a debt-free position.
     function encodeRepay(address account, Market calldata market, uint256 amount)
         external
         view
-        returns (address, uint256, bytes memory)
+        returns (Call[] memory calls)
     {
         (, uint256 debtReserveId) = _resolve(market);
-        if (spoke.getUserTotalDebt(debtReserveId, account) == 0) return (address(spoke), 0, "");
-        return (address(spoke), 0, abi.encodeCall(ISpoke.repay, (debtReserveId, amount, account)));
+        if (spoke.getUserTotalDebt(debtReserveId, account) == 0) return new Call[](0);
+        calls = new Call[](1);
+        calls[0] = Call({value: 0, data: abi.encodeCall(ISpoke.repay, (debtReserveId, amount, account))});
     }
 
     /// @inheritdoc ILendingAdapter

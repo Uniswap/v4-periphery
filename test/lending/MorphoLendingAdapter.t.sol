@@ -16,6 +16,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {MorphoLendingAdapter} from "../../src/MorphoLendingAdapter.sol";
 import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {PositionAmountResolver} from "../../src/base/PositionAmountResolver.sol";
+import {Call} from "../../src/types/Call.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Ltv} from "../../src/types/Ltv.sol";
 import {MockMorpho} from "../mocks/MockMorpho.sol";
@@ -117,8 +118,7 @@ contract MorphoLendingAdapterTest is Test {
         (mp, assets, shares, onBehalf, inner) = abi.decode(d[4:], (MarketParams, uint256, uint256, address, bytes));
     }
 
-    /// @dev Asserts every validating entry point rejects `bad` with exactly `err`. `encodeEnableCollateral`
-    ///      is excluded: it is a documented pure no-op on Morpho and decodes nothing.
+    /// @dev Asserts every validating entry point rejects `bad` with exactly `err`.
     function _assertRevertsEverywhere(Market memory bad, bytes memory err) internal {
         vm.expectRevert(err);
         adapter.encodeSupplyCollateral(account, bad, 1);
@@ -247,10 +247,12 @@ contract MorphoLendingAdapterTest is Test {
         assertEq(Ltv.unwrap(adapter.maxLtvWad(secondKey)), 0.77e18, "second market lltv");
 
         // the encoded MarketParams carry each key's own lltv and hash to each market's own id
-        (,, bytes memory firstData) = adapter.encodeSupplyCollateral(account, market, 1e18);
-        (,, bytes memory secondData) = adapter.encodeSupplyCollateral(account, secondKey, 1e18);
-        MarketParams memory firstParams = this.decodeSupplyParams(firstData);
-        MarketParams memory secondParams = this.decodeSupplyParams(secondData);
+        Call[] memory firstCalls = adapter.encodeSupplyCollateral(account, market, 1e18);
+        Call[] memory secondCalls = adapter.encodeSupplyCollateral(account, secondKey, 1e18);
+        assertEq(firstCalls.length, 1, "first encode is one call");
+        assertEq(secondCalls.length, 1, "second encode is one call");
+        MarketParams memory firstParams = this.decodeSupplyParams(firstCalls[0].data);
+        MarketParams memory secondParams = this.decodeSupplyParams(secondCalls[0].data);
         assertEq(firstParams.lltv, 0.86e18, "first encode carries first lltv");
         assertEq(secondParams.lltv, 0.77e18, "second encode carries second lltv");
         assertEq(Id.unwrap(firstParams.id()), Id.unwrap(marketParams.id()), "first encode targets first id");
@@ -268,11 +270,12 @@ contract MorphoLendingAdapterTest is Test {
 
     // ---- encoders ----
 
-    function test_encodeSupplyCollateral_targetOnBehalfAndEmptyData() public {
+    function test_encodeSupplyCollateral_onBehalfAndEmptyData() public {
         _create();
-        (address target, uint256 value, bytes memory data) = adapter.encodeSupplyCollateral(account, market, 5e18);
-        assertEq(target, address(morpho));
-        assertEq(value, 0);
+        Call[] memory calls = adapter.encodeSupplyCollateral(account, market, 5e18);
+        assertEq(calls.length, 1);
+        assertEq(calls[0].value, 0);
+        bytes memory data = calls[0].data;
         assertEq(bytes4(data), IMorphoBase.supplyCollateral.selector);
         (uint256 amount, address onBehalf, uint256 dataLen) = this.decodeSupply(data);
         assertEq(amount, 5e18);
@@ -280,20 +283,13 @@ contract MorphoLendingAdapterTest is Test {
         assertEq(dataLen, 0); // empty data so no Morpho callback fires
     }
 
-    /// @dev Morpho treats supplied collateral as collateral automatically, so the enable step is the
-    ///      empty skip signal the account honours.
-    function test_encodeEnableCollateral_encodesNoOp() public view {
-        (address target, uint256 value, bytes memory data) = adapter.encodeEnableCollateral(account, market);
-        assertEq(target, address(0));
-        assertEq(value, 0);
-        assertEq(data.length, 0);
-    }
-
     function test_encodeRepay_max_usesSharesBasedFullRepay() public {
         _create();
         Id id = marketParams.id();
         morpho.setPosition(id, account, Position({supplyShares: 0, borrowShares: 77, collateral: 0}));
-        (,, bytes memory data) = adapter.encodeRepay(account, market, type(uint256).max);
+        Call[] memory calls = adapter.encodeRepay(account, market, type(uint256).max);
+        assertEq(calls.length, 1);
+        bytes memory data = calls[0].data;
         assertEq(bytes4(data), IMorphoBase.repay.selector);
         (uint256 assets, uint256 shares, address onBehalf) = this.decodeRepay(data);
         assertEq(assets, 0);
@@ -305,7 +301,9 @@ contract MorphoLendingAdapterTest is Test {
         _create();
         // reported debt ~100e18; a request well below it is a genuine partial and stays asset-denominated
         _seedBorrow(marketParams, account, 100e18, 100e18, 100e18);
-        (,, bytes memory data) = adapter.encodeRepay(account, market, 9e18);
+        Call[] memory calls = adapter.encodeRepay(account, market, 9e18);
+        assertEq(calls.length, 1);
+        bytes memory data = calls[0].data;
         (uint256 assets, uint256 shares,) = this.decodeRepay(data);
         assertEq(assets, 9e18);
         assertEq(shares, 0);
@@ -318,7 +316,9 @@ contract MorphoLendingAdapterTest is Test {
         _create();
         _seedBorrow(marketParams, account, 100e18, 100e18, 100e18);
         (, uint256 reportedDebt) = adapter.positionOf(account, market);
-        (,, bytes memory data) = adapter.encodeRepay(account, market, reportedDebt);
+        Call[] memory calls = adapter.encodeRepay(account, market, reportedDebt);
+        assertEq(calls.length, 1);
+        bytes memory data = calls[0].data;
         (uint256 assets, uint256 shares,) = this.decodeRepay(data);
         assertEq(assets, 0, "must not repay by assets at the reported debt");
         assertEq(shares, 100e18, "burns the account's full borrow share balance");
@@ -329,7 +329,9 @@ contract MorphoLendingAdapterTest is Test {
         _create();
         _seedBorrow(marketParams, account, 100e18, 100e18, 100e18);
         (, uint256 reportedDebt) = adapter.positionOf(account, market);
-        (,, bytes memory data) = adapter.encodeRepay(account, market, reportedDebt + 1);
+        Call[] memory calls = adapter.encodeRepay(account, market, reportedDebt + 1);
+        assertEq(calls.length, 1);
+        bytes memory data = calls[0].data;
         (uint256 assets, uint256 shares,) = this.decodeRepay(data);
         assertEq(assets, 0);
         assertEq(shares, 100e18);
@@ -340,10 +342,8 @@ contract MorphoLendingAdapterTest is Test {
     function test_encodeRepay_zeroDebt_encodesNoOp() public {
         _create();
         // no borrow position seeded: borrowShares == 0
-        (address target, uint256 value, bytes memory data) = adapter.encodeRepay(account, market, type(uint256).max);
-        assertEq(target, address(morpho));
-        assertEq(value, 0);
-        assertEq(data.length, 0, "debt-free repay must be an empty no-op");
+        Call[] memory calls = adapter.encodeRepay(account, market, type(uint256).max);
+        assertEq(calls.length, 0, "debt-free repay must be an empty no-op");
     }
 
     // ---- reads ----

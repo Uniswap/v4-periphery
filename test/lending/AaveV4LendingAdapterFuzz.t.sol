@@ -9,6 +9,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {AaveV4LendingAdapter} from "../../src/AaveV4LendingAdapter.sol";
 import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {ISpoke} from "../../src/interfaces/external/aave-v4/ISpoke.sol";
+import {Call} from "../../src/types/Call.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Ltv} from "../../src/types/Ltv.sol";
 import {MockAaveV4Spoke} from "../mocks/MockAaveV4Spoke.sol";
@@ -122,24 +123,25 @@ contract AaveV4LendingAdapterFuzzTest is Test {
     }
 
     // -------------------------------------------------------------------------
-    // encodeSupplyCollateral + encodeEnableCollateral
+    // encodeSupplyCollateral: supply, then enable as collateral
     // -------------------------------------------------------------------------
 
-    function testFuzz_encodeSupplyAndEnableCollateral(address account, uint256 amount) public view {
-        (address supplyTarget, uint256 supplyValue, bytes memory supplyData) =
-            adapter.encodeSupplyCollateral(account, market, amount);
-        assertEq(supplyTarget, address(spoke), "supply target must be spoke");
-        assertEq(supplyValue, 0, "supply value must be 0");
+    function testFuzz_encodeSupplyCollateral_suppliesThenEnablesCollateral(address account, uint256 amount)
+        public
+        view
+    {
+        Call[] memory calls = adapter.encodeSupplyCollateral(account, market, amount);
+        assertEq(calls.length, 2, "supply is two calls: supply then enable");
+        assertEq(calls[0].value, 0, "supply value must be 0");
+        bytes memory supplyData = calls[0].data;
         assertEq(bytes4(supplyData), ISpoke.supply.selector, "supply is a plain call");
         (uint256 supplyId, uint256 decodedAmount, address supplyOnBehalf) = this.decodeSupply(supplyData);
         assertEq(supplyId, USDC_RESERVE_ID, "supply reserveId must be USDC");
         assertEq(decodedAmount, amount, "supply amount mismatch");
         assertEq(supplyOnBehalf, account, "supply onBehalfOf must be account");
 
-        (address enableTarget, uint256 enableValue, bytes memory enableData) =
-            adapter.encodeEnableCollateral(account, market);
-        assertEq(enableTarget, address(spoke), "enable target must be spoke");
-        assertEq(enableValue, 0, "enable value must be 0");
+        assertEq(calls[1].value, 0, "enable value must be 0");
+        bytes memory enableData = calls[1].data;
         assertEq(bytes4(enableData), ISpoke.setUsingAsCollateral.selector, "enable is setUsingAsCollateral");
         (uint256 collId, bool flag, address collOnBehalf) = this.decodeSetCollateral(enableData);
         assertEq(collId, USDC_RESERVE_ID, "setCollateral reserveId must be USDC");
@@ -153,10 +155,10 @@ contract AaveV4LendingAdapterFuzzTest is Test {
 
     function testFuzz_encodeWithdrawCollateral_shape(address account, uint256 amount, address receiver) public {
         vm.prank(account);
-        (address target, uint256 value, bytes memory data) =
-            adapter.encodeWithdrawCollateral(account, market, amount, receiver);
-        assertEq(target, address(spoke), "target must be spoke");
-        assertEq(value, 0, "value must be 0");
+        Call[] memory calls = adapter.encodeWithdrawCollateral(account, market, amount, receiver);
+        assertEq(calls.length, 1, "withdraw is one call");
+        assertEq(calls[0].value, 0, "value must be 0");
+        bytes memory data = calls[0].data;
         assertEq(bytes4(data), ISpoke.withdraw.selector, "wrong selector");
         (uint256 reserveId, uint256 decodedAmount, address onBehalfOf) = this.decodeWithdraw(data);
         assertEq(reserveId, USDC_RESERVE_ID, "reserveId must be USDC (collateral)");
@@ -169,9 +171,10 @@ contract AaveV4LendingAdapterFuzzTest is Test {
     // -------------------------------------------------------------------------
 
     function testFuzz_encodeBorrow_shape(address account, uint256 amount) public view {
-        (address target, uint256 value, bytes memory data) = adapter.encodeBorrow(account, market, amount);
-        assertEq(target, address(spoke), "target must be spoke");
-        assertEq(value, 0, "value must be 0");
+        Call[] memory calls = adapter.encodeBorrow(account, market, amount);
+        assertEq(calls.length, 1, "borrow is one call");
+        assertEq(calls[0].value, 0, "value must be 0");
+        bytes memory data = calls[0].data;
         assertEq(bytes4(data), ISpoke.borrow.selector, "wrong selector");
         (uint256 reserveId, uint256 decodedAmount, address onBehalfOf) = this.decodeBorrow(data);
         assertEq(reserveId, WETH_RESERVE_ID, "reserveId must be WETH (debt)");
@@ -185,9 +188,10 @@ contract AaveV4LendingAdapterFuzzTest is Test {
 
     function testFuzz_encodeRepay_shape(address account, uint256 amount) public {
         spoke.seedDebt(WETH_RESERVE_ID, account, 1); // the encoder no-ops without live debt
-        (address target, uint256 value, bytes memory data) = adapter.encodeRepay(account, market, amount);
-        assertEq(target, address(spoke), "target must be spoke");
-        assertEq(value, 0, "value must be 0");
+        Call[] memory calls = adapter.encodeRepay(account, market, amount);
+        assertEq(calls.length, 1, "repay is one call");
+        assertEq(calls[0].value, 0, "value must be 0");
+        bytes memory data = calls[0].data;
         assertEq(bytes4(data), ISpoke.repay.selector, "wrong selector");
         (uint256 reserveId, uint256 decodedAmount, address onBehalfOf) = this.decodeRepay(data);
         assertEq(reserveId, WETH_RESERVE_ID, "reserveId must be WETH (debt)");
@@ -197,10 +201,8 @@ contract AaveV4LendingAdapterFuzzTest is Test {
 
     function testFuzz_encodeRepay_zeroDebt_encodesNoOp(address account, uint256 amount) public view {
         // no debt seeded: any requested amount encodes the empty skip signal
-        (address target, uint256 value, bytes memory data) = adapter.encodeRepay(account, market, amount);
-        assertEq(target, address(spoke), "target must be spoke");
-        assertEq(value, 0, "value must be 0");
-        assertEq(data.length, 0, "debt-free repay must be an empty no-op");
+        Call[] memory calls = adapter.encodeRepay(account, market, amount);
+        assertEq(calls.length, 0, "debt-free repay must be an empty no-op");
     }
 
     // -------------------------------------------------------------------------
@@ -340,14 +342,17 @@ contract AaveV4LendingAdapterFuzzTest is Test {
     function testFuzz_longMarket_routesWithoutRegistration(address account, uint256 amount) public view {
         assertTrue(adapter.isSupportedMarket(longMarket), "long key is live");
 
-        (address target,, bytes memory supplyData) = adapter.encodeSupplyCollateral(account, longMarket, amount);
-        assertEq(target, address(spoke), "target must be spoke");
+        Call[] memory calls = adapter.encodeSupplyCollateral(account, longMarket, amount);
+        assertEq(calls.length, 2, "supply is two calls: supply then enable");
+        bytes memory supplyData = calls[0].data;
         (uint256 supplyId, uint256 decodedAmount, address onBehalfOf) = this.decodeSupply(supplyData);
         assertEq(supplyId, WETH_RESERVE_ID, "long key supplies the WETH reserve");
         assertEq(decodedAmount, amount, "amount mismatch");
         assertEq(onBehalfOf, account, "onBehalfOf must be account");
 
-        (,, bytes memory borrowData) = adapter.encodeBorrow(account, longMarket, amount);
+        calls = adapter.encodeBorrow(account, longMarket, amount);
+        assertEq(calls.length, 1, "borrow is one call");
+        bytes memory borrowData = calls[0].data;
         (uint256 borrowId, uint256 borrowAmount,) = this.decodeBorrow(borrowData);
         assertEq(borrowId, USDC_RESERVE_ID, "long key borrows the USDC reserve");
         assertEq(borrowAmount, amount, "amount mismatch");

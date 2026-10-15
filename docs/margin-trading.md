@@ -154,13 +154,13 @@ adapter is removed).
 
 ### 3.3 Lending adapter and adapter trust
 
-The adapter is an **encoder**: each `encode`* returns `(target, value, callData)`, and the account
-performs the call as itself with a regular call (never a delegatecall). The target is the adapter's
-declared `lendingProtocol()`. The encode surface is `encodeSupplyCollateral`,
-`encodeEnableCollateral` (run by the account immediately after every supply, for venues that need an
-explicit collateral enable; empty `callData` is the skip signal), `encodeWithdrawCollateral`,
-`encodeBorrow`, and `encodeRepay` — an adapter implementation must provide all five, or
-`supplyCollateral` reverts when the account consults the missing hook. The adapter is **caller-chosen on
+The adapter is an **encoder**: each `encode`* returns a sequence of `Call { value, data }`, and the
+account performs each one, in order, against the adapter's declared `lendingProtocol()` as itself with
+a regular call (never a delegatecall). A step that takes more than one venue call is simply a longer
+sequence: both Aave adapters encode the supply followed by the venue's explicit collateral enable, while
+Morpho and Compound encode the supply alone. The encode surface is `encodeSupplyCollateral`,
+`encodeWithdrawCollateral`, `encodeBorrow`, and `encodeRepay`; a repay encoder returns an empty sequence
+when there is nothing to repay, which the account skips. The adapter is **caller-chosen on
 every call, with no allowlist and no router governance**: you pass the adapter (the venue) and the
 `Market` key (§3.1) together, and the caller, or the app that built the transaction, is responsible for
 both. This is safe for everyone else because the router only ever operates on the caller's own account
@@ -888,11 +888,11 @@ Hub (`HubMismatch`), so a Spoke reserve-layout change is caught immediately. Fou
 handled entirely inside the adapter, so the router and account flows are unchanged:
 
 - **Supply enables collateral atomically.** v4 `supply` does not auto-enable collateral, so the
-adapter's `encodeEnableCollateral` hook encodes `setUsingAsCollateral`, which the account runs
-immediately after every supply (idempotent, so top-ups are safe). The v3 adapter uses the same hook
-to encode `setUserUseReserveAsCollateral`, making both Aave adapters immune to the first-supply
-auto-enable gap; Morpho and Compound treat supplied collateral as collateral automatically and
-return the empty skip signal.
+adapter's `encodeSupplyCollateral` returns the supply followed by `setUsingAsCollateral`, which the
+account runs in the same sequence (idempotent, so top-ups are safe). The v3 adapter likewise follows
+its supply with `setUserUseReserveAsCollateral`, making both Aave adapters immune to the first-supply
+auto-enable gap; Morpho and Compound treat supplied collateral as collateral automatically and encode
+the supply alone.
 - **Premium-inclusive debt.** v4 debt is drawn debt plus accrued premium; `positionOf` and the
 full-repay path read `getUserTotalDebt`, and the router's close swap is sized off that figure.
 - **`maxLtvWad`** reads the collateral reserve's `collateralFactor`. v4's true liquidation point also
@@ -1247,10 +1247,10 @@ All four adapters — `MorphoLendingAdapter`, `AaveLendingAdapter` (Aave v3), `A
 `CompoundV3LendingAdapter` — expose the same `ILendingAdapter` reads: `lendingProtocol()`,
 `isSupportedMarket(Market)`, `positionOf(account, Market)`, `maxLtvWad(Market)`,
 `currentLtvWad(account, Market)`, and `describePosition(account, Market)`. The encode surface (see
-§3.3) is the five encoders `encodeSupplyCollateral` / `encodeEnableCollateral` /
-`encodeWithdrawCollateral` / `encodeBorrow` / `encodeRepay`; on the Aave adapters
-`encodeEnableCollateral` returns the venue's explicit collateral-enable call, on Morpho and Compound
-the empty skip signal. The adapters are stateless and unowned: there is no `setMarket`, no `MarketSet`
+§3.3) is the four encoders `encodeSupplyCollateral` / `encodeWithdrawCollateral` / `encodeBorrow` /
+`encodeRepay`, each returning the `Call` sequence the account performs; on the Aave adapters the
+supply sequence ends with the venue's explicit collateral-enable call, on Morpho and Compound it is the
+supply alone. The adapters are stateless and unowned: there is no `setMarket`, no `MarketSet`
 event, and no ownership surface. Only the `Market.data` encoding differs by venue (§3.1):
 
 - `MorphoLendingAdapter`: `abi.encode(address oracle, address irm, uint256 lltv)`; the market must
