@@ -125,62 +125,146 @@ contract MarginRouter is
     }
 
     /// @inheritdoc IMarginRouter
-    /// @dev A partial decrease (`debtToRepay < type(uint256).max`) and a full close
-    ///      (`debtToRepay == type(uint256).max`) share one implementation: route the caller's swap to
-    ///      buy the target debt (delivered to the account), assert it arrived, repay, withdraw
-    ///      collateral, and settle the swap from the router. The caller's route sizes the swap; only
-    ///      four plan amounts vary by `fullClose`: the fill-assert threshold, the repay amount, how
-    ///      much collateral is withdrawn, and the health bound. Everything else, including the residual
-    ///      measure-and-forward, is identical: a partial decrease withdraws exactly the swap cost so its
-    ///      residual is zero, while a full close withdraws everything and returns the realized PnL (plus
-    ///      any debt the route over-bought, swept back after the unlock).
+    /// @dev `debtToRepay == type(uint256).max` closes the position; any other value is a partial
+    ///      decrease. Both run the same plan (`_decreasePlan`) with different amounts and assert
+    ///      different things afterward, so each has its own linear path.
     function decreasePosition(DecreaseParams calldata params)
         external
         isNotLocked
         checkDeadline(params.deadline)
         returns (address account)
     {
-        bool fullClose = params.debtToRepay == type(uint256).max;
-
-        // a partial decrease's bounds don't depend on the position, so validate them before any
-        // external read: a non-zero repay (a zero would feed a zero into the exact-output swap, which
-        // the PoolManager rejects) and a resulting-health bound so it cannot worsen the LTV
-        if (!fullClose) {
-            if (params.debtToRepay == 0) revert ZeroAmount();
-            if (Ltv.unwrap(params.maxLtvAfter) == 0) revert SlippageBoundRequired();
-            // reject a bound that cannot bind (>= 100%): it satisfies the require above yet leaves
-            // ASSERT_HEALTH a no-op, so the "mandatory" partial-decrease health bound stays real
-            if (Ltv.unwrap(params.maxLtvAfter) >= Units.WAD) revert IneffectiveLtvBound(params.maxLtvAfter);
-        }
-
         account = accountOf(msgSender(), params.subId);
+        if (params.debtToRepay == type(uint256).max) _closePosition(params, account);
+        else _partialDecrease(params, account);
+    }
+
+    /// @notice Full close: repay all, withdraw all, and return the realized collateral plus any debt
+    ///         the route over-bought to the caller. A debt-free position (funded only through
+    ///         `addCollateral`, repaid out of band, or fully liquidated) needs no swap, so its
+    ///         collateral is withdrawn straight to the caller.
+    /// @param params The decrease parameters.
+    /// @param account The caller's MarginAccount.
+    function _closePosition(DecreaseParams calldata params, address account) private {
         (uint256 collateralBefore, uint256 debt) = params.adapter.positionOf(account, params.market);
 
-        // a full close of a debt-free position (funded only via addCollateral, repaid out of band, or
-        // fully liquidated) needs no swap: withdraw the collateral straight to the caller and finish.
-        if (fullClose && debt == 0) {
+        if (debt == 0) {
             if (collateralBefore > 0) {
                 IMarginAccount(account).withdrawCollateral(params.adapter, params.market, collateralBefore, msgSender());
             }
-            // this path bypasses the unlock interpreter, so no action handler fires the snapshot;
-            // emit the terminal PositionUpdated here so snapshot-only consumers see the close
+            // no unlock ran, so no action handler emitted the snapshot; emit the terminal one here
             _emitPosition(params.adapter, params.market, account);
-            // all collateral withdrawn straight to the caller; nothing left in the position
             _emitClosed(params, account, 0, collateralBefore, collateralBefore);
-            return account;
+            return;
         }
 
-        // a partial decrease of a debt-free position has nothing to repay: the swap would buy debt
-        // tokens no repay consumes, stranding them in the account (only a full close sweeps the
-        // surplus) while the event reported a repay that never happened. Fail loudly instead; this
-        // also keeps a partial decrease against a market key the account holds no position in, whose
-        // reads see zero debt, a revert rather than a silent value leak.
-        if (debt == 0) revert NoDebtToRepay();
-
-        // a swap runs from here (the debt-free full close returned above), so the input cap is mandatory
         if (params.maxCollateralIn == 0) revert SlippageBoundRequired();
 
-        bytes memory actions = abi.encodePacked(
+        // the route must deliver at least the current debt; repay all so no dust remains (resolved by
+        // the adapter in the venue's own terms); withdraw everything; no health bound, since the
+        // position ends empty
+        uint256 balanceBefore = params.market.collateral.balanceOfSelf();
+        (bytes memory actions, bytes[] memory actionParams) =
+            _decreasePlan(params, account, debt, type(uint256).max, collateralBefore, Ltv.wrap(0));
+        _unlockAs(account, actions, actionParams);
+
+        // a route quoted with an accrual buffer over-buys debt, which repay-all leaves in the account;
+        // return it to the caller
+        uint256 debtOver = params.market.debt.balanceOf(account);
+        if (debtOver > 0) IMarginAccount(account).sweep(params.market.debt, debtOver, msgSender());
+
+        // the withdrawn collateral beyond what the swap consumed is the realized PnL
+        uint256 residual = _returnCollateralGain(params.market.collateral, balanceBefore);
+        _emitClosed(params, account, debt, collateralBefore, residual);
+    }
+
+    /// @notice Partial decrease: repay exactly `debtToRepay`, withdraw only the collateral the swap
+    ///         consumed, and enforce the mandatory resulting-health bound.
+    /// @param params The decrease parameters.
+    /// @param account The caller's MarginAccount.
+    function _partialDecrease(DecreaseParams calldata params, address account) private {
+        // the repay must be non-zero (a zero would feed the exact-output swap a zero, which the
+        // PoolManager rejects), and the health bound must be set and able to bind: at or above 100%
+        // it can never be exceeded, so it would count as set yet leave ASSERT_HEALTH a no-op
+        if (params.debtToRepay == 0) revert ZeroAmount();
+        if (Ltv.unwrap(params.maxLtvAfter) == 0) revert SlippageBoundRequired();
+        if (Ltv.unwrap(params.maxLtvAfter) >= Units.WAD) revert IneffectiveLtvBound(params.maxLtvAfter);
+
+        (uint256 collateralBefore, uint256 debt) = params.adapter.positionOf(account, params.market);
+        // nothing to repay: the swap would buy debt tokens no repay consumes and strand them in the
+        // account (only a close sweeps the surplus). This also covers a market key the account holds
+        // no position in.
+        if (debt == 0) revert NoDebtToRepay();
+        if (params.maxCollateralIn == 0) revert SlippageBoundRequired();
+
+        // the route must deliver debtToRepay; repay exactly that; withdraw what the swap consumed
+        // (OPEN_DELTA: the router's remaining collateral debt to the pool); enforce maxLtvAfter
+        uint256 balanceBefore = params.market.collateral.balanceOfSelf();
+        // fail-closed: the plan's ACCOUNT_REPAY overwrites this with what it actually repaid
+        TransientPlanState.setLastRepaid(0);
+        (bytes memory actions, bytes[] memory actionParams) = _decreasePlan(
+            params,
+            account,
+            params.debtToRepay,
+            params.debtToRepay,
+            uint256(ActionConstants.OPEN_DELTA),
+            params.maxLtvAfter
+        );
+        _unlockAs(account, actions, actionParams);
+
+        // the pre-unlock debt read cannot see a repay that lands inside the unlock (venues accept
+        // permissionless onBehalf repays, and route-path code can execute one). With the debt cleared
+        // mid-transaction the repay leg no-ops and the bought debt tokens strand in the account, so
+        // require a measured repay. A close tolerates the no-op, since it sweeps the surplus back.
+        if (TransientPlanState.lastRepaid() == 0) revert NoDebtToRepay();
+
+        // normally zero: the withdraw is sized to exactly what the swap consumed
+        uint256 residual = _returnCollateralGain(params.market.collateral, balanceBefore);
+
+        // best-effort rich event: a venue read that reverts (oracle downtime) must not roll back the
+        // completed decrease, and the PositionUpdated snapshots emitted inside the unlock already
+        // carry the resulting state. The collateral delta saturates at zero because a permissionless
+        // onBehalf supply landing inside the transaction can leave the collateral above its start.
+        try params.adapter.describePosition(account, params.market) returns (PositionData memory position) {
+            emit PositionDecreased(
+                msgSender(),
+                account,
+                params.market.collateral,
+                params.market.debt,
+                params.market.data,
+                params.debtToRepay,
+                collateralBefore > position.collateralAmount ? collateralBefore - position.collateralAmount : 0,
+                residual,
+                position.collateralAmount,
+                position.debtAmount,
+                position.currentLtv,
+                position.healthFactorWad
+            );
+        } catch {}
+    }
+
+    /// @notice Builds the plan both decrease modes run: `ROUTE_SWAP` sells collateral for debt
+    ///         delivered to the account, `ASSERT_ACCOUNT_BALANCE` proves the delivery, `ACCOUNT_REPAY`
+    ///         and `ACCOUNT_WITHDRAW_COLLATERAL` move the position, `SETTLE` pays the swap from the
+    ///         router, and `ASSERT_HEALTH` checks the result.
+    /// @param params The decrease parameters; the route and the input cap come from here.
+    /// @param account The caller's MarginAccount.
+    /// @param requiredDelivery The debt the route must deliver on top of what the account already holds.
+    /// @param repayAmount The `ACCOUNT_REPAY` amount; `type(uint256).max` repays all.
+    /// @param withdrawAmount The `ACCOUNT_WITHDRAW_COLLATERAL` amount, delivered to the router;
+    ///        `OPEN_DELTA` withdraws exactly what the swap consumed.
+    /// @param healthBound The `ASSERT_HEALTH` bound; zero skips the check.
+    /// @return actions The packed opcode string.
+    /// @return actionParams The encoded parameters, one per opcode.
+    function _decreasePlan(
+        DecreaseParams calldata params,
+        address account,
+        uint256 requiredDelivery,
+        uint256 repayAmount,
+        uint256 withdrawAmount,
+        Ltv healthBound
+    ) private view returns (bytes memory actions, bytes[] memory actionParams) {
+        actions = abi.encodePacked(
             uint8(MarginActions.ROUTE_SWAP),
             uint8(MarginActions.ASSERT_ACCOUNT_BALANCE),
             uint8(MarginActions.ACCOUNT_REPAY),
@@ -188,19 +272,11 @@ contract MarginRouter is
             uint8(Actions.SETTLE),
             uint8(MarginActions.ASSERT_HEALTH)
         );
-        // the mode-dependent amounts are inlined (kept out of locals to stay under the stack limit).
-        // full close: require the route delivered AT LEAST the current debt (asserted below), repay
-        // ALL (venue-resolved, see `ILendingAdapter.encodeRepay`) so the borrow clears with no dust,
-        // withdraw all collateral, and
-        // pass a zero health bound that ASSERT_HEALTH skips; any debt the route over-bought is swept
-        // back after the unlock. A partial requires and repays exactly `debtToRepay`, withdraws only
-        // the collateral the swap consumed (OPEN_DELTA == the router's remaining collateral debt), and
-        // enforces `maxLtvAfter`.
-        bytes[] memory actionParams = new bytes[](6);
-        // route the collateral->debt swap through the Universal Router with the caller-supplied route,
-        // behind a flash-take of up to maxCollateralIn collateral; the route buys the target debt
-        // exact-output and delivers it to the account, and ROUTE_SWAP settles the unspent take so the
-        // router's remaining collateral debt equals what the swap spent
+        actionParams = new bytes[](6);
+        // ROUTE_SWAP (universalRouter, input, maxIn, commands, inputs)
+        // Flash-take up to maxCollateralIn of collateral and run the caller's route, which buys the
+        // debt exact-output into the account. The unspent take is settled back, so the router then
+        // owes the pool exactly what the swap consumed.
         actionParams[0] = abi.encode(
             params.universalRouter,
             params.market.collateral,
@@ -208,77 +284,35 @@ contract MarginRouter is
             params.routeCommands,
             params.routeInputs
         );
-        // require the route to deliver the debt the repay needs ON TOP of any debt-token balance the
-        // account already holds going into the unlock. Setting the ASSERT_ACCOUNT_BALANCE threshold to
-        // `balance + required` makes the absolute check enforce the SWAP DELTA, so a pre-existing or
-        // donated balance cannot mask an exact-output under-fill
-        uint256 debtHeldBefore = params.market.debt.balanceOf(account);
-        actionParams[1] = abi.encode(params.market.debt, debtHeldBefore + (fullClose ? debt : params.debtToRepay));
-        actionParams[2] = abi.encode(params.adapter, params.market, fullClose ? type(uint256).max : params.debtToRepay);
-        actionParams[3] = abi.encode(
-            params.adapter,
-            params.market,
-            fullClose ? collateralBefore : uint256(ActionConstants.OPEN_DELTA),
-            address(this)
-        );
+        // ASSERT_ACCOUNT_BALANCE (currency, minAmount)
+        // The floor is what the account held going into the unlock plus the required delivery, so
+        // the absolute check enforces the swap delta and a pre-existing or donated balance cannot
+        // mask a short fill.
+        actionParams[1] = abi.encode(params.market.debt, params.market.debt.balanceOf(account) + requiredDelivery);
+        // ACCOUNT_REPAY (adapter, market, amount)
+        // type(uint256).max repays all, resolved by the adapter in the venue's own terms (see
+        // ILendingAdapter.encodeRepay).
+        actionParams[2] = abi.encode(params.adapter, params.market, repayAmount);
+        // ACCOUNT_WITHDRAW_COLLATERAL (adapter, market, amount, to)
+        // To the router, which pays the swap from it. OPEN_DELTA resolves to the router's remaining
+        // collateral debt to the pool, which is what the swap consumed.
+        actionParams[3] = abi.encode(params.adapter, params.market, withdrawAmount, address(this));
+        // SETTLE (currency, amount, payerIsUser)
+        // Pay the swap's collateral from the router's own balance.
         actionParams[4] = abi.encode(params.market.collateral, uint256(ActionConstants.OPEN_DELTA), false);
-        actionParams[5] = abi.encode(params.adapter, params.market, fullClose ? Ltv.wrap(0) : params.maxLtvAfter);
+        // ASSERT_HEALTH (adapter, market, maxLtv)
+        // A zero bound skips the check.
+        actionParams[5] = abi.encode(params.adapter, params.market, healthBound);
+    }
 
-        // measure the router's own collateral gain across the unlock: zero for a partial decrease (it
-        // withdraws exactly the swap cost), the realized PnL for a full close
-        uint256 balanceBefore = params.market.collateral.balanceOfSelf();
-        // fail-closed: the plan's ACCOUNT_REPAY overwrites this with what it actually repaid
-        TransientPlanState.setLastRepaid(0);
-        _unlockAs(account, actions, actionParams);
-
-        // the pre-unlock debt check cannot see a repay that lands inside the unlock (venues accept
-        // permissionless onBehalf repays, and route-path code can execute one): with the debt cleared
-        // mid-transaction, the repay leg no-ops, the bought debt tokens strand in the account, and the
-        // event would report a repay that never happened. Gate the partial branch on the MEASURED
-        // repay rather than the pre-read; a full close tolerates the no-op (it sweeps the over-bought
-        // debt back below) and execute plans rely on it, so only this curated branch asserts.
-        if (!fullClose && TransientPlanState.lastRepaid() == 0) revert NoDebtToRepay();
-
-        // a full close whose route over-bought the debt (buffered for accrual) leaves the excess in the
-        // account after repay-all; return it to the caller so nothing is stranded
-        if (fullClose) {
-            uint256 debtOver = params.market.debt.balanceOf(account);
-            if (debtOver > 0) IMarginAccount(account).sweep(params.market.debt, debtOver, msgSender());
-        }
-
-        uint256 residual = params.market.collateral.balanceOfSelf() - balanceBefore;
-        if (residual > 0) params.market.collateral.transfer(msgSender(), residual);
-
-        // one event for both modes; `residual` is the realized PnL returned (zero on a partial
-        // decrease). A full close ends empty by construction, so its resulting state is a known
-        // zero and needs no position read; only a partial decrease reads back the shrunk position.
-        if (fullClose) {
-            _emitClosed(params, account, debt, collateralBefore, residual);
-        } else {
-            // best-effort rich event: the read consults the venue oracle and must not roll back the
-            // completed partial decrease if it reverts (the PositionUpdated snapshots emitted inside
-            // the unlock carry the resulting state); skip rather than revert. The try/catch guards
-            // only the external call, so nothing in this success block may revert either: the
-            // collateral delta saturates to zero because venues accept permissionless onBehalf
-            // supplies, and one landing inside the transaction can leave the collateral ABOVE its
-            // pre-decrease level.
-            try params.adapter.describePosition(account, params.market) returns (PositionData memory position) {
-                emit PositionDecreased(
-                    msgSender(),
-                    account,
-                    params.market.collateral,
-                    params.market.debt,
-                    params.market.data,
-                    params.debtToRepay,
-                    collateralBefore > position.collateralAmount ? collateralBefore - position.collateralAmount : 0,
-                    residual,
-                    position.collateralAmount,
-                    position.debtAmount,
-                    position.currentLtv,
-                    position.healthFactorWad
-                );
-            } catch {}
-        }
+    /// @notice Sends the caller the collateral the router gained across a decrease unlock and returns
+    ///         it: the realized PnL on a close, normally zero on a partial decrease.
+    /// @param collateral The market's collateral currency.
+    /// @param balanceBefore The router's collateral balance before the unlock.
+    /// @return residual The amount returned to the caller.
+    function _returnCollateralGain(Currency collateral, uint256 balanceBefore) private returns (uint256 residual) {
+        residual = collateral.balanceOfSelf() - balanceBefore;
+        if (residual > 0) collateral.transfer(msgSender(), residual);
     }
 
     /// @inheritdoc IMarginRouter
