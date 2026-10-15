@@ -417,7 +417,9 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
     function _deployPositionManager() private {
         bytes memory posmBytecode = abi.encodePacked(
             vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"),
-            abi.encode(manager, permit2, 1e18, address(tokenDescriptor), address(weth9), permissionsAdapterFactory)
+            abi.encode(
+                manager, permit2, 1e18, address(tokenDescriptor), address(weth9), permissionsAdapterFactory, 100_000
+            )
         );
         positionManager = Deploy.create2(posmBytecode, keccak256("permissionedPosm"));
 

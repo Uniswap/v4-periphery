@@ -4,8 +4,8 @@ pragma solidity 0.8.26;
 /// @title MarginActions
 /// @author Uniswap Labs
 /// @notice Action opcodes specific to margin operations, dispatched by `MarginRouter._handleAction`.
-///         The v4-periphery Actions space currently ends at `0x1b`. Rather than packing margin
-///         opcodes immediately against it, they start at `0x30`, leaving `0x1c`-`0x2f` free for
+///         The v4-periphery Actions space currently ends at `0x19`. Rather than packing margin
+///         opcodes immediately against it, they start at `0x30`, leaving `0x1a`-`0x2f` free for
 ///         future core Actions (swap, settle, take, and similar) to grow into without colliding
 ///         with the margin range. Opcodes below `0x30` fall through to the inherited V4Router
 ///         handlers (swap, settle, take), except `SWEEP`/`WRAP`/`UNWRAP` which V4Router does not

@@ -162,8 +162,8 @@ contract MarginCalldataDecoderTest is Test {
         assertEq(MarginActions.SET_ACCOUNT, 0x37);
         assertEq(MarginActions.PULL_TO_ACCOUNT, 0x38);
         // margin opcodes start at 0x30, leaving a reserved gap above the inherited Actions space
-        // (which ends at 0x1b) for future core actions to grow into without colliding
-        assertGe(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, Actions.UNSUBSCRIBE + 4);
+        // (which ends at 0x19) for future core actions to grow into without colliding
+        assertGe(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, Actions.UNWIND_WITH_FALLBACK + 4);
     }
 
     function test_sweepWrapUnwrap_areContiguous() public pure {

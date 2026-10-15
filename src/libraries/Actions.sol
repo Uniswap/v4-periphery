@@ -58,9 +58,6 @@ library Actions {
     uint256 internal constant BURN_6909 = 0x18;
 
     // permissioned-pools specific actions
-    // routes a currency's positive delta with a fallback cascade: LP → defaultRecipient → 6909 mint to defaultRecipient
+    // burns this contract's 6909 claim for a currency and takes the underlying to a recipient
     uint256 internal constant UNWIND_WITH_FALLBACK = 0x19;
-    // subscribing/unsubscribing via position manager
-    uint256 internal constant SUBSCRIBE = 0x1a;
-    uint256 internal constant UNSUBSCRIBE = 0x1b;
 }
