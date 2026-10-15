@@ -41,10 +41,9 @@ library MarginActions {
     ///         `MarginCalldataDecoder.decodeHealthCheck`.
     uint256 internal constant ASSERT_HEALTH = 0x35;
 
-    /// @notice Asserts that the router holds at least a minimum credit in a currency, i.e. an
-    ///         exact-output swap delivered the full requested amount, reverting `IncompleteFill` on a
-    ///         partial fill. Decoded with `MarginCalldataDecoder.decodeFillCheck`.
-    uint256 internal constant ASSERT_FILL = 0x36;
+    // 0x36 is vacant. It held a router-credit fill assertion that V4Router's own exact-output guard
+    // (`V4ExactOutputUnfilled`) made redundant. The slot is not reused, so a plan still encoding it
+    // reverts `UnsupportedAction` instead of silently running a different action.
 
     /// @notice Sets the active account for the subsequent account-scoped actions in an `execute`
     ///         plan, deploying it if it does not yet exist. The account is always derived from the
@@ -78,7 +77,6 @@ library MarginActions {
     ///         swap-delta guarantee by setting the minimum to the account's pre-unlock balance plus
     ///         the amount the route must deliver; a hand-built plan gets a delta guarantee only from
     ///         how it computes the minimum (see the integration guide), never from the action
-    ///         itself. Decoded with `MarginCalldataDecoder.decodeFillCheck` (same
-    ///         `(currency, minAmount)` shape as `ASSERT_FILL`).
+    ///         itself. Decoded with `MarginCalldataDecoder.decodeFillCheck`.
     uint256 internal constant ASSERT_ACCOUNT_BALANCE = 0x3a;
 }

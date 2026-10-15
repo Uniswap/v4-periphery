@@ -74,13 +74,10 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///      bought). The curated flows set the minimum to the account's balance going into the unlock
     ///      PLUS the amount the swap was asked to deliver, so the absolute check enforces the swap
     ///      DELTA and a pre-existing balance cannot mask a short fill; the flows are all-or-nothing and
-    ///      revert rather than build on a short fill. Also thrown by `ASSERT_FILL`, which applies the
-    ///      same guarantee to the router's own credit in an output currency inside `execute` plans.
+    ///      revert rather than build on a short fill.
     /// @param requested The minimum the failed check required: the account's pre-unlock balance plus
-    ///        the amount the swap was asked to deliver (`ASSERT_ACCOUNT_BALANCE`), or the minimum
-    ///        router credit (`ASSERT_FILL`).
-    /// @param received What the check measured: the account's resulting balance of the bought
-    ///        currency (`ASSERT_ACCOUNT_BALANCE`), or the router's credit in it (`ASSERT_FILL`).
+    ///        the amount the swap was asked to deliver.
+    /// @param received The account's resulting balance of the bought currency.
     error IncompleteFill(uint256 requested, uint256 received);
 
     /// @dev Thrown when an account-scoped action in an `execute` plan runs with no active account
@@ -416,9 +413,10 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///            a plan can only touch the caller's own accounts. The active account is cleared
     ///            when the call returns.
     ///         2. No entry validation: `execute` enforces no slippage, health, or fill bounds.
-    ///            Encode `amountInMaximum`/`amountOutMinimum` on swaps, `ASSERT_FILL` after an
-    ///            exact-output swap, and `ASSERT_HEALTH` yourself. The curated entry points remain
-    ///            the guard-railed path.
+    ///            Encode `amountInMaximum`/`amountOutMinimum` on swaps, `ASSERT_ACCOUNT_BALANCE`
+    ///            after a `ROUTE_SWAP`, and `ASSERT_HEALTH` yourself. A native v4 exact-output swap
+    ///            is already all-or-nothing (`V4ExactOutputUnfilled`). The curated entry points
+    ///            remain the guard-railed path.
     ///         3. Health: append `ASSERT_HEALTH` per touched (account, market), after each
     ///            `SET_ACCOUNT` section, not once at the end. A trailing assert only checks the
     ///            last active account.

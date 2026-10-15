@@ -187,7 +187,7 @@ describe("router-less close detection", () => {
   //     debtRepaid·WAD / collateralSold). The oracle mark at that block is a different number — on this
   //     very fixture, 4.0e9 against a realized 2.67e9 — so the two would disagree on one row.
   //
-  // Both are settled by the execute()-driven close, where the calldata is ours and ASSERT_FILL names the
+  // Both are settled by the execute()-driven close, where the calldata is ours and ASSERT_ACCOUNT_BALANCE names the
   // swap's output currency and amount. Until then, null is the honest answer.
   it("self-funded unwind → CLOSED, economics still null (unprovable from flow sums)", async () => {
     await openMarginPosition(harness, { venue: "MORPHO" });

@@ -27,7 +27,7 @@ import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 ///   Fix A (price guard on realized output): `_swapExactOutputSingle` computes the hop price
 ///          from the REALIZED output, not the requested amount. A bound exceeding the achievable
 ///          price reverts `V4TooMuchRequestedPerHopSingle`.
-///   Fix C (ASSERT_FILL all-or-nothing): `_open` inserts `ASSERT_FILL` so an under-filled
+///   Fix C (all-or-nothing fills): the open asserts the full exact-output amount arrived, so an under-filled
 ///          exact-output swap reverts `IncompleteFill` before the take, rather than silently
 ///          opening a smaller position.
 ///
@@ -134,7 +134,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
     // Property 1: Full-fill exactness on the deep pool.
     //
     // For any (collateralToBuy, equity) in range the open succeeds and the resulting collateral
-    // position equals equity + collateralToBuy exactly (ASSERT_FILL guarantees the exact-output
+    // position equals equity + collateralToBuy exactly (the fill assertion guarantees the exact-output
     // swap delivered the full requested amount).  No loose tokens remain in the account or router.
     // -------------------------------------------------------------------------
 
@@ -220,7 +220,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
     // Property 2: Partial fill reverts with IncompleteFill on the thin pool (Fix C).
     //
     // With a large enough collateralToBuy the single-band pool exhausts before delivering the full
-    // output.  ASSERT_FILL detects the shortfall and reverts IncompleteFill before the take, so
+    // output.  The fill assertion detects the shortfall and reverts IncompleteFill, so
     // no partial position is ever opened.
     // -------------------------------------------------------------------------
 
@@ -257,7 +257,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
     //
     // After Fix A the guard compares against the REALIZED output (not the requested amount).  A
     // bound set above the achievable realized price causes V4TooMuchRequestedPerHopSingle before
-    // ASSERT_FILL, giving a clear error rather than a silent under-fill.
+    // the fill assertion, giving a clear error rather than a silent under-fill.
     // -------------------------------------------------------------------------
 
     function testFuzz_increasePosition_thinPool_priceGuardRevertsWhenBoundTooHigh(uint128 collateralToBuy) public {
@@ -578,7 +578,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
     // -------------------------------------------------------------------------
     // Property 7: a second increasePosition into the same account adds leverage (Fix C applies).
     //
-    // The second open must also pass ASSERT_FILL, so the collateral position grows by exactly
+    // The second open must also pass the fill assertion, so the collateral position grows by exactly
     // the second collateralToBuy and the router remains clean.
     // -------------------------------------------------------------------------
 

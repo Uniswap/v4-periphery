@@ -468,7 +468,7 @@ contract MarginRouter is
     ///           1. below the margin range (`< ACCOUNT_SUPPLY_COLLATERAL`): inherited V4Router core
     ///              actions (swap/settle/take), plus the `SWEEP`/`WRAP`/`UNWRAP` trio this router
     ///              intercepts because V4Router does not handle it (`_handleCoreAction`).
-    ///           2. account-independent margin actions (`SET_ACCOUNT`/`ASSERT_FILL`/`ROUTE_SWAP`):
+    ///           2. account-independent margin actions (`SET_ACCOUNT`/`ROUTE_SWAP`):
     ///              they act on the router itself, so they run before the active-account guard.
     ///           3. account-scoped margin actions: everything else, which requires an active account
     ///              (`_handleAccountAction`).
@@ -490,14 +490,6 @@ contract MarginRouter is
             // account derived from the authenticated caller and this subId, never from calldata;
             // createAccount is idempotent, so re-selecting a live sub-account just re-binds it
             _setActiveAccount(createAccount(msgSender(), params.decodeSubId()));
-            return;
-        }
-        if (action == MarginActions.ASSERT_FILL) {
-            // require the router's own credit in the output currency covers `minAmount`, so a partial
-            // exact-output fill reverts before it is taken
-            (Currency currency, uint256 minAmount) = params.decodeFillCheck();
-            uint256 received = _getFullCredit(currency);
-            if (received < minAmount) revert IncompleteFill(minAmount, received);
             return;
         }
         if (action == MarginActions.ROUTE_SWAP) {

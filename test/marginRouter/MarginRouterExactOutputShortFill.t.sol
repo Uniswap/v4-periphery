@@ -94,7 +94,7 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers, MarginRoute
     }
 
     /// @notice A thin pool that cannot buy back the full debt makes the close revert atomically. The
-    ///         decrease path's ASSERT_FILL catches the exact-output under-fill and reverts with the
+    ///         decrease path's fill assertion catches the exact-output under-fill and reverts with the
     ///         explicit `IncompleteFill` error, before the take/repay would fail opaquely. Fail-safe:
     ///         no partial close.
     function test_close_revertsWhenThinPoolCannotBuyAllDebt() public {

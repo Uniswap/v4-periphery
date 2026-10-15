@@ -217,7 +217,7 @@ async function txSwaps(
  * Summing across swaps is right for a SPLIT — every path trades the market's own pair — and silently
  * wrong for a MULTI-HOP, whose middle fill is denominated in an intermediate token the swap row cannot
  * identify. Multi-hop cannot reach here: the encoder emits only SWAP_EXACT_OUT_SINGLE and has no path
- * opcode. Enabling it means deriving attribution from the calldata's ASSERT_FILL first.
+ * opcode. Enabling it means deriving attribution from the calldata's ASSERT_ACCOUNT_BALANCE first.
  */
 function swapEconomics(
   swaps: SwapRow[],
@@ -682,7 +682,7 @@ async function detectRouterlessClose(
   // everywhere else it is written (router.ts: debtRepaid·WAD / collateralSold), not the oracle mark; on a
   // 1.5-WETH-for-4000-USDC unwind those differ by 50%, and the two figures would disagree on one row.
   //
-  // The right home is the execute()-driven close, where the calldata is ours: the ASSERT_FILL names the
+  // The right home is the execute()-driven close, where the calldata is ours: the ASSERT_ACCOUNT_BALANCE names the
   // swap's output currency and amount, which settles both the discrimination and the realized price. A
   // same-tx curated close still supersedes this row and fills these in.
   await context.db.update(position, { id: live.id }).set({

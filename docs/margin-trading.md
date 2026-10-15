@@ -281,16 +281,17 @@ set (swap / settle / take, and `SWEEP` / `WRAP` / `UNWRAP`) plus the margin opco
 | `ACCOUNT_SUPPLY_COLLATERAL` / `ACCOUNT_BORROW` | Supply/borrow on the active account with the encoded (caller-chosen) adapter and market. |
 | `ACCOUNT_WITHDRAW_COLLATERAL` / `ACCOUNT_REPAY` / `ACCOUNT_SWEEP` | Withdraw/repay/sweep on the active account. |
 | `ROUTE_SWAP(universalRouter, input, maxIn, commands, inputs)` | Route a swap through the caller-supplied `universalRouter` (a Universal Router carrying already-unlocked `V4_SWAP`; must be non-zero, else `UniversalRouterNotSet`) across v2/v3/v4: flash-take up to `maxIn` of `input`, fund UR via a scoped Permit2 allowance, run the caller-built UR `commands`/`inputs` (which must deliver the output to the active account and self-settle), then settle only this call's unspent take (any pre-existing router balance is left untouched). Leaves the same net delta a native v4 swap would, so a following `ACCOUNT_BORROW`/`SETTLE` nets via `OPEN_DELTA`. |
-| `ASSERT_HEALTH(adapter, market, maxLtv)` / `ASSERT_FILL(currency, minAmount)` / `ASSERT_ACCOUNT_BALANCE(currency, minAmount)` | Opt-in guards; encode them yourself. `ASSERT_FILL` checks the router's per-unlock swap credit (a true delta). `ASSERT_ACCOUNT_BALANCE` checks the active account's ABSOLUTE balance is at least `minAmount` — a floor any pre-existing balance counts toward, not a fill delta; see the note below on getting a delta guarantee from it. |
+| `ASSERT_HEALTH(adapter, market, maxLtv)` / `ASSERT_ACCOUNT_BALANCE(currency, minAmount)` | Opt-in guards; encode them yourself. `ASSERT_ACCOUNT_BALANCE` checks the active account's ABSOLUTE balance is at least `minAmount`: a floor any pre-existing balance counts toward, not a fill delta; see the note below on getting a delta guarantee from it. |
 
 `execute` does no entry validation — it gives exactly the guardrails the plan encodes. Composing plans
 safely:
 
 1. **Active account.** Open each account-scoped section with `SET_ACCOUNT`. A plan can only ever touch
 the caller's own accounts. The active account is cleared when the call returns.
-2. **Bounds are yours.** Encode swap slippage (`amountInMaximum`), `ASSERT_FILL` after an exact-output
-swap, and `ASSERT_HEALTH` after each `SET_ACCOUNT` section — the curated entries remain the
-guard-railed path for callers who want that done for them.
+2. **Bounds are yours.** Encode swap slippage (`amountInMaximum`), `ASSERT_ACCOUNT_BALANCE` after a
+`ROUTE_SWAP`, and `ASSERT_HEALTH` after each `SET_ACCOUNT` section. A native v4 exact-output swap is
+already all-or-nothing (`V4ExactOutputUnfilled`). The curated entries remain the guard-railed path for
+callers who want that done for them.
 3. **Net the router to zero.** A plan MUST leave no residual on the router; terminate with `SWEEP` for
 every currency it may touch. Balances left behind are **claimable by the next caller** and are not
 protocol-protected.
@@ -315,9 +316,9 @@ that fold the per-operation deltas and resulting snapshot into one log.
 is an absolute floor and its `minAmount` is static calldata: a plan cannot snapshot the account's
 balance mid-plan, and no delta-asserting account opcode exists, so the curated technique (threshold =
 balance going into the unlock plus the required delivery, computed in the same transaction) is not
-available to a hand-built plan. Prefer `ASSERT_FILL` wherever the swap output lands on the router —
-router credit is per-unlock and cannot be inflated by a standing balance, so it is a true delta.
-`ROUTE_SWAP` delivers the output to the active account, so a fill check there must use
+available to a hand-built plan. A native v4 exact-output swap needs no fill assertion: `V4Router`
+reverts `V4ExactOutputUnfilled` on a short fill, and an `OPEN_DELTA` take then moves exactly the
+delivered credit. `ROUTE_SWAP` delivers the output to the active account, so a fill check there must use
 `ASSERT_ACCOUNT_BALANCE`: either run against an account known to hold none of the output currency (a
 fresh `subId`, or an `ACCOUNT_SWEEP` of that currency beforehand) so the floor and the delta
 coincide, or set `minAmount` to an offchain-observed balance plus the required delivery and accept

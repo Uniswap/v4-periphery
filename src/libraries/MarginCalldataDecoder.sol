@@ -62,14 +62,12 @@ library MarginCalldataDecoder {
         return abi.decode(params, (ILendingAdapter, Market, Ltv));
     }
 
-    /// @notice Decodes `(currency, minAmount)`. Shared by the two balance assertions: `ASSERT_FILL`
-    ///         requires the router's per-unlock swap credit in `currency` to cover `minAmount` (a
-    ///         true delta; credit cannot be inflated by a standing balance), while
-    ///         `ASSERT_ACCOUNT_BALANCE` requires the active account's absolute balance to reach
-    ///         `minAmount` (a floor that any pre-existing balance counts toward).
+    /// @notice Decodes `(currency, minAmount)` for `ASSERT_ACCOUNT_BALANCE`: the active account's
+    ///         absolute balance of `currency` must reach `minAmount`, a floor that any pre-existing
+    ///         balance counts toward.
     /// @param params ABI-encoded `(Currency, uint256)`.
-    /// @return currency The currency whose credit or balance is checked.
-    /// @return minAmount The minimum required credit or resulting balance.
+    /// @return currency The currency whose balance is checked.
+    /// @return minAmount The minimum resulting balance.
     function decodeFillCheck(bytes calldata params) internal pure returns (Currency, uint256) {
         return abi.decode(params, (Currency, uint256));
     }

@@ -99,7 +99,6 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
                 })
             )
         );
-        plan = plan.add(MarginActions.ASSERT_FILL, abi.encode(collateral, uint256(buy)));
         plan = plan.add(Actions.TAKE, abi.encode(collateral, account, ActionConstants.OPEN_DELTA));
         plan =
             plan.add(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, abi.encode(adapter, market, ActionConstants.OPEN_DELTA));
@@ -306,17 +305,16 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
         marginRouter.execute(plan.encode(), block.timestamp + 1);
     }
 
-    function test_marginOpcodeRange_isContiguousAndBoundedByAssertAccountBalance() public pure {
-        // the undefined-opcode guard in _handleAction assumes the margin opcode space is contiguous
-        // with ASSERT_ACCOUNT_BALANCE at the top; pin the constants so adding an opcode above it
-        // without moving the bound fails here first
+    function test_marginOpcodes_arePinned() public pure {
+        // the undefined-opcode guard in _handleAction bounds the margin range at
+        // ASSERT_ACCOUNT_BALANCE; pin the constants so adding an opcode above it without moving the
+        // bound fails here first. 0x36 is a vacant slot (see MarginActions).
         assertEq(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, 0x30);
         assertEq(MarginActions.ACCOUNT_WITHDRAW_COLLATERAL, 0x31);
         assertEq(MarginActions.ACCOUNT_BORROW, 0x32);
         assertEq(MarginActions.ACCOUNT_REPAY, 0x33);
         assertEq(MarginActions.ACCOUNT_SWEEP, 0x34);
         assertEq(MarginActions.ASSERT_HEALTH, 0x35);
-        assertEq(MarginActions.ASSERT_FILL, 0x36);
         assertEq(MarginActions.SET_ACCOUNT, 0x37);
         assertEq(MarginActions.PULL_TO_ACCOUNT, 0x38);
         assertEq(MarginActions.ROUTE_SWAP, 0x39);
@@ -619,6 +617,16 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
         plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
         plan = plan.add(0x3b, "");
         vm.expectRevert(abi.encodeWithSelector(BaseActionsRouter.UnsupportedAction.selector, 0x3b));
+        marginRouter.execute(plan.encode(), block.timestamp + 1);
+    }
+
+    function test_execute_revertsOnVacantOpcode() public {
+        // 0x36 sits inside the margin range but no longer names an action; it must fail as
+        // unsupported, never fall through to another handler
+        Plan memory plan = Planner.init();
+        plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
+        plan = plan.add(0x36, "");
+        vm.expectRevert(abi.encodeWithSelector(BaseActionsRouter.UnsupportedAction.selector, 0x36));
         marginRouter.execute(plan.encode(), block.timestamp + 1);
     }
 

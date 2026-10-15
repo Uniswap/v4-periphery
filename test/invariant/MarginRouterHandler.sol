@@ -318,7 +318,6 @@ contract MarginRouterHandler is Test, MarginRouteHelpers {
                 })
             )
         );
-        plan = plan.add(MarginActions.ASSERT_FILL, abi.encode(m.collateral, uint256(buy)));
         plan = plan.add(Actions.TAKE, abi.encode(m.collateral, account, ActionConstants.OPEN_DELTA));
         plan = plan.add(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, abi.encode(adapter, m, ActionConstants.OPEN_DELTA));
         plan = plan.add(

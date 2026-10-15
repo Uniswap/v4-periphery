@@ -151,14 +151,13 @@ contract MarginCalldataDecoderTest is Test {
         assertEq(gotPayerIsUser, payerIsUser);
     }
 
-    function test_opcodes_areContiguousAndDisjointFromActions() public pure {
+    function test_opcodes_arePinnedAndDisjointFromActions() public pure {
         assertEq(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, 0x30);
         assertEq(MarginActions.ACCOUNT_WITHDRAW_COLLATERAL, 0x31);
         assertEq(MarginActions.ACCOUNT_BORROW, 0x32);
         assertEq(MarginActions.ACCOUNT_REPAY, 0x33);
         assertEq(MarginActions.ACCOUNT_SWEEP, 0x34);
         assertEq(MarginActions.ASSERT_HEALTH, 0x35);
-        assertEq(MarginActions.ASSERT_FILL, 0x36);
         assertEq(MarginActions.SET_ACCOUNT, 0x37);
         assertEq(MarginActions.PULL_TO_ACCOUNT, 0x38);
         // margin opcodes start at 0x30, leaving a reserved gap above the inherited Actions space
