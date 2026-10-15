@@ -274,6 +274,7 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
         _expectNoActiveAccount(MarginActions.ACCOUNT_REPAY, abi.encode(adapter, market, uint256(1)));
         _expectNoActiveAccount(MarginActions.ACCOUNT_SWEEP, abi.encode(collateral, uint256(1), address(this)));
         _expectNoActiveAccount(MarginActions.ASSERT_HEALTH, abi.encode(adapter, market, toLtv(0.5e18)));
+        _expectNoActiveAccount(MarginActions.ASSERT_ACCOUNT_BALANCE, abi.encode(collateral, uint256(1)));
     }
 
     function _expectNoActiveAccount(uint256 action, bytes memory params) internal {
@@ -306,9 +307,8 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
     }
 
     function test_marginOpcodes_arePinned() public pure {
-        // the undefined-opcode guard in _handleAction bounds the margin range at
-        // ASSERT_ACCOUNT_BALANCE; pin the constants so adding an opcode above it without moving the
-        // bound fails here first. 0x36 is a vacant slot (see MarginActions).
+        // the opcode values are the plan ABI that offchain encoders target; pin them so a renumbering
+        // fails here first. 0x36 is a vacant slot (see MarginActions).
         assertEq(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, 0x30);
         assertEq(MarginActions.ACCOUNT_WITHDRAW_COLLATERAL, 0x31);
         assertEq(MarginActions.ACCOUNT_BORROW, 0x32);
@@ -611,8 +611,8 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
     }
 
     function test_execute_revertsOnUnsupportedAction() public {
-        // 0x3b is above the highest margin opcode (ASSERT_ACCOUNT_BALANCE 0x3a) and unhandled.
-        // SET_ACCOUNT first so it passes the NoActiveAccount guard and reaches the trailing revert.
+        // 0x3b is neither a margin opcode nor a core one, so V4Router rejects it. SET_ACCOUNT first
+        // to show that a bound account makes no difference.
         Plan memory plan = Planner.init();
         plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
         plan = plan.add(0x3b, "");

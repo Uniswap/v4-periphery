@@ -165,11 +165,22 @@ contract MarginCalldataDecoderTest is Test {
         assertGe(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, Actions.UNWIND_WITH_FALLBACK + 4);
     }
 
-    function test_sweepWrapUnwrap_areContiguous() public pure {
-        // MarginRouter._handleAction gates the SWEEP/WRAP/UNWRAP interception as a single
-        // `>= SWEEP && <= UNWRAP` range; this pins the contiguity that gate relies on against a
-        // future Actions reordering.
-        assertEq(Actions.SWEEP + 1, Actions.WRAP);
-        assertEq(Actions.WRAP + 1, Actions.UNWRAP);
+    function test_isAccountScoped_matchesTheDispatchTable() public pure {
+        assertTrue(MarginActions.isAccountScoped(MarginActions.ACCOUNT_SUPPLY_COLLATERAL));
+        assertTrue(MarginActions.isAccountScoped(MarginActions.ACCOUNT_WITHDRAW_COLLATERAL));
+        assertTrue(MarginActions.isAccountScoped(MarginActions.ACCOUNT_BORROW));
+        assertTrue(MarginActions.isAccountScoped(MarginActions.ACCOUNT_REPAY));
+        assertTrue(MarginActions.isAccountScoped(MarginActions.ACCOUNT_SWEEP));
+        assertTrue(MarginActions.isAccountScoped(MarginActions.ASSERT_HEALTH));
+        assertTrue(MarginActions.isAccountScoped(MarginActions.PULL_TO_ACCOUNT));
+        assertTrue(MarginActions.isAccountScoped(MarginActions.ASSERT_ACCOUNT_BALANCE));
+        // router-level margin opcodes, the vacant slot, the reserved gap, and core opcodes are not
+        assertFalse(MarginActions.isAccountScoped(MarginActions.SET_ACCOUNT));
+        assertFalse(MarginActions.isAccountScoped(MarginActions.ROUTE_SWAP));
+        assertFalse(MarginActions.isAccountScoped(0x36));
+        assertFalse(MarginActions.isAccountScoped(0x1c));
+        assertFalse(MarginActions.isAccountScoped(MarginActions.ASSERT_ACCOUNT_BALANCE + 1));
+        assertFalse(MarginActions.isAccountScoped(Actions.SWEEP));
+        assertFalse(MarginActions.isAccountScoped(Actions.SWAP_EXACT_OUT_SINGLE));
     }
 }

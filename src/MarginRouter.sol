@@ -463,78 +463,57 @@ contract MarginRouter is
     }
 
     /// @notice Dispatches one action from the current plan to its handler. Called by
-    ///         `BaseActionsRouter._executeActions` for each action. Opcodes fall into three ranges,
-    ///         checked in order:
-    ///           1. below the margin range (`< ACCOUNT_SUPPLY_COLLATERAL`): inherited V4Router core
-    ///              actions (swap/settle/take), plus the `SWEEP`/`WRAP`/`UNWRAP` trio this router
-    ///              intercepts because V4Router does not handle it (`_handleCoreAction`).
-    ///           2. account-independent margin actions (`SET_ACCOUNT`/`ROUTE_SWAP`):
-    ///              they act on the router itself, so they run before the active-account guard.
-    ///           3. account-scoped margin actions: everything else, which requires an active account
-    ///              (`_handleAccountAction`).
-    /// @dev Overrides `V4Router._handleAction`. The active account is always derived from the
-    ///      authenticated caller and read from transient storage; it is never read from action params.
+    ///         `BaseActionsRouter._executeActions` for each action.
+    /// @dev Overrides `V4Router._handleAction`. Margin opcodes are matched one by one, never by
+    ///      range. `SET_ACCOUNT` and `ROUTE_SWAP` act on the router itself and need no active
+    ///      account. The account-scoped opcodes (`MarginActions.isAccountScoped`) need one, which is
+    ///      always derived from the authenticated caller and read from transient storage, never from
+    ///      action params. Everything else is a core v4 opcode (`_handleCoreAction`), so an undefined
+    ///      opcode reverts `UnsupportedAction` whether or not the plan bound an account.
     /// @param action The opcode from `MarginActions` or the inherited `Actions` library.
     /// @param params ABI-encoded parameters for the action; decoded by `MarginCalldataDecoder`
     ///        (margin opcodes) or `CalldataDecoder` (the intercepted core opcodes).
     function _handleAction(uint256 action, bytes calldata params) internal override {
-        // range 1: inherited core actions (swap/settle/take) and the intercepted SWEEP/WRAP/UNWRAP trio
-        if (action < MarginActions.ACCOUNT_SUPPLY_COLLATERAL) {
-            _handleCoreAction(action, params);
-            return;
-        }
-
-        // range 2: margin actions that operate on the router, not an active account, so they run
-        // before the NoActiveAccount guard below
         if (action == MarginActions.SET_ACCOUNT) {
             // account derived from the authenticated caller and this subId, never from calldata;
             // createAccount is idempotent, so re-selecting a live sub-account just re-binds it
             _setActiveAccount(createAccount(msgSender(), params.decodeSubId()));
-            return;
-        }
-        if (action == MarginActions.ROUTE_SWAP) {
+        } else if (action == MarginActions.ROUTE_SWAP) {
             _routeSwap(params);
-            return;
+        } else if (MarginActions.isAccountScoped(action)) {
+            // needs a preceding SET_ACCOUNT; the fixed entry points bind the account before the
+            // unlock, so only a hand-built plan can reach this revert
+            address account = _activeAccount();
+            if (account == address(0)) revert NoActiveAccount();
+            _handleAccountAction(action, params, account);
+        } else {
+            _handleCoreAction(action, params);
         }
-
-        // range 3: account-scoped. The margin opcode space is contiguous
-        // [ACCOUNT_SUPPLY_COLLATERAL, ASSERT_ACCOUNT_BALANCE], so anything above it is undefined;
-        // reject it before the active-account guard so an undefined opcode reverts
-        // UnsupportedAction whether or not the plan bound an account. A defined opcode still needs
-        // a preceding SET_ACCOUNT; curated entry points bind the account before the unlock, so
-        // they never reach the NoActiveAccount revert.
-        if (action > MarginActions.ASSERT_ACCOUNT_BALANCE) revert UnsupportedAction(action);
-        address account = _activeAccount();
-        if (account == address(0)) revert NoActiveAccount();
-        _handleAccountAction(action, params, account);
     }
 
-    /// @notice Handles an opcode below the margin range. V4Router handles swaps and settle/take; this
-    ///         router additionally intercepts the contiguous `SWEEP`/`WRAP`/`UNWRAP` trio (asserted
-    ///         contiguous in MarginCalldataDecoder.t.sol), which V4Router would reject, with
-    ///         PositionManager-identical semantics. A swap/settle/take opcode fails the first range
-    ///         comparison and falls through to `super`.
+    /// @notice Handles a core v4 opcode. `SWEEP`/`WRAP`/`UNWRAP` are intercepted here with
+    ///         PositionManager-identical semantics because V4Router does not handle them; every
+    ///         other opcode goes to V4Router, which reverts `UnsupportedAction` for one it does not
+    ///         define.
     function _handleCoreAction(uint256 action, bytes calldata params) private {
-        if (action >= Actions.SWEEP && action <= Actions.UNWRAP) {
-            if (action == Actions.SWEEP) {
-                (Currency currency, address to) = params.decodeCurrencyAndAddress();
-                _sweep(currency, _mapRecipient(to));
-            } else if (action == Actions.WRAP) {
-                _wrap(
-                    _mapWrapUnwrapAmount(
-                        CurrencyLibrary.ADDRESS_ZERO, params.decodeUint256(), Currency.wrap(address(WETH9))
-                    )
-                );
-            } else {
-                _unwrap(
-                    _mapWrapUnwrapAmount(
-                        Currency.wrap(address(WETH9)), params.decodeUint256(), CurrencyLibrary.ADDRESS_ZERO
-                    )
-                );
-            }
-            return;
+        if (action == Actions.SWEEP) {
+            (Currency currency, address to) = params.decodeCurrencyAndAddress();
+            _sweep(currency, _mapRecipient(to));
+        } else if (action == Actions.WRAP) {
+            _wrap(
+                _mapWrapUnwrapAmount(
+                    CurrencyLibrary.ADDRESS_ZERO, params.decodeUint256(), Currency.wrap(address(WETH9))
+                )
+            );
+        } else if (action == Actions.UNWRAP) {
+            _unwrap(
+                _mapWrapUnwrapAmount(
+                    Currency.wrap(address(WETH9)), params.decodeUint256(), CurrencyLibrary.ADDRESS_ZERO
+                )
+            );
+        } else {
+            super._handleAction(action, params);
         }
-        super._handleAction(action, params);
     }
 
     /// @notice Runs the `ROUTE_SWAP` action: route a swap through the Universal Router (v2/v3/v4)

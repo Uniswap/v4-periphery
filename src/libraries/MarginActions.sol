@@ -10,7 +10,8 @@ pragma solidity 0.8.26;
 ///         with the margin range. Opcodes below `0x30` fall through to the inherited V4Router
 ///         handlers (swap, settle, take), except `SWEEP`/`WRAP`/`UNWRAP` which V4Router does not
 ///         handle and `MarginRouter` intercepts with PositionManager-identical semantics; opcodes
-///         at or above `0x30` are handled exclusively by the margin router.
+///         at or above `0x30` are handled exclusively by the margin router, which matches them by
+///         explicit membership (`isAccountScoped`), never by range.
 ///
 ///         There is no market/swap reconciliation opcode: curated flows pin the swap input to a
 ///         market currency and assert the bought output landed in the account (via
@@ -79,4 +80,15 @@ library MarginActions {
     ///         how it computes the minimum (see the integration guide), never from the action
     ///         itself. Decoded with `MarginCalldataDecoder.decodeFillCheck`.
     uint256 internal constant ASSERT_ACCOUNT_BALANCE = 0x3a;
+
+    /// @notice True for the opcodes that act on the active account and therefore need a preceding
+    ///         `SET_ACCOUNT` in an `execute` plan. Listed one by one rather than as a range, so
+    ///         adding an opcode means deciding here whether it is account-scoped.
+    /// @param action The opcode to classify.
+    /// @return True if `action` is an account-scoped margin opcode.
+    function isAccountScoped(uint256 action) internal pure returns (bool) {
+        return action == ACCOUNT_SUPPLY_COLLATERAL || action == ACCOUNT_WITHDRAW_COLLATERAL || action == ACCOUNT_BORROW
+            || action == ACCOUNT_REPAY || action == ACCOUNT_SWEEP || action == ASSERT_HEALTH
+            || action == PULL_TO_ACCOUNT || action == ASSERT_ACCOUNT_BALANCE;
+    }
 }
