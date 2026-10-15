@@ -13,8 +13,9 @@ import {Ltv} from "../types/Ltv.sol";
 /// @title IMarginRouter
 /// @author Uniswap Labs
 /// @notice The full external surface of the margin router: opening, closing, and topping up leveraged
-///         spot positions, the general-purpose `execute` plan interpreter, account addressing, and
-///         the inherited `multicall`. The router has no governance: the caller chooses the lending
+///         spot positions through fixed plans the router builds (the curated flows), the `execute`
+///         interpreter for plans the caller builds, account addressing, and the inherited
+///         `multicall`. The router has no governance: the caller chooses the lending
 ///         adapter and the market on every call. Each position call
 ///         operates on the caller's own MarginAccount, derived from the authenticated caller and a
 ///         subId, never from a caller-supplied account address. Leverage is built as a single

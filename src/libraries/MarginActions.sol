@@ -13,7 +13,7 @@ pragma solidity 0.8.26;
 ///         at or above `0x30` are handled exclusively by the margin router, which matches them by
 ///         explicit membership (`isAccountScoped`), never by range.
 ///
-///         There is no market/swap reconciliation opcode: curated flows pin the swap input to a
+///         There is no market/swap reconciliation opcode: the router's fixed flows pin the swap input to a
 ///         market currency and assert the bought output landed in the account (via
 ///         `ASSERT_ACCOUNT_BALANCE`), so a pool/market mismatch cannot reach the lending legs.
 library MarginActions {
@@ -74,7 +74,7 @@ library MarginActions {
 
     /// @notice Asserts that the active account's ABSOLUTE balance of a currency is at least a
     ///         minimum, reverting `IncompleteFill` otherwise. A floor, not a fill delta: any balance
-    ///         the account already holds counts toward the minimum. The curated flows turn it into a
+    ///         the account already holds counts toward the minimum. The router's fixed flows turn it into a
     ///         swap-delta guarantee by setting the minimum to the account's pre-unlock balance plus
     ///         the amount the route must deliver; a hand-built plan gets a delta guarantee only from
     ///         how it computes the minimum (see the integration guide), never from the action
