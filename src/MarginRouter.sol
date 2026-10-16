@@ -80,7 +80,9 @@ contract MarginRouter is
     /// @notice Deploys the margin router.
     /// @param poolManager_ The v4 PoolManager singleton the router unlocks for every position flow.
     /// @param permit2_ The Permit2 contract used to pull caller equity and settle swaps.
-    /// @param weth9_ The canonical WETH9 contract used to wrap native token equity.
+    /// @param weth9_ The canonical 1:1 wrapped native (WETH9) used to wrap native equity, or the zero
+    ///        address on a chain without one, which makes every native path revert
+    ///        `NativeNotSupported` (see `IMarginRouter.NativeNotSupported`).
     /// @param accountImplementation_ The MarginAccount implementation cloned for each account.
     constructor(IPoolManager poolManager_, IAllowanceTransfer permit2_, IWETH9 weth9_, address accountImplementation_)
         V4Router(poolManager_)
@@ -326,6 +328,7 @@ contract MarginRouter is
         uint256 amount;
         if (msg.value > 0) {
             // native collateral: wrap to WETH and credit the account
+            _requireWeth9();
             if (Currency.unwrap(params.market.collateral) != address(WETH9)) revert NativeCollateralMismatch();
             amount = msg.value;
             _wrap(msg.value);
@@ -427,6 +430,7 @@ contract MarginRouter is
 
         // provide equity: native ETH (wrapped to WETH) when sent, else ERC20 pulled via Permit2
         if (msg.value > 0) {
+            _requireWeth9();
             if (Currency.unwrap(params.market.collateral) != address(WETH9)) revert NativeCollateralMismatch();
             _wrap(msg.value);
             Currency.wrap(address(WETH9)).transfer(account, msg.value);
@@ -520,6 +524,14 @@ contract MarginRouter is
         }
     }
 
+    /// @notice Reverts `NativeNotSupported` on a router deployed without a WETH9. Guards every path
+    ///         that converts between native value and the wrapped token, so a chain whose native
+    ///         token has no 1:1 wrapper (or whose ERC-20 view of it uses different decimals) never
+    ///         reaches a wrap. ERC-20 flows are unaffected.
+    function _requireWeth9() private view {
+        if (address(WETH9) == address(0)) revert NativeNotSupported();
+    }
+
     /// @notice Handles a core v4 opcode. `SWEEP`/`WRAP`/`UNWRAP` are intercepted here with
     ///         PositionManager-identical semantics because V4Router does not handle them; every
     ///         other opcode goes to V4Router, which reverts `UnsupportedAction` for one it does not
@@ -529,12 +541,14 @@ contract MarginRouter is
             (Currency currency, address to) = params.decodeCurrencyAndAddress();
             _sweep(currency, _mapRecipient(to));
         } else if (action == Actions.WRAP) {
+            _requireWeth9();
             _wrap(
                 _mapWrapUnwrapAmount(
                     CurrencyLibrary.ADDRESS_ZERO, params.decodeUint256(), Currency.wrap(address(WETH9))
                 )
             );
         } else if (action == Actions.UNWRAP) {
+            _requireWeth9();
             _unwrap(
                 _mapWrapUnwrapAmount(
                     Currency.wrap(address(WETH9)), params.decodeUint256(), CurrencyLibrary.ADDRESS_ZERO

@@ -210,6 +210,13 @@ or a signed `PermitSingle` forwarded through the router). See §6.2 and §7.2.
 - **Native ETH.** Send `msg.value` with the call; the router wraps it to WETH and credits the account.
 The market collateral must be WETH (`NativeCollateralMismatch` otherwise). When `msg.value > 0` the
 `equity` field is ignored.
+- **Chains without a wrapped native.** The native path exists only where the router was deployed with
+a canonical 1:1 WETH9. On a chain without one the router is deployed with `weth9 = address(0)` and
+every native path (`msg.value` equity, `WRAP`, `UNWRAP`) reverts `NativeNotSupported`; provide equity
+through Permit2 as ERC-20. Arc is the motivating case: native USDC (`msg.value`, 18 decimals) and the
+ERC-20 USDC predeploy (6 decimals) are two views of one balance with nothing wrapping between them,
+so there is no 1:1 wrapper to deploy with. The suite works purely in the 6-decimal ERC-20 view there
+and never mixes the two.
 
 ### 3.6 Slippage and deadlines
 
@@ -619,6 +626,8 @@ close is sent to your contract.
 native-ETH position calls in one `multicall` — `msg.value` is shared and the second wrap would
 revert.
 - Markets are standard ERC-20 only (no fee-on-transfer or rebasing tokens).
+- On a deployment without WETH9 (see §3.5) every native-ETH call reverts `NativeNotSupported`; use
+the Permit2 path.
 - Market selection is permissionless, so vet the market your `Market.data` names (on Morpho: the
 oracle, IRM, and LLTV; confirm the id and TVL with `cast`). Probe a key with
 `adapter.isSupportedMarket(market)` before building a transaction; it never reverts.
@@ -1103,6 +1112,10 @@ account changes.
 protocol's responsibility (Morpho Blue, Aave v3, Aave v4, or Compound v3, depending on the adapter);
 the margin layer adds no independent oracle.
 - **ERC-20 only.** Markets must use standard ERC-20 tokens (no fee-on-transfer or rebasing).
+- **Native value is optional and never converted.** The router touches native value only to wrap it
+1:1 through the WETH9 it was deployed with. Where a chain has no such wrapper the router is deployed
+without one and refuses native value outright (`NativeNotSupported`), so a native token whose ERC-20
+view uses different decimals (Arc's USDC) can never be credited at the wrong scale.
 
 ---
 
@@ -1273,6 +1286,7 @@ listed Comet collateral asset. Its `lendingProtocol()` is the bound Comet.
 | router   | `PositionUnhealthy()`                                            | resulting LTV exceeds the bound                                                                                           |
 | router   | `NoDebtToRepay()`                                                | a partial decrease targeted a debt-free position (nothing to repay; exit with a full close instead)                       |
 | router   | `NativeCollateralMismatch()`                                     | native ETH sent but collateral is not WETH                                                                                |
+| router   | `NativeNotSupported()`                                           | native value, `WRAP`, or `UNWRAP` on a router deployed without WETH9 (a chain with no 1:1 wrapped native, such as Arc)     |
 | router   | `IncompleteFill(uint256 requested, uint256 received)`            | the exact-output position swap (increase or decrease/close) under-filled (thin pool); the swap is all-or-nothing           |
 | router   | `NoActiveAccount()`                                              | an `execute` plan ran an account-scoped action with no preceding `SET_ACCOUNT`                                            |
 | V4Router | `V4TooMuchRequestedPerHopSingle(uint256 minPrice, uint256 priceX36)` | a swap's realized per-hop price fell below the caller's `minHopPriceX36` bound                                        |

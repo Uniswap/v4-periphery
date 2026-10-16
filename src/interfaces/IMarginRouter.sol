@@ -69,6 +69,14 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///      leave the account funded in the wrong token.
     error NativeCollateralMismatch();
 
+    /// @dev Thrown when native value is sent to a position call, or a plan runs `WRAP` or `UNWRAP`,
+    ///      on a router deployed without a WETH9 (`weth9 == address(0)`): the deployment for a chain
+    ///      with no canonical 1:1 wrapped native. On such a chain the native token and its ERC-20
+    ///      interface can be two views of one balance in different decimals (on Arc, native USDC is
+    ///      18 decimals as `msg.value` while the ERC-20 interface is 6), so the router never converts
+    ///      between them; equity goes through Permit2 as ERC-20 there.
+    error NativeNotSupported();
+
     /// @dev Thrown by the `ASSERT_ACCOUNT_BALANCE` fill check when the active account's resulting
     ///      balance of the bought currency is below the required minimum: the routed swap delivered
     ///      less than requested (a thin route can hit its price limit before the full exact-output is
@@ -368,6 +376,7 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///         needed. Equity is ERC-20 collateral pulled via Permit2, or native ETH sent as
     ///         `msg.value` (which the router wraps to WETH; the market collateral must then be WETH).
     ///         When `msg.value` is non-zero it is used as the equity and `params.equity` is ignored.
+    ///         A deployment without WETH9 has no native path and reverts `NativeNotSupported`.
     ///         Calling again on an account that already holds a position adds leverage to it; set
     ///         `equity` to zero and send no value for a pure leverage increase with no new equity.
     /// @param params See `IncreaseParams`.
@@ -387,7 +396,8 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
 
     /// @notice Adds collateral to the caller's position without changing debt, deploying their
     ///         MarginAccount if needed. Collateral is pulled via Permit2, or sent as native ETH
-    ///         (wrapped to WETH; the market collateral must then be WETH).
+    ///         (wrapped to WETH; the market collateral must then be WETH). A deployment without
+    ///         WETH9 has no native path and reverts `NativeNotSupported`.
     /// @param params See `AddCollateralParams`.
     /// @return account The caller's MarginAccount.
     function addCollateral(AddCollateralParams calldata params) external payable returns (address account);
@@ -430,7 +440,8 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///         6. `PULL_TO_ACCOUNT`: an encoded `0` amount reverts (it is not an `OPEN_DELTA`
     ///            full-balance sentinel here, unlike every other opcode); `CONTRACT_BALANCE` is
     ///            honored only on the router-balance path. Native currency is unsupported: wrap to
-    ///            WETH first.
+    ///            WETH first (on a deployment without WETH9, `WRAP` and `UNWRAP` revert
+    ///            `NativeNotSupported`).
     ///         7. Signing an `execute` plan is equivalent to handing over the sub-account: a
     ///            malicious plan can borrow to the market maximum, withdraw all collateral, and
     ///            direct everything to an arbitrary address, with no token approval required (the
