@@ -23,7 +23,9 @@ abstract contract MarginDeployConfig is Script {
 
     /// @notice Resolves Permit2 and WETH9 the same way for mining and deployment.
     /// @dev On mainnet, unset env vars fall back to the verified canonical addresses. On other
-    ///      chains both `PERMIT2` and `WETH9` must be set explicitly.
+    ///      chains both `PERMIT2` and `WETH9` must be set explicitly. `WETH9` is the zero address on
+    ///      a chain with no canonical 1:1 wrapped native (Arc): the router then has no native path.
+    ///      DeployMargin verifies any non-zero wrapper round-trips 1:1 before broadcasting.
     function _marginExternalTokenConfig() internal view returns (address permit2, address weth9) {
         if (block.chainid == 1) {
             permit2 = vm.envOr("PERMIT2", PERMIT2);

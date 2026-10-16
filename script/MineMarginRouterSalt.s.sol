@@ -31,7 +31,8 @@ contract MineMarginRouterSalt is Script {
     /// @notice Searches `iterations` salts starting at `startSalt` for the best-scoring router address.
     /// @param poolManager The v4 PoolManager the router will be constructed with.
     /// @param permit2 The Permit2 contract the router will be constructed with.
-    /// @param weth9 The canonical WETH9 the router will be constructed with.
+    /// @param weth9 The canonical WETH9 the router will be constructed with, or the zero address for
+    ///        a deployment without native support.
     /// @param startSalt The first salt to try; the loop scans `[startSalt, startSalt + iterations)`.
     /// @param iterations The number of salts to scan.
     /// @return bestSalt The best-scoring salt found.

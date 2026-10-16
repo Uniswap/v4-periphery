@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import "forge-std/console2.sol";
 
 import {IMarginRouter} from "../src/interfaces/IMarginRouter.sol";
+import {IWETH9} from "../src/interfaces/external/IWETH9.sol";
 import {MarginAccount} from "../src/MarginAccount.sol";
 import {MorphoLendingAdapter} from "../src/MorphoLendingAdapter.sol";
 import {AaveLendingAdapter} from "../src/AaveLendingAdapter.sol";
@@ -25,6 +26,11 @@ import {MarginDeployConfig} from "./MarginDeployConfig.sol";
 ///           missing. Any key can broadcast; no address is baked in as an owner.
 ///         - The adapters are stateless and unowned: each binds its venue singleton at construction
 ///           and holds no routing table, so nothing in the suite is configurable after deployment.
+///         - `weth9` is verified before anything is broadcast: the zero address deploys the router
+///           with its native paths disabled (for a chain with no canonical 1:1 wrapped native, such
+///           as Arc, where native USDC and the ERC-20 USDC interface are one balance in different
+///           decimals), and any other address must round-trip one wei 1:1 through
+///           `deposit`/`withdraw`, so a bridged asset or a plain token cannot be passed as the wrapper.
 ///         - `routerSalt` comes from MineMarginRouterSalt and is only valid for the exact
 ///           (poolManager, permit2, weth9, accountImpl) tuple it was mined against. The accountImpl is
 ///           itself derived from ACCOUNT_SALT, so the shared MarginDeployConfig constants MUST match
@@ -42,7 +48,9 @@ contract DeployMargin is MarginDeployConfig {
     ///         deployment can be resumed by rerunning with the same arguments.
     /// @param poolManager The v4 PoolManager singleton the router unlocks for every position flow.
     /// @param permit2 The Permit2 contract used to pull caller equity and settle swaps.
-    /// @param weth9 The canonical WETH9 used to wrap native ETH equity.
+    /// @param weth9 The canonical 1:1 wrapped native used to wrap native equity, or the zero address
+    ///        to deploy without native support (the router then reverts `NativeNotSupported` on every
+    ///        native path and works purely in ERC-20 amounts).
     /// @param morpho The Morpho Blue singleton the Morpho adapter routes through.
     /// @param aaveProvider The Aave v3 PoolAddressesProvider the Aave v3 adapter resolves its Pool from.
     /// @param aaveV4Spoke The Aave v4 Spoke the Aave v4 adapter routes through (the Main Spoke on
@@ -79,6 +87,8 @@ contract DeployMargin is MarginDeployConfig {
             IMarginRouter router
         )
     {
+        _checkWrappedNative(weth9);
+
         vm.startBroadcast();
 
         // deterministic account implementation; its address must match the miner's derivation so the
@@ -136,6 +146,31 @@ contract DeployMargin is MarginDeployConfig {
         console2.log("No post-deploy wiring: the router has no governance or adapter allowlist, and");
         console2.log("market selection is permissionless (callers name the adapter and market per call)");
     }
+
+    /// @notice Verifies `weth9` before anything is broadcast. The zero address disables the router's
+    ///         native paths. Any other address must round-trip one wei through `deposit`/`withdraw`
+    ///         1:1, which rules out a bridged asset, a plain ERC-20, or a native-token interface in
+    ///         other decimals being passed as the wrapper. Runs before `startBroadcast`, so it is
+    ///         simulation only and costs nothing onchain.
+    /// @param weth9 The wrapper address the router will be constructed with.
+    function _checkWrappedNative(address weth9) internal {
+        if (weth9 == address(0)) {
+            console2.log("WETH9 is the zero address: native equity, WRAP, and UNWRAP are disabled");
+            return;
+        }
+        require(weth9.code.length != 0, "WETH9 has no code");
+        IWETH9 wrapper = IWETH9(weth9);
+        vm.deal(address(this), 1);
+        uint256 before = wrapper.balanceOf(address(this));
+        wrapper.deposit{value: 1}();
+        require(wrapper.balanceOf(address(this)) == before + 1, "WETH9 deposit is not 1:1");
+        wrapper.withdraw(1);
+        require(wrapper.balanceOf(address(this)) == before && address(this).balance == 1, "WETH9 withdraw is not 1:1");
+        console2.log("WETH9 verified as a 1:1 wrapper", weth9);
+    }
+
+    /// @dev Receives the one wei `_checkWrappedNative` withdraws.
+    receive() external payable {}
 
     /// @notice Deploys `initCode` at its deterministic address through the canonical CREATE2
     ///         deployer, or reuses the existing deployment when that address already has code.
