@@ -273,8 +273,8 @@ contract MarginRouterHandler is Test, MarginRouteHelpers {
     }
 
     /// @notice Fund an account directly, then supply that loose balance via an `execute` plan
-    ///         (SET_ACCOUNT + SUPPLY with OPEN_DELTA). Exercises the account-scoped supply path and
-    ///         its allowlist guard without a swap or Permit2.
+    ///         (SET_ACCOUNT + SUPPLY with OPEN_DELTA). Exercises the account-scoped supply path
+    ///         without a swap or Permit2.
     function executePullSupply(uint256 actorSeed, uint256 subIdSeed, uint256 equitySeed) external {
         address actor = _actor(actorSeed);
         uint256 subId = _subId(subIdSeed);

@@ -38,8 +38,8 @@ contract DeployMargin is MarginDeployConfig {
 
     function setUp() public {}
 
-    /// @notice Deploys and wires the margin suite. Skips anything already deployed or wired, so a
-    ///         partially completed deployment can be resumed by rerunning with the same arguments.
+    /// @notice Deploys the margin suite. Skips anything already deployed, so a partially completed
+    ///         deployment can be resumed by rerunning with the same arguments.
     /// @param poolManager The v4 PoolManager singleton the router unlocks for every position flow.
     /// @param permit2 The Permit2 contract used to pull caller equity and settle swaps.
     /// @param weth9 The canonical WETH9 used to wrap native ETH equity.

@@ -139,7 +139,7 @@ contract MarginRouterCrossVenueHedgeForkTest is Test, MarginRouteHelpers {
         _initAndSeedPool();
 
         // the full margin stack, wired to live Morpho, live Aave, canonical Permit2, and WETH9;
-        // both adapters are allowlisted so one router can drive positions on either venue
+        // the caller names the adapter per call, so one router drives positions on either venue
         address impl = address(new MarginAccount());
         // route position swaps through a Universal Router bound to the local flash-take PoolManager
         ur = deployUniversalRouter(address(manager), PERMIT2, WETH);

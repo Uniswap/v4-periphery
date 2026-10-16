@@ -29,7 +29,7 @@ import {PositionData} from "./types/PositionData.sol";
 /// @dev    Design and trust notes:
 ///         - Aave v4 is hub-and-spoke. The Spoke is held immutably and is the single call target for
 ///           every market this adapter routes; to serve a second Spoke, deploy a second adapter
-///           instance and allowlist it on the router.
+///           instance, which callers name per call like any other.
 ///         - The account acts as its own `onBehalfOf` AND is the direct caller, so
 ///           `Spoke._isPositionManager(account, account)` short-circuits to true. The v4 position
 ///           manager / intent apparatus (for third-party relayers) is therefore irrelevant here.
