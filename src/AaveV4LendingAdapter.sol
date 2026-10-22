@@ -1,0 +1,319 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.26;
+
+import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
+
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+
+import {ILendingAdapter} from "./interfaces/ILendingAdapter.sol";
+import {ISpoke} from "./interfaces/external/aave-v4/ISpoke.sol";
+import {PositionAmountResolver} from "./base/PositionAmountResolver.sol";
+import {Call} from "./types/Call.sol";
+import {Market} from "./types/Market.sol";
+import {Ltv, toLtv} from "./types/Ltv.sol";
+import {Units} from "./libraries/Units.sol";
+import {PositionData} from "./types/PositionData.sol";
+
+/// @title AaveV4LendingAdapter
+/// @author Uniswap Labs
+/// @notice A singleton, stateless `ILendingAdapter` over a single Aave v4 Spoke. Aave v4 keys a
+///         market by per-Spoke reserve ids, so `Market.data` is
+///         `abi.encode(uint256 collateralReserveId, uint256 debtReserveId)`; every call decodes it and
+///         validates against the live Spoke that each reserve's `underlying` is the matching currency
+///         and that both reserves sit on one Hub. Encode and read logic delegates to the Spoke, except
+///         the current-LTV ratio, which is computed locally over the Spoke's reported totals (max LTV
+///         and the health factor are read from the protocol). Each encoded call is executed by a
+///         `MarginAccount` as itself, so the Aave `onBehalfOf` is always the account and no delegated
+///         authorization is needed. The motivating use case is a short ETH position: supply USDC as
+///         collateral and borrow WETH.
+/// @dev    Design and trust notes:
+///         - Aave v4 is hub-and-spoke. The Spoke is held immutably and is the single call target for
+///           every market this adapter routes; to serve a second Spoke, deploy a second adapter
+///           instance, which callers name per call like any other.
+///         - The account acts as its own `onBehalfOf` AND is the direct caller, so
+///           `Spoke._isPositionManager(account, account)` short-circuits to true. The v4 position
+///           manager / intent apparatus (for third-party relayers) is therefore irrelevant here.
+///         - v4 `supply` does NOT auto-enable collateral, so `encodeSupplyCollateral` returns the supply
+///           followed by `setUsingAsCollateral`, which the account runs in the same sequence. The
+///           account is the direct caller of both, so the supply pulls the underlying against the
+///           account's allowance to the Spoke. `setUsingAsCollateral` is idempotent, so re-emitting it
+///           on every supply is safe.
+///         - v4 `borrow` and `withdraw` deliver the underlying to `msg.sender` (the account). The
+///           account holds the funds and forwards them to its validated receiver, so neither encoder
+///           carries a recipient.
+///         - debt is the sum of drawn debt and accrued premium; `positionOf` and full repay both read
+///           `getUserTotalDebt`, and the router's close swap is sized off that premium-inclusive debt.
+///         - `maxLtvWad` reads the collateral reserve's `collateralFactor` (the closest analog of
+///           Aave v3's liquidation threshold). v4's true liquidation point also depends on the
+///           position's risk premium and dynamic config; `healthFactor < 1e18` is the authoritative
+///           liquidation signal.
+///         - `currentLtvWad` and `positionOf` read the Spoke's ACCOUNT-LEVEL state (the Spoke tracks
+///           health across the whole account, not per `(collateral, debt)` pair), so they equal the
+///           position's values only when the account holds a single position on this Spoke. This is a
+///           USAGE REQUIREMENT, not a router-enforced invariant: each Spoke position must use its own
+///           `(owner, subId)` account. Co-locating two of this Spoke's markets under one `subId` blends
+///           the reads and can make a close/decrease revert or withdraw collateral still backing
+///           another debt. Use a distinct `subId` per Spoke position.
+///         - Market selection is permissionless but venue-validated on every call: a reserve id the
+///           Spoke has not listed reverts `MarketNotSupported` (the Spoke's own `ReserveNotListed`
+///           revert is caught and mapped), a listed reserve whose
+///           underlying is not the named currency reverts `ReserveMismatch`, reserves on different
+///           Hubs revert `HubMismatch`, and `data` of the wrong shape reverts `InvalidMarketData`,
+///           never returning a silent default market. Because the check runs per call, a Spoke
+///           reserve-layout change is caught immediately rather than at a re-registration.
+/// @custom:security-contact security@uniswap.org
+contract AaveV4LendingAdapter is ILendingAdapter, PositionAmountResolver {
+    // `Market.data` is abi.encode(uint256 collateralReserveId, uint256 debtReserveId): two words.
+    uint256 private constant MARKET_DATA_LENGTH = 64;
+
+    /// @notice The Aave v4 Spoke this adapter routes to. The single call target for every market;
+    ///         all `encode*` functions return this address as `target` and `lendingProtocol()`
+    ///         returns it.
+    ISpoke public immutable spoke;
+
+    /// @dev Thrown when the Spoke is the zero address at construction.
+    error ZeroAddress();
+
+    /// @dev Thrown when `encodeWithdrawCollateral` is called with an `account` that is not the caller.
+    ///      v4 withdraw delivers the underlying to `msg.sender`, so the encoder only ever produces a
+    ///      withdrawal for the account that calls it.
+    /// @param account The account argument supplied to the encoder.
+    /// @param caller The actual caller (`msg.sender`).
+    error AccountMismatch(address account, address caller);
+
+    /// @dev Thrown when a configured reserve's onchain underlying does not match the currency the key
+    ///      pairs it with, guarding against a mis-typed reserve id.
+    /// @param reserveId The reserve identifier checked.
+    /// @param actualUnderlying The underlying the Spoke reports for the reserve.
+    /// @param expectedUnderlying The currency the key names for that side of the market.
+    error ReserveMismatch(uint256 reserveId, address actualUnderlying, address expectedUnderlying);
+
+    /// @dev Thrown when the collateral and debt reserves are on different Hubs, which a single v4
+    ///      position cannot span.
+    /// @param collateralHub The Hub of the collateral reserve.
+    /// @param debtHub The Hub of the debt reserve.
+    error HubMismatch(address collateralHub, address debtHub);
+
+    /// @param spoke_ The Aave v4 Spoke this adapter routes to.
+    constructor(ISpoke spoke_) {
+        if (address(spoke_) == address(0)) revert ZeroAddress();
+        spoke = spoke_;
+    }
+
+    /// @inheritdoc ILendingAdapter
+    function lendingProtocol() external view returns (address) {
+        return address(spoke);
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev True when `data` has the canonical shape and both reserve ids resolve on the Spoke to the
+    ///      named currencies on a common Hub.
+    function isSupportedMarket(Market calldata market) external view returns (bool) {
+        if (market.data.length != MARKET_DATA_LENGTH) return false;
+        (uint256 collateralReserveId, uint256 debtReserveId) = abi.decode(market.data, (uint256, uint256));
+        (bool collateralListed, ISpoke.Reserve memory collateralReserve) = _reserve(collateralReserveId);
+        (bool debtListed, ISpoke.Reserve memory debtReserve) = _reserve(debtReserveId);
+        return collateralListed && debtListed && collateralReserve.underlying == Currency.unwrap(market.collateral)
+            && debtReserve.underlying == Currency.unwrap(market.debt) && collateralReserve.hub == debtReserve.hub;
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Encodes `Spoke.supply(collateralReserveId, amount, account)` followed by
+    ///      `setUsingAsCollateral(collateralReserveId, true, account)`. The account executes both
+    ///      itself, so the supply observes `msg.sender == account` and pulls the underlying against the
+    ///      account's allowance to the Spoke. v4 `supply` does not auto-enable collateral, and the
+    ///      enable is idempotent, so re-running it on every supply (including a top-up) is safe.
+    function encodeSupplyCollateral(address account, Market calldata market, uint256 amount)
+        external
+        view
+        returns (Call[] memory calls)
+    {
+        (uint256 collateralReserveId,) = _resolve(market);
+        calls = new Call[](2);
+        calls[0] = Call({value: 0, data: abi.encodeCall(ISpoke.supply, (collateralReserveId, amount, account))});
+        calls[1] =
+            Call({value: 0, data: abi.encodeCall(ISpoke.setUsingAsCollateral, (collateralReserveId, true, account))});
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Encodes `Spoke.withdraw(collateralReserveId, amount, account)`. v4 withdraw delivers the
+    ///      underlying to `msg.sender` (the account); the `receiver` is ignored here and the account
+    ///      forwards the withdrawn underlying to its validated recipient. `account` must be the caller,
+    ///      binding the otherwise-unused parameter and asserting the encoder only produces a withdrawal
+    ///      for the account that calls it (the `MarginAccount` always passes its own address).
+    function encodeWithdrawCollateral(address account, Market calldata market, uint256 amount, address)
+        external
+        view
+        returns (Call[] memory calls)
+    {
+        (uint256 collateralReserveId,) = _resolve(market);
+        if (account != msg.sender) revert AccountMismatch(account, msg.sender);
+        calls = new Call[](1);
+        calls[0] = Call({value: 0, data: abi.encodeCall(ISpoke.withdraw, (collateralReserveId, amount, account))});
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Encodes `Spoke.borrow(debtReserveId, amount, account)`. v4 borrow delivers the underlying
+    ///      to `msg.sender` (the account), which forwards it to the receiver it validates; there is no
+    ///      receiver parameter on the protocol call.
+    function encodeBorrow(address account, Market calldata market, uint256 amount)
+        external
+        view
+        returns (Call[] memory calls)
+    {
+        (, uint256 debtReserveId) = _resolve(market);
+        calls = new Call[](1);
+        calls[0] = Call({value: 0, data: abi.encodeCall(ISpoke.borrow, (debtReserveId, amount, account))});
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Encodes `Spoke.repay(debtReserveId, amount, account)`. Passing `amount == type(uint256).max`
+    ///      repays the account's full debt: the Spoke caps an over-amount to the total debt (drawn plus
+    ///      premium), leaving no dust. The max-uint cap applies on the Spoke directly, which is what the
+    ///      account calls. When the account holds no debt in the reserve, encodes no calls instead:
+    ///      the Spoke reverts `InvalidAmount` on a debt-free repay, and the no-op keeps a generic
+    ///      repay-then-withdraw exit plan runnable against a debt-free position.
+    function encodeRepay(address account, Market calldata market, uint256 amount)
+        external
+        view
+        returns (Call[] memory calls)
+    {
+        (, uint256 debtReserveId) = _resolve(market);
+        if (spoke.getUserTotalDebt(debtReserveId, account) == 0) return new Call[](0);
+        calls = new Call[](1);
+        calls[0] = Call({value: 0, data: abi.encodeCall(ISpoke.repay, (debtReserveId, amount, account))});
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev `collateralAmount` is the account's supplied underlying for the collateral reserve and
+    ///      `debtAmount` is its total debt (drawn plus accrued premium) for the debt reserve. Both are
+    ///      asset-denominated and already reflect accrued interest.
+    function positionOf(address account, Market memory market)
+        public
+        view
+        override(ILendingAdapter, PositionAmountResolver)
+        returns (uint256 collateralAmount, uint256 debtAmount)
+    {
+        (uint256 collateralReserveId, uint256 debtReserveId) = _resolve(market);
+        collateralAmount = spoke.getUserSuppliedAssets(collateralReserveId, account);
+        debtAmount = spoke.getUserTotalDebt(debtReserveId, account);
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Reads the collateral reserve's `collateralFactor` (basis points) from its current dynamic
+    ///      config and converts it to a WAD-scaled `Ltv`. This is the closest analog of Aave v3's
+    ///      liquidation threshold; v4's true liquidation point also depends on the position's risk
+    ///      premium and dynamic config, and `healthFactor < 1e18` is the authoritative signal.
+    function maxLtvWad(Market calldata market) external view returns (Ltv) {
+        (uint256 collateralReserveId,) = _resolve(market);
+        return _collateralFactorLtv(collateralReserveId);
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Computes the current LTV from the Spoke's account-level data. `totalCollateralValue` is in
+    ///      Value units (USD scaled by the oracle decimals) and `totalDebtValueRay` is the same Value
+    ///      units additionally scaled by RAY, so the WAD LTV is
+    ///      `totalDebtValueRay * WAD / (totalCollateralValue * RAY)`. Returns `type(uint256).max` (as
+    ///      an `Ltv`) when there is debt but zero collateral, and 0 when there is no debt. This is
+    ///      ACCOUNT-LEVEL (Spoke-scoped): it equals the position LTV only when the account holds a
+    ///      single position on this Spoke. Co-locating multiple Spoke markets under one `(owner, subId)`
+    ///      blends every reserve into these totals. The router does NOT enforce one position per
+    ///      account; callers must use a distinct `subId` per Spoke position.
+    /// @param market Must resolve on the Spoke (only the key is validated; the account's full Spoke
+    ///        position determines the totals).
+    function currentLtvWad(address account, Market calldata market) external view returns (Ltv) {
+        _resolve(market);
+        ISpoke.UserAccountData memory data = spoke.getUserAccountData(account);
+        return _currentLtv(data);
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Composes the account's supplied/borrowed amounts with a single account-level
+    ///      `getUserAccountData` read, so the health factor is the Spoke's own value (which
+    ///      incorporates the position's risk premium and dynamic config) rather than a re-derivation.
+    ///      `maxLtv` and `currentLtv` are account-level (Spoke-scoped): they equal the position's
+    ///      values only when the account holds a single position on this Spoke (one position per
+    ///      `subId`); see the contract-level notes.
+    function describePosition(address account, Market calldata market)
+        external
+        view
+        returns (PositionData memory data)
+    {
+        (uint256 collateralReserveId, uint256 debtReserveId) = _resolve(market);
+        ISpoke.UserAccountData memory accountData = spoke.getUserAccountData(account);
+        data = PositionData({
+            collateralAmount: spoke.getUserSuppliedAssets(collateralReserveId, account),
+            debtAmount: spoke.getUserTotalDebt(debtReserveId, account),
+            maxLtv: _collateralFactorLtv(collateralReserveId),
+            currentLtv: _currentLtv(accountData),
+            healthFactorWad: accountData.healthFactor
+        });
+    }
+
+    /// @notice The collateral reserve's `collateralFactor` from its current dynamic config, as a
+    ///         WAD-scaled `Ltv`.
+    /// @param collateralReserveId The collateral reserve identifier on the Spoke.
+    /// @return The collateral factor as an `Ltv` (WAD, 1e18 == 100%).
+    function _collateralFactorLtv(uint256 collateralReserveId) internal view returns (Ltv) {
+        ISpoke.Reserve memory reserve = spoke.getReserve(collateralReserveId);
+        ISpoke.DynamicReserveConfig memory dynamicConfig =
+            spoke.getDynamicReserveConfig(collateralReserveId, reserve.dynamicConfigKey);
+        return toLtv(uint256(dynamicConfig.collateralFactor) * Units.WAD / Units.BPS);
+    }
+
+    /// @notice Current LTV from the Spoke's account-level totals. `totalCollateralValue` is in Value
+    ///         units; `totalDebtValueRay` is Value units scaled by RAY, so the WAD LTV is
+    ///         `totalDebtValueRay * WAD / (totalCollateralValue * RAY)`. Returns `type(uint256).max`
+    ///         when there is debt but no collateral, and 0 when there is no debt.
+    /// @param data The Spoke's account-level data for the account.
+    /// @return The current LTV as an `Ltv` (WAD, 1e18 == 100%).
+    function _currentLtv(ISpoke.UserAccountData memory data) internal pure returns (Ltv) {
+        if (data.totalDebtValueRay == 0) return toLtv(0);
+        if (data.totalCollateralValue == 0) return toLtv(type(uint256).max);
+        // totalDebtValueRay is Value scaled by RAY; totalCollateralValue is plain Value. Divide the RAY
+        // out with a trailing division rather than folding it into the denominator: a standalone
+        // `totalCollateralValue * RAY` is a plain uint256 multiply outside mulDiv's full-precision path
+        // and would overflow for a large collateral value. mulDiv here cannot overflow, and the LTV is
+        // recovered exactly by the final RAY division.
+        return toLtv(Math.mulDiv(data.totalDebtValueRay, Units.WAD, data.totalCollateralValue) / Units.RAY);
+    }
+
+    /// @notice Decodes a market key and validates it against the live Spoke, returning the reserve ids
+    ///         for reuse. Reverts `InvalidMarketData` for `data` of the wrong shape, `MarketNotSupported`
+    ///         for a reserve id the Spoke has not listed, `ReserveMismatch` for a listed reserve whose
+    ///         underlying is not the named currency, and `HubMismatch` for reserves on different Hubs.
+    /// @param market The market key to resolve.
+    /// @return collateralReserveId The collateral reserve identifier on the Spoke.
+    /// @return debtReserveId The debt reserve identifier on the Spoke.
+    function _resolve(Market memory market) internal view returns (uint256 collateralReserveId, uint256 debtReserveId) {
+        if (market.data.length != MARKET_DATA_LENGTH) revert InvalidMarketData(market.data.length);
+        (collateralReserveId, debtReserveId) = abi.decode(market.data, (uint256, uint256));
+        (bool collateralListed, ISpoke.Reserve memory collateralReserve) = _reserve(collateralReserveId);
+        (bool debtListed, ISpoke.Reserve memory debtReserve) = _reserve(debtReserveId);
+        if (!collateralListed || !debtListed) revert MarketNotSupported(market.collateral, market.debt);
+        if (collateralReserve.underlying != Currency.unwrap(market.collateral)) {
+            revert ReserveMismatch(
+                collateralReserveId, collateralReserve.underlying, Currency.unwrap(market.collateral)
+            );
+        }
+        if (debtReserve.underlying != Currency.unwrap(market.debt)) {
+            revert ReserveMismatch(debtReserveId, debtReserve.underlying, Currency.unwrap(market.debt));
+        }
+        if (collateralReserve.hub != debtReserve.hub) revert HubMismatch(collateralReserve.hub, debtReserve.hub);
+    }
+
+    /// @notice Reads a reserve from the Spoke without reverting. The live Spoke reverts
+    ///         `ReserveNotListed()` for an id it has not configured, so the call is wrapped and a revert
+    ///         is reported as "not listed"; a reserve that reads back with a zero underlying is treated
+    ///         the same way so a Spoke that returns an empty struct instead behaves identically.
+    /// @param reserveId The reserve identifier to look up.
+    /// @return listed True if the Spoke has configured the reserve.
+    /// @return reserve The reserve when listed; zeroed otherwise.
+    function _reserve(uint256 reserveId) internal view returns (bool listed, ISpoke.Reserve memory reserve) {
+        try spoke.getReserve(reserveId) returns (ISpoke.Reserve memory found) {
+            return (found.underlying != address(0), found);
+        } catch {
+            return (false, reserve);
+        }
+    }
+}

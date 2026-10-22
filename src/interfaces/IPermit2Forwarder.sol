@@ -6,6 +6,10 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 /// @title IPermit2Forwarder
 /// @notice Interface for the Permit2Forwarder contract
 interface IPermit2Forwarder {
+    /// @notice the Permit2 contract this forwarder grants allowances on
+    /// @return the Permit2 AllowanceTransfer contract
+    function permit2() external view returns (IAllowanceTransfer);
+
     /// @notice allows forwarding a single permit to permit2
     /// @dev this function is payable to allow multicall with NATIVE based actions
     /// @param owner the owner of the tokens

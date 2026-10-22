@@ -63,8 +63,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     function test_fuzz_mint_native(ModifyLiquidityParams memory params) public {
-        params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
-        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
+        params = createFuzzyTwoSidedLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
 
         uint256 liquidityToAdd =
             params.liquidityDelta < 0 ? uint256(-params.liquidityDelta) : uint256(params.liquidityDelta);
@@ -96,8 +95,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
     // minting with excess native tokens are returned to caller
     function test_fuzz_mint_native_excess_withClose(ModifyLiquidityParams memory params) public {
-        params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
-        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
+        params = createFuzzyTwoSidedLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
 
         uint256 liquidityToAdd =
             params.liquidityDelta < 0 ? uint256(-params.liquidityDelta) : uint256(params.liquidityDelta);
@@ -151,8 +149,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     function test_fuzz_mint_native_excess_withSettlePair(ModifyLiquidityParams memory params) public {
-        params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
-        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
+        params = createFuzzyTwoSidedLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
 
         uint256 liquidityToAdd =
             params.liquidityDelta < 0 ? uint256(-params.liquidityDelta) : uint256(params.liquidityDelta);
@@ -208,8 +205,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance0Start = address(this).balance;
         uint256 balance1Start = currency1.balanceOfSelf();
 
-        params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
-        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
+        params = createFuzzyTwoSidedLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
 
         uint256 liquidityToAdd =
             params.liquidityDelta < 0 ? uint256(-params.liquidityDelta) : uint256(params.liquidityDelta);
@@ -259,8 +255,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance0Start = address(this).balance;
         uint256 balance1Start = currency1.balanceOfSelf();
 
-        params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
-        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
+        params = createFuzzyTwoSidedLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
 
         uint256 liquidityToAdd =
             params.liquidityDelta < 0 ? uint256(-params.liquidityDelta) : uint256(params.liquidityDelta);
@@ -315,8 +310,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance0Start = address(this).balance;
         uint256 balance1Start = currency1.balanceOfSelf();
 
-        params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
-        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
+        params = createFuzzyTwoSidedLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
 
         uint256 liquidityToAdd =
             params.liquidityDelta < 0 ? uint256(-params.liquidityDelta) : uint256(params.liquidityDelta);
@@ -361,8 +355,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance0Start = address(this).balance;
         uint256 balance1Start = currency1.balanceOfSelf();
 
-        params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
-        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
+        params = createFuzzyTwoSidedLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
 
         uint256 liquidityToAdd =
             params.liquidityDelta < 0 ? uint256(-params.liquidityDelta) : uint256(params.liquidityDelta);
@@ -410,8 +403,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
     function test_fuzz_increaseLiquidity_native(ModifyLiquidityParams memory params) public {
         // fuzz for the range
-        params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
-        vm.assume(params.tickLower < -60 && 60 < params.tickUpper); // two-sided liquidity
+        params = createFuzzyTwoSidedLiquidityParams(nativeKey, params, SQRT_PRICE_1_1, 2);
 
         // TODO: figure out if we can fuzz the increase liquidity delta. we're annoyingly getting TickLiquidityOverflow
         uint256 liquidityToAdd = 1e18;
@@ -450,8 +442,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     // overpaying native tokens on increase liquidity is returned to caller
     function test_fuzz_increaseLiquidity_native_excess_withClose(ModifyLiquidityParams memory params) public {
         // fuzz for the range
-        params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
-        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
+        params = createFuzzyTwoSidedLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
 
         // TODO: figure out if we can fuzz the increase liquidity delta. we're annoyingly getting TickLiquidityOverflow
         uint256 liquidityToAdd = 1e18;
@@ -499,8 +490,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
     function test_fuzz_increaseLiquidity_native_excess_withSettlePair(ModifyLiquidityParams memory params) public {
         // fuzz for the range
-        params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
-        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
+        params = createFuzzyTwoSidedLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
 
         // TODO: figure out if we can fuzz the increase liquidity delta. we're annoyingly getting TickLiquidityOverflow
         uint256 liquidityToAdd = 1e18;
@@ -549,8 +539,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         ModifyLiquidityParams memory params,
         uint256 decreaseLiquidityDelta
     ) public {
-        params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
-        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
+        params = createFuzzyTwoSidedLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
         decreaseLiquidityDelta = bound(decreaseLiquidityDelta, 1, uint256(params.liquidityDelta));
 
         PositionConfig memory config =
@@ -586,8 +575,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         ModifyLiquidityParams memory params,
         uint256 decreaseLiquidityDelta
     ) public {
-        params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
-        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
+        params = createFuzzyTwoSidedLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
         decreaseLiquidityDelta = bound(decreaseLiquidityDelta, 1, uint256(params.liquidityDelta));
 
         PositionConfig memory config =
@@ -626,8 +614,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     function test_fuzz_collect_native_withClose(ModifyLiquidityParams memory params) public {
-        params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
-        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
+        params = createFuzzyTwoSidedLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
 
         PositionConfig memory config =
             PositionConfig({poolKey: nativeKey, tickLower: params.tickLower, tickUpper: params.tickUpper});
@@ -652,8 +639,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     function test_fuzz_collect_native_withTakePair(ModifyLiquidityParams memory params) public {
-        params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
-        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
+        params = createFuzzyTwoSidedLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
 
         PositionConfig memory config =
             PositionConfig({poolKey: nativeKey, tickLower: params.tickLower, tickUpper: params.tickUpper});
@@ -683,8 +669,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     function test_fuzz_collect_native_withTakePair_addressRecipient(ModifyLiquidityParams memory params) public {
-        params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
-        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
+        params = createFuzzyTwoSidedLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
 
         PositionConfig memory config =
             PositionConfig({poolKey: nativeKey, tickLower: params.tickLower, tickUpper: params.tickUpper});
@@ -724,8 +709,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     function test_fuzz_collect_native_withTakePair_msgSenderRecipient(ModifyLiquidityParams memory params) public {
-        params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
-        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
+        params = createFuzzyTwoSidedLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
 
         PositionConfig memory config =
             PositionConfig({poolKey: nativeKey, tickLower: params.tickLower, tickUpper: params.tickUpper});
