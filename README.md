@@ -32,6 +32,10 @@ contract CoolHook is BaseHook {
 
 ```
 
+## Gas behavior after Glamsterdam
+
+After the Glamsterdam activation on Ethereum mainnet, new storage slots and new accounts cost state gas, also inside calls with a fixed gas limit. This affects subscriber callbacks, `PermissionedPositionManager` unwinds and the `V4Quoter` gas estimate. See [docs/glamsterdam-gas.md](./docs/glamsterdam-gas.md).
+
 ## License
 
 The license for Uniswap V4 Periphery is the GNU General Public License (GPL 2.0), see [LICENSE](https://github.com/Uniswap/v4-periphery/blob/main/LICENSE).
