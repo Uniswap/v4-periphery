@@ -59,7 +59,7 @@ contract MockCalldataDecoder {
     function decodeSwapExactInParams(bytes calldata params)
         external
         pure
-        returns (IV4Router.ExactInputParams calldata swapParams)
+        returns (IV4Router.ExactInputParams memory swapParams)
     {
         return params.decodeSwapExactInParams();
     }
@@ -67,7 +67,7 @@ contract MockCalldataDecoder {
     function decodeSwapExactInSingleParams(bytes calldata params)
         external
         pure
-        returns (IV4Router.ExactInputSingleParams calldata swapParams)
+        returns (IV4Router.ExactInputSingleParams memory swapParams)
     {
         return params.decodeSwapExactInSingleParams();
     }
@@ -75,7 +75,7 @@ contract MockCalldataDecoder {
     function decodeSwapExactOutParams(bytes calldata params)
         external
         pure
-        returns (IV4Router.ExactOutputParams calldata swapParams)
+        returns (IV4Router.ExactOutputParams memory swapParams)
     {
         return params.decodeSwapExactOutParams();
     }
@@ -83,7 +83,7 @@ contract MockCalldataDecoder {
     function decodeSwapExactOutSingleParams(bytes calldata params)
         external
         pure
-        returns (IV4Router.ExactOutputSingleParams calldata swapParams)
+        returns (IV4Router.ExactOutputSingleParams memory swapParams)
     {
         return params.decodeSwapExactOutSingleParams();
     }
@@ -178,6 +178,10 @@ contract MockCalldataDecoder {
             owner: owner,
             hookData: hookData
         });
+    }
+
+    function toBytes(bytes calldata params, uint256 arg) external pure returns (bytes memory) {
+        return params.toBytes(arg);
     }
 
     function decodeUint256(bytes calldata params) external pure returns (uint256) {
