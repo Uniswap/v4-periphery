@@ -20,7 +20,26 @@ compilation_restrictions = [
   { paths = "src/PositionManager.sol", optimizer_runs = 500 },
   { paths = "src/hooks/permissionedPools/PermissionedPositionManager.sol", optimizer_runs = 500 },
   { paths = "src/PositionDescriptor.sol", optimizer_runs = 1 },
+  { paths = "src/SwapAndAdd.sol", optimizer_runs = 500 },
   { paths = "test/**", via_ir = false }
+]
+
+# Integration profile for the SwapAndAdd tests that need the real Universal Router (test-integration/).
+# The real router requires via_ir, but the default profile disables via_ir for test/**, and foundry
+# cannot mix a via_ir unit with a non-via_ir unit that share forge-std. Under
+# FOUNDRY_PROFILE=integration the whole graph compiles with via_ir on, so these tests and the nested
+# router build cleanly.
+#   Run it with: FOUNDRY_PROFILE=integration forge test
+# Only this profile compiles the test-integration/ directory. A plain forge test on the default
+# profile never pulls in the via_ir-only router, so the default suite is unaffected.
+[profile.integration]
+test = 'test-integration'
+via_ir = true
+optimizer_runs = 200
+compilation_restrictions = [
+  { paths = "src/PositionManager.sol", optimizer_runs = 500 },
+  { paths = "src/hooks/permissionedPools/PermissionedPositionManager.sol", optimizer_runs = 500 },
+  { paths = "lib/universal-router/contracts/UniversalRouter.sol", optimizer_runs = 1 }
 ]
 
 [profile.debug]
@@ -37,7 +56,7 @@ fuzz_runs = 100_000
 gas_limit=50_000_000
 
 [rpc_endpoints]
-sepolia = "https://rpc.sepolia.org"
+sepolia = "https://ethereum-sepolia-rpc.publicnode.com"
 unichain_sepolia = "https://sepolia.unichain.org"
 base_sepolia = "https://sepolia.base.org"
 arbitrum_sepolia = "https://sepolia-rollup.arbitrum.io/rpc"
