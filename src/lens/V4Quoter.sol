@@ -6,7 +6,9 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {IV4Quoter} from "../interfaces/IV4Quoter.sol";
+import {IV4Router} from "../interfaces/IV4Router.sol";
 import {PathKey} from "../libraries/PathKey.sol";
 import {QuoterRevert} from "../libraries/QuoterRevert.sol";
 import {BaseV4Quoter} from "../base/BaseV4Quoter.sol";
@@ -19,6 +21,7 @@ import {IMsgSender} from "../interfaces/IMsgSender.sol";
 /// to compute the result. They are also not gas efficient and should not be called on-chain.
 contract V4Quoter is IV4Quoter, BaseV4Quoter {
     using QuoterRevert for *;
+    using SafeCast for *;
 
     constructor(IPoolManager _poolManager) BaseV4Quoter(_poolManager) {}
 
@@ -91,6 +94,7 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
     /// @dev external function called within the _unlockCallback, to simulate an exact input swap, then revert with the result
     function _quoteExactInput(QuoteExactParams calldata params) external selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
+        if (pathLength == 0) revert IV4Router.EmptyPath();
         BalanceDelta swapDelta;
         uint128 amountIn = params.exactAmount;
         Currency inputCurrency = params.exactCurrency;
@@ -100,9 +104,9 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
             pathKey = params.path[i];
             (PoolKey memory poolKey, bool zeroForOne) = pathKey.getPoolAndSwapDirection(inputCurrency);
 
-            swapDelta = _swap(poolKey, zeroForOne, -int256(int128(amountIn)), pathKey.hookData);
+            swapDelta = _swap(poolKey, zeroForOne, -int256(uint256(amountIn)), pathKey.hookData);
 
-            amountIn = zeroForOne ? uint128(swapDelta.amount1()) : uint128(swapDelta.amount0());
+            amountIn = zeroForOne ? swapDelta.amount1().toUint128() : swapDelta.amount0().toUint128();
             inputCurrency = pathKey.intermediateCurrency;
         }
         // amountIn after the loop actually holds the amountOut of the trade
@@ -112,16 +116,18 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
     /// @dev external function called within the _unlockCallback, to simulate a single-hop exact input swap, then revert with the result
     function _quoteExactInputSingle(QuoteExactSingleParams calldata params) external selfOnly returns (bytes memory) {
         BalanceDelta swapDelta =
-            _swap(params.poolKey, params.zeroForOne, -int256(int128(params.exactAmount)), params.hookData);
+            _swap(params.poolKey, params.zeroForOne, -int256(uint256(params.exactAmount)), params.hookData);
 
-        // the output delta of a swap is positive
-        uint256 amountOut = params.zeroForOne ? uint128(swapDelta.amount1()) : uint128(swapDelta.amount0());
+        // The output delta is positive for ordinary pools. A hook taking more than the whole output can drive it
+        // negative, which the cast rejects.
+        uint256 amountOut = params.zeroForOne ? swapDelta.amount1().toUint128() : swapDelta.amount0().toUint128();
         amountOut.revertQuote();
     }
 
     /// @dev external function called within the _unlockCallback, to simulate an exact output swap, then revert with the result
     function _quoteExactOutput(QuoteExactParams calldata params) external selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
+        if (pathLength == 0) revert IV4Router.EmptyPath();
         BalanceDelta swapDelta;
         uint128 amountOut = params.exactAmount;
         Currency outputCurrency = params.exactCurrency;
@@ -133,7 +139,11 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
 
             swapDelta = _swap(poolKey, !oneForZero, int256(uint256(amountOut)), pathKey.hookData);
 
-            amountOut = oneForZero ? uint128(-swapDelta.amount1()) : uint128(-swapDelta.amount0());
+            amountOut = oneForZero
+                ? uint256(-int256(swapDelta.amount1())).toUint128()
+                : uint256(-int256(swapDelta.amount0())).toUint128();
+
+            if (amountOut == 0) break;
 
             outputCurrency = pathKey.intermediateCurrency;
         }
@@ -146,8 +156,11 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
         BalanceDelta swapDelta =
             _swap(params.poolKey, params.zeroForOne, int256(uint256(params.exactAmount)), params.hookData);
 
-        // the input delta of a swap is negative so we must flip it
-        uint256 amountIn = params.zeroForOne ? uint128(-swapDelta.amount0()) : uint128(-swapDelta.amount1());
+        // The input delta is negative for ordinary pools. A hook can fund it exactly, leaving zero; an overfunded
+        // positive delta is rejected by the cast.
+        uint256 amountIn = params.zeroForOne
+            ? uint256(-int256(swapDelta.amount0())).toUint128()
+            : uint256(-int256(swapDelta.amount1())).toUint128();
         amountIn.revertQuote();
     }
 

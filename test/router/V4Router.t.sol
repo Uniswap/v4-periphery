@@ -11,6 +11,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PathKey} from "../../src/libraries/PathKey.sol";
 import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 contract V4RouterTest is RoutingTestHelpers {
@@ -1138,5 +1139,38 @@ contract V4RouterTest is RoutingTestHelpers {
 
         assertEq(inputBalanceBefore - inputBalanceAfter, expectedAmountIn);
         assertEq(outputBalanceAfter - outputBalanceBefore, amountOut);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                               EMPTY PATH
+    //////////////////////////////////////////////////////////////*/
+
+    function test_swapExactIn_revertsOnEmptyPath() public {
+        IV4Router.ExactInputParams memory params;
+        params.currencyIn = currency0;
+        params.path = new PathKey[](0);
+        params.minHopPriceX36 = new uint256[](0);
+        params.amountIn = uint128(1 ether);
+
+        plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(currency0, currency1, ActionConstants.MSG_SENDER);
+
+        vm.expectRevert(IV4Router.EmptyPath.selector);
+        router.executeActions(data);
+    }
+
+    function test_swapExactOut_revertsOnEmptyPath() public {
+        IV4Router.ExactOutputParams memory params;
+        params.currencyOut = currency1;
+        params.path = new PathKey[](0);
+        params.minHopPriceX36 = new uint256[](0);
+        params.amountOut = uint128(1 ether);
+        params.amountInMaximum = type(uint128).max;
+
+        plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(currency0, currency1, ActionConstants.MSG_SENDER);
+
+        vm.expectRevert(IV4Router.EmptyPath.selector);
+        router.executeActions(data);
     }
 }
