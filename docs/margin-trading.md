@@ -192,7 +192,8 @@ So 2x ≈ 50% LTV, 3x ≈ 67% LTV, 4x ≈ 75% LTV. The lending market enforces i
 (liquidation LTV, `maxLtvWad`) at borrow time, so an open that would exceed it reverts. Both flows
 also accept a caller-supplied `maxLtvAfter` bound on the resulting LTV, asserted after the position
 settles: it is optional on `increasePosition` (zero skips the check, so callers relying only on
-`maxDebtIn` are unaffected) and mandatory on a partial `decreasePosition`. A supplied (non-zero)
+`maxDebtIn` are unaffected) and mandatory on a partial `decreasePosition` (a zero bound there reverts
+`LtvBoundRequired`). A supplied (non-zero)
 bound must be able to bind — strictly below `1e18` (100%); a value at or above 100% can never be
 exceeded by a real LTV, so it would silently disable the check and is rejected with `IneffectiveLtvBound`.
 Because an open sizes on the pool while liquidation uses the venue oracle, `maxLtvAfter` lets a caller bound leverage by
@@ -849,7 +850,7 @@ async function decreasePosition(user: `0x${string}`, subId: bigint) {
 ### 7.6 Front-end checklist
 
 - Always `simulateContract` before `writeContract` to surface reverts (`SlippageBoundRequired`,
-`PositionUnhealthy`, `DeadlinePassed`, `NativeCollateralMismatch`) with a clear message.
+`LtvBoundRequired`, `PositionUnhealthy`, `DeadlinePassed`, `NativeCollateralMismatch`) with a clear message.
 - Derive `maxDebtIn` / `maxCollateralIn` from a real quote plus a slippage buffer; do not use spot.
 - Account decimals carefully: WETH is 18, USDC is 6.
 - Surface the account address (`accountOf`) and its health (`currentLtvWad` vs `maxLtvWad`).
@@ -1219,7 +1220,7 @@ struct DecreaseParams {    // decreasePosition (partial decrease, or full close 
     address universalRouter;   // Universal Router for this swap (must carry already-unlocked V4_SWAP)
     bytes routeCommands;   // Universal Router route (buys debtToRepay to your account)
     bytes[] routeInputs;   // per-command inputs for routeCommands
-    Ltv maxLtvAfter;       // mandatory on a partial decrease (must be < 1e18); ignored on a full close
+    Ltv maxLtvAfter;       // mandatory on a partial decrease (zero reverts LtvBoundRequired; must be < 1e18); ignored on a full close
     uint256 subId;
     uint256 deadline;
 }
@@ -1281,8 +1282,10 @@ listed Comet collateral asset. Its `lendingProtocol()` is the bound Comet.
 | Source   | Error                                                            | Meaning                                                                                                                   |
 | -------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | router   | `DeadlinePassed(uint256)`                                        | `block.timestamp` past `deadline`                                                                                         |
-| router   | `SlippageBoundRequired()`                                        | a mandatory bound (`maxDebtIn` / `maxCollateralIn` / `maxLtvAfter`) or amount (`collateralToBuy` / `debtToRepay`) is zero |
+| router   | `SlippageBoundRequired()`                                        | a mandatory swap slippage bound is zero: `maxDebtIn` on an increase, `maxCollateralIn` on a decrease or close that swaps  |
+| router   | `LtvBoundRequired()`                                             | a partial decrease's mandatory `maxLtvAfter` is zero (optional only on an increase, where zero skips the check)           |
 | router   | `IneffectiveLtvBound(Ltv)`                                       | a non-zero `maxLtvAfter` is at or above 100% (`1e18`), so it could never bind (supply a bound below 100%, or 0 to skip)   |
+| router   | `ZeroAmount()`                                                   | a required amount is zero: `collateralToBuy`, an `addCollateral` or `PULL_TO_ACCOUNT` amount, or a partial `debtToRepay`  |
 | router   | `PositionUnhealthy()`                                            | resulting LTV exceeds the bound                                                                                           |
 | router   | `NoDebtToRepay()`                                                | a partial decrease targeted a debt-free position (nothing to repay; exit with a full close instead)                       |
 | router   | `NativeCollateralMismatch()`                                     | native ETH sent but collateral is not WETH                                                                                |

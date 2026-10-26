@@ -188,7 +188,7 @@ contract MarginRouter is
         // PoolManager rejects), and the health bound must be set and able to bind: at or above 100%
         // it can never be exceeded, so it would count as set yet leave ASSERT_HEALTH a no-op
         if (params.debtToRepay == 0) revert ZeroAmount();
-        if (Ltv.unwrap(params.maxLtvAfter) == 0) revert SlippageBoundRequired();
+        if (Ltv.unwrap(params.maxLtvAfter) == 0) revert LtvBoundRequired();
         if (Ltv.unwrap(params.maxLtvAfter) >= Units.WAD) revert IneffectiveLtvBound(params.maxLtvAfter);
 
         (uint256 collateralBefore, uint256 debt) = params.adapter.positionOf(account, params.market);

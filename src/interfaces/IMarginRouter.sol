@@ -30,10 +30,15 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     /// @param deadline The deadline that was exceeded.
     error DeadlinePassed(uint256 deadline);
 
-    /// @dev Thrown when a required slippage or health bound is zero: `maxDebtIn` / `maxCollateralIn`
-    ///      (swap slippage) or `maxLtvAfter` (resulting health). Leaving a bound unset would allow a
-    ///      swap to execute at an arbitrary price or leave a position in an unchecked state.
+    /// @dev Thrown when a required swap slippage bound is zero: `maxDebtIn` on an increase, or
+    ///      `maxCollateralIn` on a decrease or close that swaps. Leaving the bound unset would allow
+    ///      the swap to execute at an arbitrary price.
     error SlippageBoundRequired();
+
+    /// @dev Thrown when a partial decrease's `maxLtvAfter` is zero. The resulting-health bound is
+    ///      optional on an increase (zero skips the check) but mandatory on a partial decrease,
+    ///      which would otherwise leave the position in an unchecked state.
+    error LtvBoundRequired();
 
     /// @dev Thrown when a non-zero `maxLtvAfter` is at or above 100% (`1e18`). Such a bound can never
     ///      be exceeded by a real LTV, so it would satisfy the "bound is set" check yet leave the

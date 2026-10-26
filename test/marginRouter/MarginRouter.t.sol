@@ -85,6 +85,35 @@ contract MarginRouterTest is Test, MarginRouteHelpers {
         router.decreasePosition(p);
     }
 
+    function test_partialDecrease_revertsWhenLtvBoundZero() public {
+        // the resulting-health bound is mandatory on a partial decrease; its absence is reported
+        // distinctly from a missing swap slippage bound so a caller knows which bound to supply
+        IMarginRouter.DecreaseParams memory p;
+        p.deadline = block.timestamp + 1 hours;
+        p.debtToRepay = 1e18; // partial (not type(uint256).max)
+        p.maxCollateralIn = 1;
+        p.maxLtvAfter = Ltv.wrap(0);
+        vm.expectRevert(IMarginRouter.LtvBoundRequired.selector);
+        router.decreasePosition(p);
+    }
+
+    function test_partialDecrease_revertsWhenSlippageBoundZero() public {
+        // with the health bound supplied, a missing maxCollateralIn is the swap slippage error
+        IMarginRouter.DecreaseParams memory p;
+        p.adapter = ILendingAdapter(makeAddr("adapter"));
+        p.deadline = block.timestamp + 1 hours;
+        p.debtToRepay = 1e18;
+        p.maxCollateralIn = 0;
+        p.maxLtvAfter = toLtv(0.9e18);
+        vm.mockCall(
+            address(p.adapter),
+            abi.encodeWithSelector(ILendingAdapter.positionOf.selector),
+            abi.encode(uint256(5e18), uint256(1e18))
+        );
+        vm.expectRevert(IMarginRouter.SlippageBoundRequired.selector);
+        router.decreasePosition(p);
+    }
+
     function test_increasePosition_revertsAfterDeadline() public {
         IMarginRouter.IncreaseParams memory p = _openParams();
         p.deadline = block.timestamp - 1;
