@@ -49,6 +49,11 @@ contract UniswapV4DeployerCompetitionTest is Test {
         assertEq(Owned(defaultAddress).owner(), v4Owner);
     }
 
+    // `betterThan` accepts only salts whose CREATE2 address ranks above the default, a vanity rarity that
+    // cannot be expressed with `bound`, so it rejects most inputs. Cap runs (well under `max_test_rejects`)
+    // rather than let honored fuzz.runs blow the rejection budget.
+    /// forge-config: default.fuzz.runs = 256
+    /// forge-config: ci.fuzz.runs = 256
     function test_updateBestAddress_succeeds(bytes32 salt) public {
         salt = (salt & mask20bytes) | bytes32(bytes20(winner));
 
@@ -125,6 +130,10 @@ contract UniswapV4DeployerCompetitionTest is Test {
         }
     }
 
+    // `betterThan` is a CREATE2 vanity rarity (see test_updateBestAddress_succeeds); cap runs so the honored
+    // fuzz.runs does not exhaust the rejection budget.
+    /// forge-config: default.fuzz.runs = 256
+    /// forge-config: ci.fuzz.runs = 256
     function test_deploy_succeeds(bytes32 salt) public {
         salt = (salt & mask20bytes) | bytes32(bytes20(winner));
 
@@ -144,7 +153,7 @@ contract UniswapV4DeployerCompetitionTest is Test {
     }
 
     function test_deploy_reverts_CompetitionNotOver(uint256 timestamp) public {
-        vm.assume(timestamp < competition.competitionDeadline());
+        timestamp = bound(timestamp, 0, competition.competitionDeadline() - 1);
         vm.warp(timestamp);
         vm.expectRevert(
             abi.encodeWithSelector(

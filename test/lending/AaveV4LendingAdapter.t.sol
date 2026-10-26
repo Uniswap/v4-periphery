@@ -1,0 +1,493 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.26;
+
+import {Test} from "forge-std/Test.sol";
+import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+
+import {AaveV4LendingAdapter} from "../../src/AaveV4LendingAdapter.sol";
+import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
+import {ISpoke} from "../../src/interfaces/external/aave-v4/ISpoke.sol";
+import {PositionAmountResolver} from "../../src/base/PositionAmountResolver.sol";
+import {Call} from "../../src/types/Call.sol";
+import {Market} from "../../src/types/Market.sol";
+import {Ltv} from "../../src/types/Ltv.sol";
+import {MockAaveV4Spoke} from "../mocks/MockAaveV4Spoke.sol";
+
+contract AaveV4LendingAdapterTest is Test {
+    // WAD scale for loan-to-value ratios (1e18 == 100%).
+    uint256 internal constant WAD = 1e18;
+    // Oracle base used by the mock Spoke (8 decimals; 1e8 == $1).
+    uint256 internal constant USD_BASE = 1e8;
+    // Reserve ids mirror the live Main Spoke layout: WETH = 0, USDC = 7.
+    uint256 internal constant WETH_RESERVE_ID = 0;
+    uint256 internal constant USDC_RESERVE_ID = 7;
+    // A reserve registered on a second Hub, to prove a position cannot span Hubs.
+    uint256 internal constant DAI_RESERVE_ID = 99;
+    // A reserve id the Spoke has never configured.
+    uint256 internal constant UNCONFIGURED_RESERVE_ID = 42;
+    // Collateral factors in basis points (distinct so a reserve/key mixup would surface).
+    uint16 internal constant USDC_CF_BPS = 7_800;
+    uint16 internal constant WETH_CF_BPS = 8_300;
+    uint16 internal constant DAI_CF_BPS = 8_000;
+
+    MockAaveV4Spoke internal spoke;
+    AaveV4LendingAdapter internal adapter;
+
+    address internal account = makeAddr("account");
+    address internal hub = makeAddr("hub");
+    address internal otherHub = makeAddr("otherHub");
+    address internal oracle = makeAddr("oracle");
+
+    MockERC20 internal usdc;
+    MockERC20 internal weth;
+    MockERC20 internal dai;
+    // Short ETH market: supply USDC collateral, borrow WETH debt.
+    Market internal market;
+    // Long ETH market: supply WETH collateral, borrow USDC debt. Routable with no registration step
+    // (selection is permissionless); also checks maxLtv reads the collateral reserve.
+    Market internal longMarket;
+    // The short pair keyed to a debt reserve id the Spoke has not configured: a market the venue does
+    // not have, so every entry point must revert MarketNotSupported rather than route a default.
+    Market internal unconfiguredMarket;
+
+    function setUp() public {
+        usdc = new MockERC20("USD Coin", "USDC", 6);
+        weth = new MockERC20("Wrapped Ether", "WETH", 18);
+        dai = new MockERC20("Dai", "DAI", 18);
+
+        spoke = new MockAaveV4Spoke(oracle);
+        spoke.registerReserve(WETH_RESERVE_ID, address(weth), hub, 0, 2_000 * USD_BASE, WETH_CF_BPS);
+        spoke.registerReserve(USDC_RESERVE_ID, address(usdc), hub, 5, 1 * USD_BASE, USDC_CF_BPS);
+        // a live reserve on a different Hub: a single v4 position cannot span Hubs
+        spoke.registerReserve(DAI_RESERVE_ID, address(dai), otherHub, 9, 1 * USD_BASE, DAI_CF_BPS);
+
+        adapter = new AaveV4LendingAdapter(ISpoke(address(spoke)));
+
+        market = _key(usdc, weth, USDC_RESERVE_ID, WETH_RESERVE_ID);
+        longMarket = _key(weth, usdc, WETH_RESERVE_ID, USDC_RESERVE_ID);
+        unconfiguredMarket = _key(usdc, weth, USDC_RESERVE_ID, UNCONFIGURED_RESERVE_ID);
+    }
+
+    /// @dev Aave v4 keys a market by per-Spoke reserve ids, carried as two words in `data`.
+    function _key(MockERC20 collateral, MockERC20 debt, uint256 collateralReserveId, uint256 debtReserveId)
+        internal
+        pure
+        returns (Market memory)
+    {
+        return Market({
+            collateral: Currency.wrap(address(collateral)),
+            debt: Currency.wrap(address(debt)),
+            data: abi.encode(collateralReserveId, debtReserveId)
+        });
+    }
+
+    /// @dev The short pair with arbitrary `data`, for wrong-shape keys.
+    function _withData(bytes memory data) internal view returns (Market memory) {
+        return Market({collateral: market.collateral, debt: market.debt, data: data});
+    }
+
+    /// @dev The `resolveAmount` context asking for the debt side of `account`'s position in `m`.
+    function _debtContext(Market memory m) internal view returns (bytes memory) {
+        return abi.encode(PositionAmountResolver.PositionAmount.DEBT, account, m);
+    }
+
+    // -------------------------------------------------------------------------
+    // calldata decode helpers (slice the 4-byte selector, then abi.decode)
+    // -------------------------------------------------------------------------
+
+    function decodeSupply(bytes calldata d)
+        external
+        pure
+        returns (uint256 reserveId, uint256 amount, address onBehalfOf)
+    {
+        (reserveId, amount, onBehalfOf) = abi.decode(d[4:], (uint256, uint256, address));
+    }
+
+    function decodeSetCollateral(bytes calldata d)
+        external
+        pure
+        returns (uint256 reserveId, bool usingAsCollateral, address onBehalfOf)
+    {
+        (reserveId, usingAsCollateral, onBehalfOf) = abi.decode(d[4:], (uint256, bool, address));
+    }
+
+    function decodeWithdraw(bytes calldata d)
+        external
+        pure
+        returns (uint256 reserveId, uint256 amount, address onBehalfOf)
+    {
+        (reserveId, amount, onBehalfOf) = abi.decode(d[4:], (uint256, uint256, address));
+    }
+
+    function decodeBorrow(bytes calldata d)
+        external
+        pure
+        returns (uint256 reserveId, uint256 amount, address onBehalfOf)
+    {
+        (reserveId, amount, onBehalfOf) = abi.decode(d[4:], (uint256, uint256, address));
+    }
+
+    function decodeRepay(bytes calldata d)
+        external
+        pure
+        returns (uint256 reserveId, uint256 amount, address onBehalfOf)
+    {
+        (reserveId, amount, onBehalfOf) = abi.decode(d[4:], (uint256, uint256, address));
+    }
+
+    // -------------------------------------------------------------------------
+    // wiring + encode shape
+    // -------------------------------------------------------------------------
+
+    function test_lendingProtocol_returnsSpoke() public view {
+        assertEq(adapter.lendingProtocol(), address(spoke));
+    }
+
+    function test_encodeSupplyCollateral_encodesPlainSupply() public view {
+        Call[] memory calls = adapter.encodeSupplyCollateral(account, market, 1_000e6);
+        assertEq(calls.length, 2);
+        assertEq(calls[0].value, 0);
+        bytes memory data = calls[0].data;
+        assertEq(bytes4(data), ISpoke.supply.selector, "supply is a plain call, not a multicall");
+        (uint256 supplyId, uint256 amount, address supplyOnBehalf) = this.decodeSupply(data);
+        assertEq(supplyId, USDC_RESERVE_ID);
+        assertEq(amount, 1_000e6);
+        assertEq(supplyOnBehalf, account);
+    }
+
+    function test_encodeSupplyCollateral_secondCallEnablesCollateral() public view {
+        Call[] memory calls = adapter.encodeSupplyCollateral(account, market, 1_000e6);
+        assertEq(calls.length, 2);
+        assertEq(calls[1].value, 0);
+        bytes memory data = calls[1].data;
+        assertEq(bytes4(data), ISpoke.setUsingAsCollateral.selector);
+        (uint256 collId, bool flag, address collOnBehalf) = this.decodeSetCollateral(data);
+        assertEq(collId, USDC_RESERVE_ID);
+        assertTrue(flag);
+        assertEq(collOnBehalf, account);
+    }
+
+    function test_supplyThenEnable_creditsAndEnablesCollateral() public {
+        uint256 amount = 1_000e6;
+        usdc.mint(account, amount);
+
+        // the account runs the two encoded calls in sequence (as MarginAccount.supplyCollateral does)
+        Call[] memory calls = adapter.encodeSupplyCollateral(account, market, amount);
+        assertEq(calls.length, 2);
+        address target = adapter.lendingProtocol();
+        vm.startPrank(account);
+        usdc.approve(target, amount);
+        (bool okSupply,) = target.call{value: calls[0].value}(calls[0].data);
+        (bool okEnable,) = target.call{value: calls[1].value}(calls[1].data);
+        vm.stopPrank();
+
+        assertTrue(okSupply && okEnable, "supply + enable executed");
+        assertEq(spoke.getUserSuppliedAssets(USDC_RESERVE_ID, account), amount, "supply credited");
+        assertTrue(spoke.isUsingAsCollateral(USDC_RESERVE_ID, account), "collateral enabled by the hook");
+        // the account is the direct caller, so the supply pulled the underlying against its allowance
+        assertEq(spoke.lastSupplyCaller(), account, "account is the supply caller");
+        assertEq(usdc.balanceOf(account), 0, "underlying pulled from the account");
+    }
+
+    function test_encodeWithdrawCollateral_targetSelectorAndArgs() public {
+        vm.prank(account);
+        Call[] memory calls = adapter.encodeWithdrawCollateral(account, market, 500e6, makeAddr("receiver"));
+        assertEq(calls.length, 1);
+        assertEq(calls[0].value, 0);
+        bytes memory data = calls[0].data;
+        assertEq(bytes4(data), ISpoke.withdraw.selector);
+        // v4 withdraw has no receiver: it delivers to msg.sender (the account); onBehalfOf is the account
+        (uint256 reserveId, uint256 amount, address onBehalfOf) = this.decodeWithdraw(data);
+        assertEq(reserveId, USDC_RESERVE_ID);
+        assertEq(amount, 500e6);
+        assertEq(onBehalfOf, account);
+    }
+
+    function test_encodeWithdrawCollateral_revertsWhenAccountNotCaller() public {
+        vm.expectRevert(abi.encodeWithSelector(AaveV4LendingAdapter.AccountMismatch.selector, account, address(this)));
+        adapter.encodeWithdrawCollateral(account, market, 500e6, account);
+    }
+
+    function test_encodeBorrow_targetSelectorAndArgs() public view {
+        Call[] memory calls = adapter.encodeBorrow(account, market, 0.5e18);
+        assertEq(calls.length, 1);
+        assertEq(calls[0].value, 0);
+        bytes memory data = calls[0].data;
+        assertEq(bytes4(data), ISpoke.borrow.selector);
+        (uint256 reserveId, uint256 amount, address onBehalfOf) = this.decodeBorrow(data);
+        assertEq(reserveId, WETH_RESERVE_ID);
+        assertEq(amount, 0.5e18);
+        assertEq(onBehalfOf, account);
+    }
+
+    function test_encodeRepay_exactAmount() public {
+        spoke.seedDebt(WETH_RESERVE_ID, account, 1e18); // the encoder no-ops without live debt
+        Call[] memory calls = adapter.encodeRepay(account, market, 0.25e18);
+        assertEq(calls.length, 1);
+        assertEq(calls[0].value, 0);
+        bytes memory data = calls[0].data;
+        assertEq(bytes4(data), ISpoke.repay.selector);
+        (uint256 reserveId, uint256 amount, address onBehalfOf) = this.decodeRepay(data);
+        assertEq(reserveId, WETH_RESERVE_ID);
+        assertEq(amount, 0.25e18);
+        assertEq(onBehalfOf, account);
+    }
+
+    function test_encodeRepay_max() public {
+        spoke.seedDebt(WETH_RESERVE_ID, account, 1e18); // the encoder no-ops without live debt
+        Call[] memory calls = adapter.encodeRepay(account, market, type(uint256).max);
+        assertEq(calls.length, 1);
+        bytes memory data = calls[0].data;
+        (, uint256 amount,) = this.decodeRepay(data);
+        assertEq(amount, type(uint256).max); // the Spoke caps an over-amount to the total debt
+    }
+
+    function test_encodeRepay_zeroDebt_encodesNoOp() public view {
+        // no debt seeded: the Spoke would revert InvalidAmount on a debt-free repay, so the encoder
+        // returns the empty skip signal and a generic repay-then-withdraw exit plan runs against a
+        // debt-free position, matching the interface-wide no-op contract
+        Call[] memory calls = adapter.encodeRepay(account, market, type(uint256).max);
+        assertEq(calls.length, 0, "debt-free repay must be an empty no-op");
+    }
+
+    // -------------------------------------------------------------------------
+    // reads
+    // -------------------------------------------------------------------------
+
+    function test_positionOf_reflectsSuppliedAndTotalDebt() public {
+        spoke.seedSupplied(USDC_RESERVE_ID, account, 1_000e6);
+        spoke.seedDebt(WETH_RESERVE_ID, account, 0.3e18);
+        (uint256 collateralAmount, uint256 debtAmount) = adapter.positionOf(account, market);
+        assertEq(collateralAmount, 1_000e6);
+        assertEq(debtAmount, 0.3e18); // getUserTotalDebt models drawn + accrued premium
+    }
+
+    function test_positionOf_zeroForFreshAccount() public view {
+        (uint256 collateralAmount, uint256 debtAmount) = adapter.positionOf(account, market);
+        assertEq(collateralAmount, 0);
+        assertEq(debtAmount, 0);
+    }
+
+    function test_maxLtvWad_usesCollateralReserveFactor() public view {
+        // short market collateral is USDC (7800 bps -> 0.78e18)
+        assertEq(Ltv.unwrap(adapter.maxLtvWad(market)), USDC_CF_BPS * WAD / 1e4);
+        assertEq(Ltv.unwrap(adapter.maxLtvWad(market)), 0.78e18);
+        // long market collateral is WETH (8300 bps -> 0.83e18); proves the collateral reserve is read,
+        // not the debt reserve
+        assertEq(Ltv.unwrap(adapter.maxLtvWad(longMarket)), 0.83e18);
+    }
+
+    function test_currentLtvWad_forSetUpPosition() public {
+        // 1000 USDC collateral ($1000) and 0.3 WETH debt ($600) -> LTV 0.6e18
+        spoke.seedSupplied(USDC_RESERVE_ID, account, 1_000e6);
+        spoke.seedDebt(WETH_RESERVE_ID, account, 0.3e18);
+        assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0.6e18);
+    }
+
+    function test_currentLtvWad_realScales_halfLtv() public {
+        // $10,000 USDC collateral, $5,000 WETH debt (2.5 WETH) -> exactly 0.5e18 at the real
+        // Value (USD * 1e8) and RAY (1e27) scales the live Spoke uses
+        spoke.seedSupplied(USDC_RESERVE_ID, account, 10_000e6);
+        spoke.seedDebt(WETH_RESERVE_ID, account, 2.5e18);
+        assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0.5e18);
+    }
+
+    function test_currentLtvWad_zeroWhenNoDebt() public {
+        spoke.seedSupplied(USDC_RESERVE_ID, account, 1_000e6);
+        assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0);
+    }
+
+    function test_currentLtvWad_maxWhenDebtWithoutCollateral() public {
+        spoke.seedDebt(WETH_RESERVE_ID, account, 0.3e18);
+        assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), type(uint256).max);
+    }
+
+    // -------------------------------------------------------------------------
+    // market key validation (per call: there is no registration step)
+    // -------------------------------------------------------------------------
+
+    function test_isSupportedMarket_trueForLiveKeysFalseOtherwise() public view {
+        assertTrue(adapter.isSupportedMarket(market), "short key");
+        assertTrue(adapter.isSupportedMarket(longMarket), "long key needs no registration");
+        assertFalse(adapter.isSupportedMarket(unconfiguredMarket), "unconfigured debt reserve id");
+        assertFalse(
+            adapter.isSupportedMarket(_key(usdc, weth, UNCONFIGURED_RESERVE_ID, WETH_RESERVE_ID)),
+            "unconfigured collateral reserve id"
+        );
+        assertFalse(
+            adapter.isSupportedMarket(_key(usdc, weth, WETH_RESERVE_ID, WETH_RESERVE_ID)), "collateral reserve mismatch"
+        );
+        assertFalse(
+            adapter.isSupportedMarket(_key(usdc, weth, USDC_RESERVE_ID, USDC_RESERVE_ID)), "debt reserve mismatch"
+        );
+        assertFalse(adapter.isSupportedMarket(_key(dai, weth, DAI_RESERVE_ID, WETH_RESERVE_ID)), "hub mismatch");
+        assertFalse(adapter.isSupportedMarket(_withData(abi.encode(USDC_RESERVE_ID))), "one-word data");
+        assertFalse(
+            adapter.isSupportedMarket(_withData(abi.encode(USDC_RESERVE_ID, WETH_RESERVE_ID, uint256(0)))),
+            "three-word data"
+        );
+        assertFalse(adapter.isSupportedMarket(_withData("")), "empty data");
+    }
+
+    /// @dev Permissionless selection: the long key routes against its own reserve ids with no
+    ///      registration step.
+    function test_longMarket_routesWithoutRegistration() public view {
+        Call[] memory calls = adapter.encodeSupplyCollateral(account, longMarket, 1e18);
+        assertEq(calls.length, 2);
+        bytes memory data = calls[0].data;
+        (uint256 supplyId,, address onBehalfOf) = this.decodeSupply(data);
+        assertEq(supplyId, WETH_RESERVE_ID, "long key supplies the WETH reserve");
+        assertEq(onBehalfOf, account);
+
+        calls = adapter.encodeBorrow(account, longMarket, 1_000e6);
+        assertEq(calls.length, 1);
+        data = calls[0].data;
+        (uint256 borrowId,,) = this.decodeBorrow(data);
+        assertEq(borrowId, USDC_RESERVE_ID, "long key borrows the USDC reserve");
+    }
+
+    /// @dev `data` must be exactly the two reserve ids. A one-word key (a bare reserve id) and a
+    ///      three-word key both revert with the length seen rather than decode a default market.
+    function test_encodeSupplyCollateral_revertsOnWrongLengthData() public {
+        vm.expectRevert(abi.encodeWithSelector(ILendingAdapter.InvalidMarketData.selector, 32));
+        adapter.encodeSupplyCollateral(account, _withData(abi.encode(USDC_RESERVE_ID)), 1e6);
+
+        vm.expectRevert(abi.encodeWithSelector(ILendingAdapter.InvalidMarketData.selector, 96));
+        adapter.encodeSupplyCollateral(
+            account, _withData(abi.encode(USDC_RESERVE_ID, WETH_RESERVE_ID, uint256(0))), 1e6
+        );
+    }
+
+    function test_positionOf_revertsOnWrongLengthData() public {
+        vm.expectRevert(abi.encodeWithSelector(ILendingAdapter.InvalidMarketData.selector, 32));
+        adapter.positionOf(account, _withData(abi.encode(USDC_RESERVE_ID)));
+
+        // the Aave v3 shape (no data) is the likeliest cross-adapter mistake
+        vm.expectRevert(abi.encodeWithSelector(ILendingAdapter.InvalidMarketData.selector, 0));
+        adapter.positionOf(account, _withData(""));
+    }
+
+    function test_encodeSupplyCollateral_revertsWhenMarketNotSupported() public {
+        _expectMarketNotSupported(unconfiguredMarket);
+        adapter.encodeSupplyCollateral(account, unconfiguredMarket, 1e6);
+    }
+
+    function test_encodeWithdrawCollateral_revertsWhenMarketNotSupported() public {
+        // the key is validated before the caller check, so a stranger sees the market error
+        _expectMarketNotSupported(unconfiguredMarket);
+        adapter.encodeWithdrawCollateral(account, unconfiguredMarket, 1e6, account);
+    }
+
+    function test_encodeBorrow_revertsWhenMarketNotSupported() public {
+        _expectMarketNotSupported(unconfiguredMarket);
+        adapter.encodeBorrow(account, unconfiguredMarket, 1e18);
+    }
+
+    function test_encodeRepay_revertsWhenMarketNotSupported() public {
+        _expectMarketNotSupported(unconfiguredMarket);
+        adapter.encodeRepay(account, unconfiguredMarket, 1e18);
+    }
+
+    function test_positionOf_revertsWhenMarketNotSupported() public {
+        _expectMarketNotSupported(unconfiguredMarket);
+        adapter.positionOf(account, unconfiguredMarket);
+    }
+
+    function test_maxLtvWad_revertsWhenMarketNotSupported() public {
+        _expectMarketNotSupported(unconfiguredMarket);
+        adapter.maxLtvWad(unconfiguredMarket);
+    }
+
+    function test_currentLtvWad_revertsWhenMarketNotSupported() public {
+        _expectMarketNotSupported(unconfiguredMarket);
+        adapter.currentLtvWad(account, unconfiguredMarket);
+    }
+
+    function test_describePosition_revertsWhenMarketNotSupported() public {
+        _expectMarketNotSupported(unconfiguredMarket);
+        adapter.describePosition(account, unconfiguredMarket);
+    }
+
+    function test_resolveAmount_revertsWhenMarketNotSupported() public {
+        _expectMarketNotSupported(unconfiguredMarket);
+        adapter.resolveAmount(_debtContext(unconfiguredMarket));
+    }
+
+    /// @dev The collateral side is checked too: an unconfigured collateral reserve id is rejected on
+    ///      every entry point, not just the collateral-side encoders.
+    function test_allEntryPoints_revertWhenCollateralReserveUnconfigured() public {
+        Market memory m = _key(usdc, weth, UNCONFIGURED_RESERVE_ID, WETH_RESERVE_ID);
+        _expectMarketNotSupported(m);
+        adapter.encodeSupplyCollateral(account, m, 1e6);
+        _expectMarketNotSupported(m);
+        adapter.encodeWithdrawCollateral(account, m, 1e6, account);
+        _expectMarketNotSupported(m);
+        adapter.encodeBorrow(account, m, 1e18);
+        _expectMarketNotSupported(m);
+        adapter.encodeRepay(account, m, 1e18);
+        _expectMarketNotSupported(m);
+        adapter.positionOf(account, m);
+        _expectMarketNotSupported(m);
+        adapter.maxLtvWad(m);
+        _expectMarketNotSupported(m);
+        adapter.currentLtvWad(account, m);
+        _expectMarketNotSupported(m);
+        adapter.describePosition(account, m);
+        _expectMarketNotSupported(m);
+        adapter.resolveAmount(_debtContext(m));
+    }
+
+    /// @dev A configured reserve id paired with the wrong currency is a mis-typed key, not a missing
+    ///      market: the revert names the reserve, what it actually holds, and what the key claimed.
+    function test_encodeSupplyCollateral_revertsOnCollateralReserveMismatch() public {
+        // the WETH reserve id on the USDC collateral side
+        Market memory m = _key(usdc, weth, WETH_RESERVE_ID, WETH_RESERVE_ID);
+        _expectReserveMismatch(WETH_RESERVE_ID, address(weth), address(usdc));
+        adapter.encodeSupplyCollateral(account, m, 1e6);
+    }
+
+    function test_encodeSupplyCollateral_revertsOnDebtReserveMismatch() public {
+        // the USDC reserve id on the WETH debt side
+        Market memory m = _key(usdc, weth, USDC_RESERVE_ID, USDC_RESERVE_ID);
+        _expectReserveMismatch(USDC_RESERVE_ID, address(usdc), address(weth));
+        adapter.encodeSupplyCollateral(account, m, 1e6);
+    }
+
+    function test_positionOf_revertsOnReserveMismatch() public {
+        // collateral is checked before debt, so a key swapped on both sides reports the collateral side
+        Market memory swapped = _key(usdc, weth, WETH_RESERVE_ID, USDC_RESERVE_ID);
+        _expectReserveMismatch(WETH_RESERVE_ID, address(weth), address(usdc));
+        adapter.positionOf(account, swapped);
+
+        Market memory debtOnly = _key(usdc, weth, USDC_RESERVE_ID, USDC_RESERVE_ID);
+        _expectReserveMismatch(USDC_RESERVE_ID, address(usdc), address(weth));
+        adapter.positionOf(account, debtOnly);
+    }
+
+    /// @dev Both reserves resolve to their named currencies, but a single v4 position cannot span
+    ///      Hubs, so the key is rejected with both Hubs named.
+    function test_encodeSupplyCollateral_revertsOnHubMismatch() public {
+        Market memory crossHub = _key(dai, weth, DAI_RESERVE_ID, WETH_RESERVE_ID);
+        vm.expectRevert(abi.encodeWithSelector(AaveV4LendingAdapter.HubMismatch.selector, otherHub, hub));
+        adapter.encodeSupplyCollateral(account, crossHub, 1e18);
+    }
+
+    function test_positionOf_revertsOnHubMismatch() public {
+        Market memory crossHub = _key(dai, weth, DAI_RESERVE_ID, WETH_RESERVE_ID);
+        vm.expectRevert(abi.encodeWithSelector(AaveV4LendingAdapter.HubMismatch.selector, otherHub, hub));
+        adapter.positionOf(account, crossHub);
+    }
+
+    function _expectMarketNotSupported(Market memory m) internal {
+        vm.expectRevert(abi.encodeWithSelector(ILendingAdapter.MarketNotSupported.selector, m.collateral, m.debt));
+    }
+
+    function _expectReserveMismatch(uint256 reserveId, address actualUnderlying, address expectedUnderlying) internal {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                AaveV4LendingAdapter.ReserveMismatch.selector, reserveId, actualUnderlying, expectedUnderlying
+            )
+        );
+    }
+}

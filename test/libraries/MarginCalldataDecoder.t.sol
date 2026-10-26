@@ -1,0 +1,186 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.26;
+
+import {Test} from "forge-std/Test.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Actions} from "../../src/libraries/Actions.sol";
+
+import {MarginActions} from "../../src/libraries/MarginActions.sol";
+import {MarginCalldataDecoder} from "../../src/libraries/MarginCalldataDecoder.sol";
+import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
+import {Market} from "../../src/types/Market.sol";
+import {Ltv, toLtv} from "../../src/types/Ltv.sol";
+
+contract MarginCalldataDecoderTest is Test {
+    Currency internal collateral = Currency.wrap(address(0xC0));
+    Currency internal debt = Currency.wrap(address(0xDB));
+    // a Morpho-shaped `Market.data`: (oracle, irm, lltv), 96 bytes
+    bytes internal morphoShapedData = abi.encode(address(0x0A), address(0x1B), uint256(0.86e18));
+
+    // external wrappers so the library's calldata decoders run on calldata
+    function decAmount(bytes calldata p)
+        external
+        pure
+        returns (address adapter, Currency c, Currency d, bytes memory data, uint256 amount)
+    {
+        ILendingAdapter a;
+        Market memory m;
+        (a, m, amount) = MarginCalldataDecoder.decodeAdapterMarketAmount(p);
+        return (address(a), m.collateral, m.debt, m.data, amount);
+    }
+
+    function decReceiver(bytes calldata p)
+        external
+        pure
+        returns (address adapter, Currency c, Currency d, bytes memory data, uint256 amount, address to)
+    {
+        ILendingAdapter a;
+        Market memory m;
+        (a, m, amount, to) = MarginCalldataDecoder.decodeAdapterMarketAmountReceiver(p);
+        return (address(a), m.collateral, m.debt, m.data, amount, to);
+    }
+
+    function decSweep(bytes calldata p) external pure returns (Currency c, uint256 amount, address to) {
+        return MarginCalldataDecoder.decodeSweep(p);
+    }
+
+    function decHealth(bytes calldata p) external pure returns (address adapter, bytes memory data, uint256 maxLtv) {
+        ILendingAdapter a;
+        Market memory m;
+        Ltv lim;
+        (a, m, lim) = MarginCalldataDecoder.decodeHealthCheck(p);
+        return (address(a), m.data, Ltv.unwrap(lim));
+    }
+
+    function decSubId(bytes calldata p) external pure returns (uint256 subId) {
+        return MarginCalldataDecoder.decodeSubId(p);
+    }
+
+    function decPull(bytes calldata p) external pure returns (Currency c, uint256 amount, bool payerIsUser) {
+        return MarginCalldataDecoder.decodePull(p);
+    }
+
+    function test_decodeAdapterMarketAmount_roundTrips() public view {
+        // a Morpho-shaped key: the dynamic `data` tail must survive the trip alongside the pair
+        Market memory m = Market({collateral: collateral, debt: debt, data: morphoShapedData});
+        bytes memory p = abi.encode(ILendingAdapter(address(0xAD)), m, 42e18);
+        (address adapter, Currency c, Currency d, bytes memory data, uint256 amount) = this.decAmount(p);
+        assertEq(adapter, address(0xAD));
+        assertTrue(c == collateral && d == debt);
+        assertEq(data, morphoShapedData);
+        assertEq(amount, 42e18);
+    }
+
+    function test_decodeAdapterMarketAmount_roundTripsEmptyData() public view {
+        // the Aave v3 / Compound shape: a pair with no data
+        Market memory m = Market({collateral: collateral, debt: debt, data: ""});
+        bytes memory p = abi.encode(ILendingAdapter(address(0xAD)), m, 42e18);
+        (address adapter, Currency c, Currency d, bytes memory data, uint256 amount) = this.decAmount(p);
+        assertEq(adapter, address(0xAD));
+        assertTrue(c == collateral && d == debt);
+        assertEq(data.length, 0);
+        assertEq(amount, 42e18);
+    }
+
+    function test_decodeAdapterMarketAmountReceiver_roundTrips() public view {
+        // an Aave v4-shaped key: (collateralReserveId, debtReserveId)
+        Market memory m = Market({collateral: collateral, debt: debt, data: abi.encode(uint256(3), uint256(7))});
+        bytes memory p = abi.encode(ILendingAdapter(address(0xAD)), m, 7e18, address(0xB0B));
+        (address adapter, Currency c, Currency d, bytes memory data, uint256 amount, address to) = this.decReceiver(p);
+        assertEq(adapter, address(0xAD));
+        assertTrue(c == collateral && d == debt);
+        assertEq(data, abi.encode(uint256(3), uint256(7)));
+        assertEq(amount, 7e18);
+        assertEq(to, address(0xB0B));
+    }
+
+    function test_decodeSweep_roundTrips() public view {
+        bytes memory p = abi.encode(collateral, 3e18, address(0xB0B));
+        (Currency c, uint256 amount, address to) = this.decSweep(p);
+        assertTrue(c == collateral);
+        assertEq(amount, 3e18);
+        assertEq(to, address(0xB0B));
+    }
+
+    function test_decodeHealthCheck_roundTrips() public view {
+        Market memory m = Market({collateral: collateral, debt: debt, data: morphoShapedData});
+        bytes memory p = abi.encode(ILendingAdapter(address(0xAD)), m, toLtv(0.8e18));
+        (address adapter, bytes memory data, uint256 maxLtv) = this.decHealth(p);
+        assertEq(adapter, address(0xAD));
+        assertEq(data, morphoShapedData);
+        assertEq(maxLtv, 0.8e18);
+    }
+
+    function testFuzz_decodeAdapterMarketAmountReceiver(address adapter, bytes memory data, uint256 amount, address to)
+        public
+        view
+    {
+        Market memory m = Market({collateral: collateral, debt: debt, data: data});
+        bytes memory p = abi.encode(ILendingAdapter(adapter), m, amount, to);
+        (address gotAdapter, Currency c, Currency d, bytes memory gotData, uint256 gotAmount, address gotTo) =
+            this.decReceiver(p);
+        assertEq(gotAdapter, adapter);
+        assertTrue(c == collateral && d == debt);
+        assertEq(gotData, data);
+        assertEq(gotAmount, amount);
+        assertEq(gotTo, to);
+    }
+
+    function test_decodeSubId_roundTrips() public view {
+        bytes memory p = abi.encode(uint256(7));
+        assertEq(this.decSubId(p), 7);
+    }
+
+    function test_decodePull_roundTrips() public view {
+        bytes memory p = abi.encode(collateral, 5e18, true);
+        (Currency c, uint256 amount, bool payerIsUser) = this.decPull(p);
+        assertTrue(c == collateral);
+        assertEq(amount, 5e18);
+        assertTrue(payerIsUser);
+    }
+
+    function testFuzz_decodeSubId(uint256 subId) public view {
+        assertEq(this.decSubId(abi.encode(subId)), subId);
+    }
+
+    function testFuzz_decodePull(uint256 amount, bool payerIsUser) public view {
+        bytes memory p = abi.encode(debt, amount, payerIsUser);
+        (Currency c, uint256 gotAmount, bool gotPayerIsUser) = this.decPull(p);
+        assertTrue(c == debt);
+        assertEq(gotAmount, amount);
+        assertEq(gotPayerIsUser, payerIsUser);
+    }
+
+    function test_opcodes_arePinnedAndDisjointFromActions() public pure {
+        assertEq(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, 0x30);
+        assertEq(MarginActions.ACCOUNT_WITHDRAW_COLLATERAL, 0x31);
+        assertEq(MarginActions.ACCOUNT_BORROW, 0x32);
+        assertEq(MarginActions.ACCOUNT_REPAY, 0x33);
+        assertEq(MarginActions.ACCOUNT_SWEEP, 0x34);
+        assertEq(MarginActions.ASSERT_HEALTH, 0x35);
+        assertEq(MarginActions.SET_ACCOUNT, 0x37);
+        assertEq(MarginActions.PULL_TO_ACCOUNT, 0x38);
+        // margin opcodes start at 0x30, leaving a reserved gap above the inherited Actions space
+        // (which ends at 0x19) for future core actions to grow into without colliding
+        assertGe(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, Actions.UNWIND_WITH_FALLBACK + 4);
+    }
+
+    function test_isAccountScoped_matchesTheDispatchTable() public pure {
+        assertTrue(MarginActions.isAccountScoped(MarginActions.ACCOUNT_SUPPLY_COLLATERAL));
+        assertTrue(MarginActions.isAccountScoped(MarginActions.ACCOUNT_WITHDRAW_COLLATERAL));
+        assertTrue(MarginActions.isAccountScoped(MarginActions.ACCOUNT_BORROW));
+        assertTrue(MarginActions.isAccountScoped(MarginActions.ACCOUNT_REPAY));
+        assertTrue(MarginActions.isAccountScoped(MarginActions.ACCOUNT_SWEEP));
+        assertTrue(MarginActions.isAccountScoped(MarginActions.ASSERT_HEALTH));
+        assertTrue(MarginActions.isAccountScoped(MarginActions.PULL_TO_ACCOUNT));
+        assertTrue(MarginActions.isAccountScoped(MarginActions.ASSERT_ACCOUNT_BALANCE));
+        // router-level margin opcodes, the vacant slot, the reserved gap, and core opcodes are not
+        assertFalse(MarginActions.isAccountScoped(MarginActions.SET_ACCOUNT));
+        assertFalse(MarginActions.isAccountScoped(MarginActions.ROUTE_SWAP));
+        assertFalse(MarginActions.isAccountScoped(0x36));
+        assertFalse(MarginActions.isAccountScoped(0x1c));
+        assertFalse(MarginActions.isAccountScoped(MarginActions.ASSERT_ACCOUNT_BALANCE + 1));
+        assertFalse(MarginActions.isAccountScoped(Actions.SWEEP));
+        assertFalse(MarginActions.isAccountScoped(Actions.SWAP_EXACT_OUT_SINGLE));
+    }
+}

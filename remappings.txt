@@ -1,5 +1,10 @@
 @uniswap/v4-core/=lib/v4-core/
 ds-test/=lib/v4-core/lib/forge-std/lib/ds-test/src/
-forge-std/=lib/v4-core/lib/forge-std/src/
+forge-std/=lib/forge-std/src/
 openzeppelin-contracts/=lib/v4-core/lib/openzeppelin-contracts/
 solmate/=lib/v4-core/lib/solmate/
+morpho-blue/=lib/morpho-blue/src/
+solady/=lib/solady/src/
+universal-router/=lib/universal-router/
+@uniswap/v2-core/=lib/v2-core/
+@uniswap/v3-core/=lib/v3-core/

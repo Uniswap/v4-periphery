@@ -1,0 +1,317 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.26;
+
+import {Test} from "forge-std/Test.sol";
+import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+
+import {AaveLendingAdapter} from "../../src/AaveLendingAdapter.sol";
+import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
+import {IPool} from "../../src/interfaces/external/aave/IPool.sol";
+import {IPoolAddressesProvider} from "../../src/interfaces/external/aave/IPoolAddressesProvider.sol";
+import {Call} from "../../src/types/Call.sol";
+import {Market} from "../../src/types/Market.sol";
+import {Ltv} from "../../src/types/Ltv.sol";
+import {MockAavePool, MockAaveAddressesProvider, MockAaveDataProvider} from "../mocks/MockAavePool.sol";
+
+/// @notice Fuzz tests for AaveLendingAdapter: encode* output shape, positionOf receipt-balance
+///         reflection, currentLtvWad formula, and per-call market-key validation.
+contract AaveLendingAdapterFuzzTest is Test {
+    uint256 internal constant WAD = 1e18;
+    uint256 internal constant USD_BASE = 1e8;
+    uint256 internal constant USDC_LIQ_BPS = 7_800;
+    uint256 internal constant WETH_LIQ_BPS = 8_000;
+    uint256 internal constant VARIABLE_RATE = 2;
+
+    // WETH: 18 decimals, price 2000e8. The mock USD-base value is debtAmt * 2000e8 / 1e18.
+    // To ensure the USD-base debt value is non-zero (i.e. no integer truncation), require
+    // debtAmt >= 1e18 / (2000 * 1e8) + 1 = 5_000_001. We use a rounder lower bound.
+    uint256 internal constant MIN_WETH_FOR_NONZERO_USD = 1e10;
+
+    MockAavePool internal pool;
+    MockAaveAddressesProvider internal provider;
+    MockAaveDataProvider internal dataProvider;
+    AaveLendingAdapter internal adapter;
+
+    MockERC20 internal usdc;
+    MockERC20 internal weth;
+    // Short ETH market: supply USDC collateral, borrow WETH debt.
+    Market internal market;
+    // The reversed live pair: routable with no registration step.
+    Market internal reversedMarket;
+
+    function setUp() public {
+        usdc = new MockERC20("USD Coin", "USDC", 6);
+        weth = new MockERC20("Wrapped Ether", "WETH", 18);
+
+        pool = new MockAavePool();
+        dataProvider = new MockAaveDataProvider(pool);
+        provider = new MockAaveAddressesProvider(address(pool), address(dataProvider));
+
+        _registerReserve(usdc, 1 * USD_BASE, USDC_LIQ_BPS);
+        _registerReserve(weth, 2_000 * USD_BASE, WETH_LIQ_BPS);
+
+        adapter = new AaveLendingAdapter(IPoolAddressesProvider(address(provider)));
+
+        // Aave v3 keys a market by the asset pair alone, so the key carries no data
+        market = Market({collateral: Currency.wrap(address(usdc)), debt: Currency.wrap(address(weth)), data: ""});
+        reversedMarket =
+            Market({collateral: Currency.wrap(address(weth)), debt: Currency.wrap(address(usdc)), data: ""});
+    }
+
+    function _registerReserve(MockERC20 asset, uint256 priceBase, uint256 liqThresholdBps) internal {
+        MockERC20 aToken = new MockERC20("aToken", "aTKN", asset.decimals());
+        MockERC20 vDebt = new MockERC20("vDebt", "vDEBT", asset.decimals());
+        pool.registerReserve(address(asset), aToken, vDebt, priceBase, liqThresholdBps);
+    }
+
+    // External calldata-decode helpers.
+    function decodeSupply(bytes calldata d)
+        external
+        pure
+        returns (address asset, uint256 amount, address onBehalfOf, uint16 referralCode)
+    {
+        (asset, amount, onBehalfOf, referralCode) = abi.decode(d[4:], (address, uint256, address, uint16));
+    }
+
+    function decodeWithdraw(bytes calldata d) external pure returns (address asset, uint256 amount, address to) {
+        (asset, amount, to) = abi.decode(d[4:], (address, uint256, address));
+    }
+
+    function decodeBorrow(bytes calldata d)
+        external
+        pure
+        returns (address asset, uint256 amount, uint256 rateMode, uint16 referralCode, address onBehalfOf)
+    {
+        (asset, amount, rateMode, referralCode, onBehalfOf) =
+            abi.decode(d[4:], (address, uint256, uint256, uint16, address));
+    }
+
+    function decodeRepay(bytes calldata d)
+        external
+        pure
+        returns (address asset, uint256 amount, uint256 rateMode, address onBehalfOf)
+    {
+        (asset, amount, rateMode, onBehalfOf) = abi.decode(d[4:], (address, uint256, uint256, address));
+    }
+
+    // -------------------------------------------------------------------------
+    // lendingProtocol
+    // -------------------------------------------------------------------------
+
+    function testFuzz_lendingProtocol_isPool(address) public view {
+        assertEq(adapter.lendingProtocol(), address(pool));
+    }
+
+    // -------------------------------------------------------------------------
+    // encodeSupplyCollateral
+    // -------------------------------------------------------------------------
+
+    function testFuzz_encodeSupplyCollateral_shape(address account, uint256 amount) public view {
+        Call[] memory calls = adapter.encodeSupplyCollateral(account, market, amount);
+        assertEq(calls.length, 2, "supply must be a two-call sequence");
+        assertEq(calls[0].value, 0, "value must be 0");
+        bytes memory data = calls[0].data;
+        assertEq(bytes4(data), IPool.supply.selector, "wrong selector");
+        (address asset, uint256 decodedAmount, address onBehalfOf, uint16 referralCode) = this.decodeSupply(data);
+        assertEq(asset, address(usdc), "asset must be collateral (USDC)");
+        assertEq(decodedAmount, amount, "amount mismatch");
+        assertEq(onBehalfOf, account, "onBehalfOf must be account");
+        assertEq(referralCode, 0, "referral code must be 0");
+    }
+
+    // -------------------------------------------------------------------------
+    // encodeWithdrawCollateral
+    // -------------------------------------------------------------------------
+
+    function testFuzz_encodeWithdrawCollateral_shape(address account, uint256 amount, address receiver) public {
+        vm.prank(account);
+        Call[] memory calls = adapter.encodeWithdrawCollateral(account, market, amount, receiver);
+        assertEq(calls.length, 1, "withdraw must be a single call");
+        assertEq(calls[0].value, 0, "value must be 0");
+        bytes memory data = calls[0].data;
+        assertEq(bytes4(data), IPool.withdraw.selector, "wrong selector");
+        (address asset, uint256 decodedAmount, address to) = this.decodeWithdraw(data);
+        assertEq(asset, address(usdc), "asset must be collateral (USDC)");
+        assertEq(decodedAmount, amount, "amount mismatch");
+        assertEq(to, receiver, "receiver mismatch");
+    }
+
+    // -------------------------------------------------------------------------
+    // encodeBorrow
+    // -------------------------------------------------------------------------
+
+    function testFuzz_encodeBorrow_shape(address account, uint256 amount) public view {
+        Call[] memory calls = adapter.encodeBorrow(account, market, amount);
+        assertEq(calls.length, 1, "borrow must be a single call");
+        assertEq(calls[0].value, 0, "value must be 0");
+        bytes memory data = calls[0].data;
+        assertEq(bytes4(data), IPool.borrow.selector, "wrong selector");
+        (address asset, uint256 decodedAmount, uint256 rateMode, uint16 referralCode, address onBehalfOf) =
+            this.decodeBorrow(data);
+        assertEq(asset, address(weth), "asset must be debt (WETH)");
+        assertEq(decodedAmount, amount, "amount mismatch");
+        assertEq(rateMode, VARIABLE_RATE, "rate mode must be variable (2)");
+        assertEq(referralCode, 0, "referral code must be 0");
+        assertEq(onBehalfOf, account, "onBehalfOf must be account");
+    }
+
+    // -------------------------------------------------------------------------
+    // encodeRepay
+    // -------------------------------------------------------------------------
+
+    function testFuzz_encodeRepay_shape(address account, uint256 amount) public {
+        pool.variableDebtToken(address(weth)).mint(account, 1); // the encoder no-ops without live debt
+        Call[] memory calls = adapter.encodeRepay(account, market, amount);
+        assertEq(calls.length, 1, "repay must be a single call");
+        assertEq(calls[0].value, 0, "value must be 0");
+        bytes memory data = calls[0].data;
+        assertEq(bytes4(data), IPool.repay.selector, "wrong selector");
+        (address asset, uint256 decodedAmount, uint256 rateMode, address onBehalfOf) = this.decodeRepay(data);
+        assertEq(asset, address(weth), "asset must be debt (WETH)");
+        assertEq(decodedAmount, amount, "amount mismatch");
+        assertEq(rateMode, VARIABLE_RATE, "rate mode must be variable (2)");
+        assertEq(onBehalfOf, account, "onBehalfOf must be account");
+    }
+
+    function testFuzz_encodeRepay_zeroDebt_encodesNoOp(address account, uint256 amount) public view {
+        // no debt seeded: any requested amount encodes the empty skip signal
+        Call[] memory calls = adapter.encodeRepay(account, market, amount);
+        assertEq(calls.length, 0, "debt-free repay must be an empty no-op");
+    }
+
+    // -------------------------------------------------------------------------
+    // positionOf: seeded via mock receipt tokens
+    // -------------------------------------------------------------------------
+
+    function testFuzz_positionOf_reflectsSeededBalances(uint128 collAmt, uint128 debtAmt) public {
+        address account = makeAddr("account");
+        if (collAmt != 0) pool.aToken(address(usdc)).mint(account, collAmt);
+        if (debtAmt != 0) pool.variableDebtToken(address(weth)).mint(account, debtAmt);
+
+        (uint256 coll, uint256 debt) = adapter.positionOf(account, market);
+        assertEq(coll, uint256(collAmt), "collateral mismatch");
+        assertEq(debt, uint256(debtAmt), "debt mismatch");
+    }
+
+    function testFuzz_positionOf_zeroForFreshAccount(address account) public view {
+        (uint256 coll, uint256 debt) = adapter.positionOf(account, market);
+        assertEq(coll, 0);
+        assertEq(debt, 0);
+    }
+
+    // -------------------------------------------------------------------------
+    // currentLtvWad formula
+    // -------------------------------------------------------------------------
+
+    /// currentLtvWad == totalDebtBase * WAD / totalCollateralBase (Aave USD-base values).
+    /// The mock pool computes totals from seeded aToken / vDebt balances and their prices.
+    /// We read back the mock's own computed totals and compare against the adapter result.
+    function testFuzz_currentLtvWad_matchesFormula(uint64 collAmt, uint64 debtAmt) public {
+        address account = makeAddr("ltv_account");
+        // USDC: 6 decimals, price 1e8, so collateralBase = collAmt * 1e8 / 1e6 = collAmt * 100
+        // WETH: 18 decimals, price 2000e8, so debtBase = debtAmt * 2000e8 / 1e18
+        // We avoid the zero-collateral-with-debt edge case here (separate test below).
+        vm.assume(collAmt > 0 || debtAmt == 0);
+
+        if (collAmt != 0) pool.aToken(address(usdc)).mint(account, collAmt);
+        if (debtAmt != 0) pool.variableDebtToken(address(weth)).mint(account, debtAmt);
+
+        (uint256 totalCollBase, uint256 totalDebtBase,,,,) = pool.getUserAccountData(account);
+
+        Ltv ltv = adapter.currentLtvWad(account, market);
+
+        if (totalDebtBase == 0) {
+            assertEq(Ltv.unwrap(ltv), 0, "zero USD-debt => zero ltv");
+        } else if (totalCollBase == 0) {
+            assertEq(Ltv.unwrap(ltv), type(uint256).max, "USD-debt with no collateral => max ltv");
+        } else {
+            uint256 expected = totalDebtBase * WAD / totalCollBase;
+            assertEq(Ltv.unwrap(ltv), expected, "ltv formula mismatch");
+        }
+    }
+
+    /// Zero debt => zero LTV (regardless of collateral).
+    function testFuzz_currentLtvWad_zeroDebt(uint64 collAmt) public {
+        address account = makeAddr("zd_account");
+        if (collAmt != 0) pool.aToken(address(usdc)).mint(account, collAmt);
+        assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0);
+    }
+
+    /// Debt with no collateral => max LTV.
+    /// debtAmt is bounded below MIN_WETH_FOR_NONZERO_USD to avoid integer truncation in
+    /// the mock's USD-base calculation (debtAmt * 2000e8 / 1e18 must be > 0).
+    function testFuzz_currentLtvWad_debtNoCollateral(uint256 debtAmt) public {
+        debtAmt = bound(debtAmt, MIN_WETH_FOR_NONZERO_USD, type(uint64).max);
+        address account = makeAddr("dnc_account");
+        pool.variableDebtToken(address(weth)).mint(account, debtAmt);
+        assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), type(uint256).max);
+    }
+
+    // -------------------------------------------------------------------------
+    // market key validation (per call: there is no registration step)
+    // -------------------------------------------------------------------------
+
+    /// @dev Aave keys a market by the pair alone, so any non-empty `data` is the wrong shape (most
+    ///      plausibly a key meant for another adapter). It must revert with the length it saw on both
+    ///      the encode and read paths, and the probe must be false, rather than be ignored.
+    function testFuzz_market_revertsOnNonEmptyData(address account, bytes memory data) public {
+        if (data.length == 0) data = hex"00";
+        Market memory keyed = Market({collateral: market.collateral, debt: market.debt, data: data});
+
+        assertFalse(adapter.isSupportedMarket(keyed), "non-empty data is never supported");
+
+        bytes memory expected = abi.encodeWithSelector(ILendingAdapter.InvalidMarketData.selector, data.length);
+        vm.expectRevert(expected);
+        adapter.encodeSupplyCollateral(account, keyed, 1e6);
+        vm.expectRevert(expected);
+        adapter.positionOf(account, keyed);
+    }
+
+    /// @dev Any asset that is not a live reserve, on either side of the pair, names a market the venue
+    ///      does not have: the probe is false and the encode and read paths revert MarketNotSupported.
+    function testFuzz_market_revertsWhenAssetIsNotAReserve(address account, address asset) public {
+        vm.assume(asset != address(usdc) && asset != address(weth));
+        Market memory asCollateral = Market({collateral: Currency.wrap(asset), debt: market.debt, data: ""});
+        Market memory asDebt = Market({collateral: market.collateral, debt: Currency.wrap(asset), data: ""});
+
+        assertFalse(adapter.isSupportedMarket(asCollateral), "unlisted collateral is never supported");
+        assertFalse(adapter.isSupportedMarket(asDebt), "unlisted debt is never supported");
+
+        bytes memory expectCollateral = abi.encodeWithSelector(
+            ILendingAdapter.MarketNotSupported.selector, asCollateral.collateral, asCollateral.debt
+        );
+        bytes memory expectDebt =
+            abi.encodeWithSelector(ILendingAdapter.MarketNotSupported.selector, asDebt.collateral, asDebt.debt);
+
+        vm.expectRevert(expectCollateral);
+        adapter.encodeSupplyCollateral(account, asCollateral, 1e6);
+        vm.expectRevert(expectDebt);
+        adapter.encodeBorrow(account, asDebt, 1e18);
+        vm.expectRevert(expectCollateral);
+        adapter.positionOf(account, asCollateral);
+        vm.expectRevert(expectDebt);
+        adapter.positionOf(account, asDebt);
+    }
+
+    /// @dev Permissionless selection: the reversed live pair (WETH collateral, USDC debt) routes with
+    ///      no registration step and encodes against its own reserves.
+    function testFuzz_reversedPair_routesWithoutRegistration(address account, uint256 amount) public view {
+        assertTrue(adapter.isSupportedMarket(reversedMarket), "reversed pair is live");
+
+        Call[] memory calls = adapter.encodeSupplyCollateral(account, reversedMarket, amount);
+        assertEq(calls.length, 2, "supply must be a two-call sequence");
+        (address asset, uint256 decodedAmount, address onBehalfOf,) = this.decodeSupply(calls[0].data);
+        assertEq(asset, address(weth), "reversed pair supplies WETH");
+        assertEq(decodedAmount, amount, "amount mismatch");
+        assertEq(onBehalfOf, account, "onBehalfOf must be account");
+
+        calls = adapter.encodeBorrow(account, reversedMarket, amount);
+        assertEq(calls.length, 1, "borrow must be a single call");
+        (asset, decodedAmount,,,) = this.decodeBorrow(calls[0].data);
+        assertEq(asset, address(usdc), "reversed pair borrows USDC");
+        assertEq(decodedAmount, amount, "amount mismatch");
+
+        assertEq(Ltv.unwrap(adapter.maxLtvWad(reversedMarket)), WETH_LIQ_BPS * WAD / 1e4, "maxLtv reads WETH reserve");
+    }
+}

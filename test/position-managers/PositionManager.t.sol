@@ -556,8 +556,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     /// @dev Clearing on decrease will take tokens if the amount exceeds the clear limit
     function test_fuzz_decreaseLiquidity_clearExceedsThenTake(ModifyLiquidityParams memory params) public {
         // use fuzzer for tick range
-        params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
-        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
+        params = createFuzzyTwoSidedLiquidityParams(key, params, SQRT_PRICE_1_1);
 
         PositionConfig memory config =
             PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
@@ -601,8 +600,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         public
     {
         uint256 tokenId;
-        (tokenId, params) = addFuzzyLiquidity(lpm, ActionConstants.MSG_SENDER, key, params, SQRT_PRICE_1_1, ZERO_BYTES);
-        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
+        (tokenId, params) =
+            addFuzzyTwoSidedLiquidity(lpm, ActionConstants.MSG_SENDER, key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         decreaseLiquidityDelta = bound(decreaseLiquidityDelta, 1, uint256(params.liquidityDelta));
 
         PositionConfig memory config =
@@ -705,11 +704,9 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 decreaseLiquidityDelta
     ) public {
         uint256 tokenId;
-        (tokenId, params) = addFuzzyLiquidity(lpm, ActionConstants.MSG_SENDER, key, params, SQRT_PRICE_1_1, ZERO_BYTES);
-        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
-        vm.assume(0 < decreaseLiquidityDelta);
-        vm.assume(decreaseLiquidityDelta < uint256(type(int256).max));
-        vm.assume(int256(decreaseLiquidityDelta) <= params.liquidityDelta);
+        (tokenId, params) =
+            addFuzzyTwoSidedLiquidity(lpm, ActionConstants.MSG_SENDER, key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        decreaseLiquidityDelta = bound(decreaseLiquidityDelta, 1, uint256(params.liquidityDelta));
 
         PositionConfig memory config =
             PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
@@ -1056,21 +1053,19 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         return _countModifyPositionEvents(vm.getRecordedLogs());
     }
 
-    function _countModifyPositionEventsDuring_increase(
-        uint256 tokenId,
-        PositionConfig memory config,
-        uint256 liquidity
-    ) private returns (uint256) {
+    function _countModifyPositionEventsDuring_increase(uint256 tokenId, PositionConfig memory config, uint256 liquidity)
+        private
+        returns (uint256)
+    {
         vm.recordLogs();
         increaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
         return _countModifyPositionEvents(vm.getRecordedLogs());
     }
 
-    function _countModifyPositionEventsDuring_decrease(
-        uint256 tokenId,
-        PositionConfig memory config,
-        uint256 liquidity
-    ) private returns (uint256) {
+    function _countModifyPositionEventsDuring_decrease(uint256 tokenId, PositionConfig memory config, uint256 liquidity)
+        private
+        returns (uint256)
+    {
         vm.recordLogs();
         decreaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
         return _countModifyPositionEvents(vm.getRecordedLogs());
