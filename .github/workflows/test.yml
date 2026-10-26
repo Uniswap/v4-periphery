@@ -30,6 +30,10 @@ jobs:
         run: |
           forge --version
 
+      - name: Install universal-router dependencies
+        working-directory: lib/universal-router
+        run: yarn install --frozen-lockfile --ignore-scripts
+
       - name: Run tests
         run: forge test --isolate -vvv
         env:
