@@ -125,9 +125,9 @@ contract MarginRouter is
     }
 
     /// @inheritdoc IMarginRouter
-    /// @dev `debtToRepay == type(uint256).max` closes the position; any other value is a partial
-    ///      decrease. Both run the same plan (`_decreasePlan`) with different amounts and assert
-    ///      different things afterward, so each has its own linear path.
+    /// @dev `DecreaseParams.debtToRepay == type(uint256).max` closes the position; any other value
+    ///      is a partial decrease. Both run the same plan (`_decreasePlan`) with different amounts
+    ///      and assert different things afterward, so each has its own linear path.
     function decreasePosition(DecreaseParams calldata params)
         external
         isNotLocked
