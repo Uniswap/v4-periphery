@@ -153,7 +153,8 @@ contract MarginRouter is
                 IMarginAccount(account).withdrawCollateral(params.adapter, params.market, collateralBefore, msgSender());
             }
             // no unlock ran, so no action handler emitted the snapshot; emit the terminal one here
-            _emitPosition(params.adapter, params.market, account);
+            (bool read, PositionData memory position) = _readPosition(params.adapter, params.market, account);
+            if (read) _emitPosition(params.market, account, position);
             _emitClosed(params, account, 0, collateralBefore, collateralBefore);
             return;
         }
@@ -346,8 +347,9 @@ contract MarginRouter is
         // come from this one venue read, which can revert (oracle downtime, even on a debt-free Morpho
         // position). The supply has already completed, so emit both on success and skip both on
         // failure rather than roll it back.
-        (bool read, PositionData memory position) = _emitPosition(params.adapter, params.market, account);
+        (bool read, PositionData memory position) = _readPosition(params.adapter, params.market, account);
         if (read) {
+            _emitPosition(params.market, account, position);
             emit CollateralAdded(
                 msgSender(),
                 account,
@@ -633,7 +635,8 @@ contract MarginRouter is
         (ILendingAdapter adapter, Market memory market, uint256 amount) = params.decodeAdapterMarketAmount();
         if (amount == ActionConstants.OPEN_DELTA) amount = market.collateral.balanceOf(account);
         IMarginAccount(account).supplyCollateral(adapter, market, amount);
-        _emitPosition(adapter, market, account);
+        (bool read, PositionData memory position) = _readPosition(adapter, market, account);
+        if (read) _emitPosition(market, account, position);
     }
 
     /// @notice Borrows debt to `to`. `OPEN_DELTA` borrows exactly the debt the swap owes the pool.
@@ -642,7 +645,8 @@ contract MarginRouter is
             params.decodeAdapterMarketAmountReceiver();
         if (amount == ActionConstants.OPEN_DELTA) amount = _getFullDebt(market.debt);
         IMarginAccount(account).borrow(adapter, market, amount, to);
-        _emitPosition(adapter, market, account);
+        (bool read, PositionData memory position) = _readPosition(adapter, market, account);
+        if (read) _emitPosition(market, account, position);
     }
 
     /// @notice Withdraws collateral to `to`. `OPEN_DELTA` withdraws exactly the collateral the swap
@@ -652,7 +656,8 @@ contract MarginRouter is
             params.decodeAdapterMarketAmountReceiver();
         if (amount == ActionConstants.OPEN_DELTA) amount = _getFullDebt(market.collateral);
         IMarginAccount(account).withdrawCollateral(adapter, market, amount, to);
-        _emitPosition(adapter, market, account);
+        (bool read, PositionData memory position) = _readPosition(adapter, market, account);
+        if (read) _emitPosition(market, account, position);
     }
 
     /// @notice Repays debt to the lending protocol. `type(uint256).max` repays the full debt,
@@ -663,39 +668,47 @@ contract MarginRouter is
         // recorded for the partial decrease, which checks after the unlock that a repay actually
         // happened; execute plans never read it
         TransientPlanState.setLastRepaid(repaid);
-        _emitPosition(adapter, market, account);
+        (bool read, PositionData memory position) = _readPosition(adapter, market, account);
+        if (read) _emitPosition(market, account, position);
     }
 
-    /// @notice Emits a `PositionUpdated` snapshot for the account's market after a mutation, so an
-    ///         `execute` plan is as observable as the curated entry points. Called after every supply,
-    ///         withdraw, borrow, and repay dispatched through the unlock, by the zero-debt swap-free
-    ///         close, and by `addCollateral`, which reuses the returned read for its `CollateralAdded`.
+    /// @notice Reads the account's position snapshot for `market` via the adapter, swallowing a revert.
     /// @dev Best-effort: `describePosition` reverts for a market the venue no longer has, but withdraw
     ///      and repay are intentionally never market-gated (a position must always be exitable), so a
     ///      failing read is swallowed rather than reverting the action. `describePosition` is `view`, so
     ///      the call is a STATICCALL and a hostile adapter can neither reenter nor mutate state through
     ///      it.
-    /// @return read True if the snapshot was read and emitted; false if the venue read reverted.
-    /// @return position The snapshot that was emitted; zeroed when `read` is false.
-    function _emitPosition(ILendingAdapter adapter, Market memory market, address account)
+    /// @return read True if the venue read succeeded.
+    /// @return position The snapshot read; zeroed when `read` is false.
+    function _readPosition(ILendingAdapter adapter, Market memory market, address account)
         private
+        view
         returns (bool read, PositionData memory position)
     {
         try adapter.describePosition(account, market) returns (PositionData memory current) {
-            emit PositionUpdated(
-                msgSender(),
-                account,
-                market.collateral,
-                market.debt,
-                market.data,
-                current.collateralAmount,
-                current.debtAmount,
-                current.currentLtv,
-                current.maxLtv,
-                current.healthFactorWad
-            );
             return (true, current);
         } catch {}
+    }
+
+    /// @notice Emits a `PositionUpdated` snapshot for the account's market, so an `execute` plan is as
+    ///         observable as the curated entry points. Called after every supply, withdraw, borrow, and
+    ///         repay dispatched through the unlock, by the zero-debt swap-free close, and by
+    ///         `addCollateral`, which reuses the `_readPosition` read for its `CollateralAdded`.
+    /// @dev Pure event-emission helper (no external call), mirroring `_emitClosed`: callers resolve the
+    ///      snapshot via `_readPosition` first and skip the emit when that read failed.
+    function _emitPosition(Market memory market, address account, PositionData memory position) private {
+        emit PositionUpdated(
+            msgSender(),
+            account,
+            market.collateral,
+            market.debt,
+            market.data,
+            position.collateralAmount,
+            position.debtAmount,
+            position.currentLtv,
+            position.maxLtv,
+            position.healthFactorWad
+        );
     }
 
     /// @notice Emits the `PositionDecreased` for a full close, whose resulting state is a known empty
