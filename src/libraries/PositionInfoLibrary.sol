@@ -16,11 +16,11 @@ import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
  * A flag to know if the tokenId is subscribed to an address
  * uint8 hasSubscriber;
  *
- * The tickUpper of the position
- * int24 tickUpper;
- *
  * The tickLower of the position
  * int24 tickLower;
+ *
+ * The tickUpper of the position
+ * int24 tickUpper;
  *
  * The truncated poolId. Truncates a bytes32 value so the most signifcant (highest) 200 bits are used.
  * bytes25 poolId;
