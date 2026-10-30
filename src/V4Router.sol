@@ -74,7 +74,11 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 return;
             } else if (action == Actions.TAKE_PORTION) {
                 (Currency currency, address recipient, uint256 bips) = params.decodeCurrencyAddressAndUint256();
-                _take(currency, _mapRecipient(recipient), _getFullCredit(currency).calculatePortion(bips));
+                uint256 fullCredit = _getFullCredit(currency);
+                uint256 amountToTake = (bips == BipsLibrary.BPS_DENOMINATOR)
+                    ? fullCredit
+                    : fullCredit.calculatePortion(bips);
+                _take(currency, _mapRecipient(recipient), amountToTake);
                 return;
             }
         }
