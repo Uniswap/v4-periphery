@@ -167,6 +167,10 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             params.routeFunding,
             params.route
         );
+        // the pull can run caller code, so authorize again
+        if (_authAndResolveRecipient(params.tokenId, params.recipient) != recipient) {
+            revert NotAuthorizedForToken(params.tokenId);
+        }
 
         // burn in POSM's own unlock and resolve the net budgets before the main unlock opens
         _burnAndWithdraw(key, params.tokenId, params.hookData);
@@ -215,6 +219,10 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
         // accrued fees are collected inside the unlock callback
         _pull(cp.key, params.amount0In, params.amount1In, params.routeFunding, params.route);
+        // the pull can run caller code, so authorize again
+        if (_authAndResolveRecipient(params.tokenId, params.recipient) != recipient) {
+            revert NotAuthorizedForToken(params.tokenId);
+        }
         (, liquidityAdded, amount0, amount1) = _run(cp);
         emit Increased(recipient, params.tokenId, msg.sender, liquidityAdded, amount0, amount1);
 
