@@ -583,4 +583,42 @@ contract QuoterTest is Test, Deployers {
         params.path = path;
         params.exactAmount = uint128(amountOut);
     }
+
+    function test_quoteExactInputSingle_reverts_unexpectedCallSuccess() public {
+        vm.mockCall(address(manager), abi.encodeWithSelector(IPoolManager.unlock.selector), abi.encode(""));
+        vm.expectRevert(BaseV4Quoter.UnexpectedCallSuccess.selector);
+        quoter.quoteExactInputSingle(
+            IV4Quoter.QuoteExactSingleParams({poolKey: key01, zeroForOne: true, exactAmount: 100, hookData: ZERO_BYTES})
+        );
+    }
+
+    function test_quoteExactInput_reverts_unexpectedCallSuccess() public {
+        MockERC20[] memory path = new MockERC20[](2);
+        path[0] = token0;
+        path[1] = token1;
+        IV4Quoter.QuoteExactParams memory params = getExactInputParams(path, 100);
+
+        vm.mockCall(address(manager), abi.encodeWithSelector(IPoolManager.unlock.selector), abi.encode(""));
+        vm.expectRevert(BaseV4Quoter.UnexpectedCallSuccess.selector);
+        quoter.quoteExactInput(params);
+    }
+
+    function test_quoteExactOutputSingle_reverts_unexpectedCallSuccess() public {
+        vm.mockCall(address(manager), abi.encodeWithSelector(IPoolManager.unlock.selector), abi.encode(""));
+        vm.expectRevert(BaseV4Quoter.UnexpectedCallSuccess.selector);
+        quoter.quoteExactOutputSingle(
+            IV4Quoter.QuoteExactSingleParams({poolKey: key01, zeroForOne: true, exactAmount: 100, hookData: ZERO_BYTES})
+        );
+    }
+
+    function test_quoteExactOutput_reverts_unexpectedCallSuccess() public {
+        MockERC20[] memory path = new MockERC20[](2);
+        path[0] = token0;
+        path[1] = token1;
+        IV4Quoter.QuoteExactParams memory params = getExactOutputParams(path, 100);
+
+        vm.mockCall(address(manager), abi.encodeWithSelector(IPoolManager.unlock.selector), abi.encode(""));
+        vm.expectRevert(BaseV4Quoter.UnexpectedCallSuccess.selector);
+        quoter.quoteExactOutput(params);
+    }
 }

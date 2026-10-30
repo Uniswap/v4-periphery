@@ -35,8 +35,9 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
         returns (uint256 amountOut, uint256 gasEstimate)
     {
         uint256 gasBefore = gasleft();
-        try poolManager.unlock(abi.encodeCall(this._quoteExactInputSingle, (params))) {}
-        catch (bytes memory reason) {
+        try poolManager.unlock(abi.encodeCall(this._quoteExactInputSingle, (params))) {
+            revert UnexpectedCallSuccess();
+        } catch (bytes memory reason) {
             gasEstimate = gasBefore - gasleft();
             // Extract the quote from QuoteSwap error, or throw if the quote failed
             amountOut = reason.parseQuoteAmount();
@@ -50,8 +51,9 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
         returns (uint256 amountOut, uint256 gasEstimate)
     {
         uint256 gasBefore = gasleft();
-        try poolManager.unlock(abi.encodeCall(this._quoteExactInput, (params))) {}
-        catch (bytes memory reason) {
+        try poolManager.unlock(abi.encodeCall(this._quoteExactInput, (params))) {
+            revert UnexpectedCallSuccess();
+        } catch (bytes memory reason) {
             gasEstimate = gasBefore - gasleft();
             // Extract the quote from QuoteSwap error, or throw if the quote failed
             amountOut = reason.parseQuoteAmount();
@@ -65,8 +67,9 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
         returns (uint256 amountIn, uint256 gasEstimate)
     {
         uint256 gasBefore = gasleft();
-        try poolManager.unlock(abi.encodeCall(this._quoteExactOutputSingle, (params))) {}
-        catch (bytes memory reason) {
+        try poolManager.unlock(abi.encodeCall(this._quoteExactOutputSingle, (params))) {
+            revert UnexpectedCallSuccess();
+        } catch (bytes memory reason) {
             gasEstimate = gasBefore - gasleft();
             // Extract the quote from QuoteSwap error, or throw if the quote failed
             amountIn = reason.parseQuoteAmount();
@@ -80,8 +83,9 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
         returns (uint256 amountIn, uint256 gasEstimate)
     {
         uint256 gasBefore = gasleft();
-        try poolManager.unlock(abi.encodeCall(this._quoteExactOutput, (params))) {}
-        catch (bytes memory reason) {
+        try poolManager.unlock(abi.encodeCall(this._quoteExactOutput, (params))) {
+            revert UnexpectedCallSuccess();
+        } catch (bytes memory reason) {
             gasEstimate = gasBefore - gasleft();
             // Extract the quote from QuoteSwap error, or throw if the quote failed
             amountIn = reason.parseQuoteAmount();
