@@ -73,6 +73,33 @@ library SafeCurrencyMetadata {
         return AddressStringUtil.toAsciiString(currencyAddress, 6);
     }
 
+    /// @notice safely decodes a standard dynamic string from return data, returning empty string on malformed data
+    /// @param data the returned bytes
+    /// @return the decoded string or empty string on malformed data
+    function parseString(bytes memory data) private pure returns (string memory) {
+        if (data.length < 64) {
+            return "";
+        }
+        uint256 offset;
+        uint256 len;
+        assembly ("memory-safe") {
+            offset := mload(add(data, 0x20))
+            len := mload(add(data, 0x40))
+        }
+        if (offset == 0x20 && len <= data.length - 64) {
+            bytes memory strBytes = new bytes(len);
+            assembly ("memory-safe") {
+                let src := add(data, 0x60)
+                let dst := add(strBytes, 0x20)
+                for { let i := 0 } lt(i, len) { i := add(i, 0x20) } {
+                    mstore(add(dst, i), mload(add(src, i)))
+                }
+            }
+            return string(strBytes);
+        }
+        return "";
+    }
+
     /// @notice calls an external view contract method that returns a symbol, and parses the output into a string
     /// @param currencyAddress the address of the currency
     /// @param selector the selector of the symbol method
@@ -87,8 +114,8 @@ library SafeCurrencyMetadata {
         if (data.length == 32) {
             bytes32 decoded = abi.decode(data, (bytes32));
             return bytes32ToString(decoded);
-        } else if (data.length > 64) {
-            return abi.decode(data, (string));
+        } else if (data.length >= 64) {
+            return parseString(data);
         }
         return "";
     }
