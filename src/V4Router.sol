@@ -7,6 +7,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 import {PathKey} from "./libraries/PathKey.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
@@ -92,7 +93,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         );
         if (amountOut < params.amountOutMinimum) revert V4TooLittleReceived(params.amountOutMinimum, amountOut);
         if (params.minHopPriceX36 != 0) {
-            uint256 priceX36 = uint256(amountOut) * PRECISION / amountIn;
+            uint256 priceX36 = amountIn > 0 ? FullMath.mulDiv(uint256(amountOut), PRECISION, amountIn) : 0;
             if (priceX36 < params.minHopPriceX36) {
                 revert V4TooLittleReceivedPerHopSingle(params.minHopPriceX36, priceX36);
             }
@@ -120,7 +121,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                     _swapOutput(_swap(poolKey, zeroForOne, -int256(uint256(amountIn)), pathKey.hookData), zeroForOne);
 
                 if (perHopPriceLength != 0) {
-                    uint256 priceX36 = amountOut * PRECISION / amountIn;
+                    uint256 priceX36 = amountIn > 0 ? FullMath.mulDiv(uint256(amountOut), PRECISION, amountIn) : 0;
                     uint256 minPrice = params.minHopPriceX36[i];
                     if (priceX36 < minPrice) revert V4TooLittleReceivedPerHop(i, minPrice, priceX36);
                 }
@@ -148,7 +149,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         uint128 amountIn = _swapInput(delta, params.zeroForOne);
         if (amountIn > params.amountInMaximum) revert V4TooMuchRequested(params.amountInMaximum, amountIn);
         if (params.minHopPriceX36 != 0) {
-            uint256 priceX36 = uint256(amountOutActual) * PRECISION / amountIn;
+            uint256 priceX36 = amountIn > 0 ? FullMath.mulDiv(uint256(amountOutActual), PRECISION, amountIn) : 0;
             if (priceX36 < params.minHopPriceX36) {
                 revert V4TooMuchRequestedPerHopSingle(params.minHopPriceX36, priceX36);
             }
@@ -186,7 +187,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 amountIn = _swapInput(delta, !oneForZero);
 
                 if (perHopPriceLength != 0) {
-                    uint256 priceX36 = uint256(amountOutActual) * PRECISION / amountIn;
+                    uint256 priceX36 = amountIn > 0 ? FullMath.mulDiv(uint256(amountOutActual), PRECISION, amountIn) : 0;
                     uint256 minPrice = params.minHopPriceX36[i - 1];
                     if (priceX36 < minPrice) revert V4TooMuchRequestedPerHop(i - 1, minPrice, priceX36);
                 }

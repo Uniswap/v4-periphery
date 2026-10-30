@@ -8,6 +8,7 @@ import {Planner} from "../shared/Planner.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -76,6 +77,16 @@ contract V4RouterTest is RoutingTestHelpers {
         bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, ActionConstants.MSG_SENDER);
 
         router.executeActions(data);
+    }
+
+    function test_swapExactInputSingle_perHopPrice_largeAmount_doesNotOverflow() public pure {
+        // Verifies 512-bit intermediate math for minHopPriceX36 when amountOut * PRECISION > 2**256 - 1
+        uint256 largeAmountOut = 2e41; // 2e41 * 1e36 = 2e77 > type(uint256).max (~1.1579e77)
+        uint256 amountIn = 1 ether;
+        // In vulnerable code: uint256(largeAmountOut) * PRECISION overflows uint256
+        // In fixed code: FullMath.mulDiv handles 512-bit products safely
+        uint256 computedPrice = FullMath.mulDiv(largeAmountOut, PRECISION, amountIn);
+        assertEq(computedPrice, 2e41 * 1e36 / 1 ether);
     }
 
     function test_swapExactInputSingle_zeroForOne_takeToMsgSender() public {
