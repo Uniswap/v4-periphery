@@ -30,6 +30,7 @@ import {MockERC20Permit2Native} from "./mocks/MockERC20Permit2Native.sol";
 import {MockERC20ApproveRace} from "./mocks/MockERC20ApproveRace.sol";
 import {MockERC20CappedAllowance} from "./mocks/MockERC20CappedAllowance.sol";
 import {MockDynamicFeeHook} from "./mocks/MockDynamicFeeHook.sol";
+import {MockMsgSenderHook} from "./mocks/MockMsgSenderHook.sol";
 import {MockPosmDebtHook} from "./mocks/MockPosmDebtHook.sol";
 import {MockDebtPlantingRoute} from "./mocks/MockDebtPlantingRoute.sol";
 import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
@@ -801,6 +802,24 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(amount1Stale, amount1Fresh, "amount1");
         assertEq(currency0.balanceOf(address(this)), balance0Fresh, "token0 refund");
         assertEq(currency1.balanceOf(address(this)), balance1Fresh, "token1 refund");
+    }
+
+    /// @dev Hooks reading msgSender() see the caller on the reconcile swap.
+    function test_add_msgSenderHook_seesCaller() public {
+        address hookAddress = address(uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG));
+        vm.etch(hookAddress, address(new MockMsgSenderHook()).code);
+        (PoolKey memory hookKey,) =
+            initPoolAndAddLiquidity(currency0, currency1, IHooks(hookAddress), 3000, SQRT_PRICE_1_1);
+        seedMoreLiquidity(hookKey, 1_000e18, 1_000e18);
+
+        ISwapAndAdd.AddParams memory p = _addParams(10e18, 0);
+        p.poolKey = hookKey;
+
+        vm.expectEmit(hookAddress);
+        emit MockMsgSenderHook.BeforeSwapMsgSender(address(this));
+        vm.expectEmit(hookAddress);
+        emit MockMsgSenderHook.AfterSwapMsgSender(address(this));
+        zap.add(p);
     }
 
     /// @dev Returns-delta hooks break settlement conservation, so the zap rejects them with a typed error.

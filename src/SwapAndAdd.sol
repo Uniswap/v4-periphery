@@ -30,6 +30,7 @@ import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {ReentrancyLock} from "./base/ReentrancyLock.sol";
 import {IPositionManager} from "./interfaces/IPositionManager.sol";
 import {ISwapAndAdd} from "./interfaces/ISwapAndAdd.sol";
+import {IMsgSender} from "./interfaces/IMsgSender.sol";
 import {IUniversalRouter} from "./interfaces/external/IUniversalRouter.sol";
 
 /// @title SwapAndAdd
@@ -248,6 +249,11 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     function sweep(Currency token, address recipient) external payable isNotLocked {
         _validateRecipient(recipient);
         _sweep(token, recipient);
+    }
+
+    /// @inheritdoc IMsgSender
+    function msgSender() external view returns (address) {
+        return _getLocker();
     }
 
     /// @dev Shared CoreParams for grow-in-place operations. Budgets are set in the callback after

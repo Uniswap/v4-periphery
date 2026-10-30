@@ -6,6 +6,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 import {IMulticall_v4} from "./IMulticall_v4.sol";
+import {IMsgSender} from "./IMsgSender.sol";
 
 /// @title ISwapAndAdd
 /// @notice Turns a token budget in any ratio into a POSM position in one transaction.
@@ -31,7 +32,7 @@ import {IMulticall_v4} from "./IMulticall_v4.sol";
 ///      - Multicall batches carry at most one native-ETH operation because all subcalls share
 ///        `msg.value`; adding further operations reverts. Zero-value batches compose freely. Batch
 ///        native operations using WETH or separate transactions.
-interface ISwapAndAdd is IMulticall_v4 {
+interface ISwapAndAdd is IMulticall_v4, IMsgSender {
     /// @notice Emitted when a new position is minted via `add`.
     event Added(
         address indexed recipient,
