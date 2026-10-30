@@ -21,8 +21,9 @@ import {IMsgSender} from "./IMsgSender.sol";
 ///        zap forwards its full native balance to the router on native pools or when ETH is sent.
 ///        Where native has an ERC20 alias (e.g. Arc's USDC), do not mix the two in one operation.
 ///      - Non-pool route outputs must appear in `routeFunding` to be swept. A zero amount is enough.
-///      - `minLiquidity` / `minLiquidityAdded` is the liquidity floor, applied post-trim.
-///        The sqrt price band bounds the price we size at (checked after the route).
+///      - `minLiquidity` / `minLiquidityAdded` is the liquidity floor, applied post-trim, and
+///        does not cover refunds. The sqrt price band bounds the price we size at (checked
+///        after the route).
 ///      - rebalance / increase / compound: the caller must be the owner or an approved operator,
 ///        and this contract needs ERC-721 approval on the position in POSM. Operator calls send
 ///        all output to the owner, though operators remain trusted since they set the `route` and
