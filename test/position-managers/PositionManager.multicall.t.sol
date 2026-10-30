@@ -500,4 +500,27 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), charlie);
     }
+
+    function test_initializePool_revertsOnCurrenciesOutOfOrderOrEqual() public {
+        PoolKey memory invalidKey =
+            PoolKey({currency0: currency1, currency1: currency0, fee: 0, tickSpacing: 10, hooks: IHooks(address(0))});
+        vm.expectRevert();
+        IPoolInitializer_v4(address(lpm)).initializePool(invalidKey, SQRT_PRICE_1_1);
+    }
+
+    function test_initializePool_revertsOnTickSpacingTooLarge() public {
+        PoolKey memory invalidKey = PoolKey({
+            currency0: currency0, currency1: currency1, fee: 0, tickSpacing: 32768, hooks: IHooks(address(0))
+        });
+        vm.expectRevert();
+        IPoolInitializer_v4(address(lpm)).initializePool(invalidKey, SQRT_PRICE_1_1);
+    }
+
+    function test_initializePool_twice_standalone_returnsMaxInt24WithoutRevert() public {
+        key = PoolKey({currency0: currency0, currency1: currency1, fee: 0, tickSpacing: 10, hooks: IHooks(address(0))});
+        manager.initialize(key, SQRT_PRICE_1_1);
+
+        int24 tick = IPoolInitializer_v4(address(lpm)).initializePool(key, SQRT_PRICE_1_1);
+        assertEq(tick, type(int24).max);
+    }
 }
