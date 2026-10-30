@@ -769,6 +769,40 @@ contract SwapAndAddTest is PosmTestSetup {
         zap.add(p);
     }
 
+    /// @dev Regression: a stale stored fee on a dynamic-fee pool must not affect sizing.
+    function test_add_dynamicFee_staleStoredFee_doesNotChangeSizing() public {
+        bytes memory hookData = abi.encode("swap-and-add dynamic hook authorization");
+        address hookAddress = address(uint160(Hooks.BEFORE_SWAP_FLAG));
+        MockDynamicFeeHook implementation = new MockDynamicFeeHook();
+        vm.etch(hookAddress, address(implementation).code);
+        MockDynamicFeeHook(hookAddress).configure(hookData, 500); // the swap pays 0.05%
+
+        (PoolKey memory dynamicKey,) = initPoolAndAddLiquidity(
+            currency0, currency1, IHooks(hookAddress), LPFeeLibrary.DYNAMIC_FEE_FLAG, SQRT_PRICE_1_1
+        );
+        seedMoreLiquidity(dynamicKey, 1_000e18, 1_000e18);
+
+        ISwapAndAdd.AddParams memory p = _addParams(10e18, 0);
+        p.poolKey = dynamicKey;
+        p.hookData = hookData;
+
+        uint256 snapshot = vm.snapshotState();
+        (, uint128 liquidityFresh, uint256 amount0Fresh, uint256 amount1Fresh) = zap.add(p);
+        uint256 balance0Fresh = currency0.balanceOf(address(this));
+        uint256 balance1Fresh = currency1.balanceOf(address(this));
+        vm.revertToState(snapshot);
+
+        vm.prank(hookAddress);
+        manager.updateDynamicLPFee(dynamicKey, 20_000); // a stale 2% left by an earlier swap
+        (, uint128 liquidityStale, uint256 amount0Stale, uint256 amount1Stale) = zap.add(p);
+
+        assertEq(liquidityStale, liquidityFresh, "liquidity");
+        assertEq(amount0Stale, amount0Fresh, "amount0");
+        assertEq(amount1Stale, amount1Fresh, "amount1");
+        assertEq(currency0.balanceOf(address(this)), balance0Fresh, "token0 refund");
+        assertEq(currency1.balanceOf(address(this)), balance1Fresh, "token1 refund");
+    }
+
     /// @dev Returns-delta hooks break settlement conservation, so the zap rejects them with a typed error.
     function test_add_returnsDeltaHook_revertsUnsupported() public {
         uint160[4] memory flagged = [

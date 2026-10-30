@@ -15,6 +15,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
@@ -382,6 +383,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         if (sqrtPriceX96 < cp.sqrtPriceMinX96 || sqrtPriceX96 > cp.sqrtPriceMaxX96) {
             revert PriceOutOfBand(sqrtPriceX96, cp.sqrtPriceMinX96, cp.sqrtPriceMaxX96);
         }
+        // dynamic fees are decided at swap time, the stored one may not apply
+        if (LPFeeLibrary.isDynamicFee(cp.key.fee)) lpFee = 0;
         liquidity = SwapAndAddMath.getLiquidityFeeAware(
             sqrtPriceX96, sqrtLower, sqrtUpper, cp.budget0, cp.budget1, protocolFee, lpFee
         );
