@@ -4,7 +4,7 @@ pragma solidity 0.8.26;
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
@@ -425,11 +425,6 @@ contract PositionManager is
 
         address owner = ownerOf(tokenId);
 
-        // Clear the position info.
-        positionInfo[tokenId] = PositionInfoLibrary.EMPTY_POSITION_INFO;
-        // Burn the token.
-        _burn(tokenId);
-
         // Can only call modify if there is non zero liquidity.
         BalanceDelta feesAccrued;
         if (liquidity > 0) {
@@ -447,10 +442,17 @@ contract PositionManager is
             );
             // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
             (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
+        } else if (amount0Min > 0 || amount1Min > 0) {
+            BalanceDeltaLibrary.ZERO_DELTA.validateMinOut(amount0Min, amount1Min);
         }
 
         // deletes then notifies the subscriber
         if (info.hasSubscriber()) _removeSubscriberAndNotifyBurn(tokenId, owner, info, liquidity, feesAccrued);
+
+        // Clear the position info.
+        positionInfo[tokenId] = PositionInfoLibrary.EMPTY_POSITION_INFO;
+        // Burn the token.
+        _burn(tokenId);
     }
 
     function _settlePair(Currency currency0, Currency currency1) internal {

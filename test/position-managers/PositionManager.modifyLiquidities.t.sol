@@ -27,6 +27,7 @@ import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {IMulticall_v4} from "../../src/interfaces/IMulticall_v4.sol";
 import {ReentrancyLock} from "../../src/base/ReentrancyLock.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
+import {SlippageCheck} from "../../src/libraries/SlippageCheck.sol";
 import {PositionConfig} from "../shared/PositionConfig.sol";
 import {BipsLibrary} from "../../src/libraries/BipsLibrary.sol";
 
@@ -978,5 +979,36 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
 
             assertEq(lpm.getPositionLiquidity(tokenId), 0);
         }
+    }
+
+    function test_burn_emptyPosition_revertsWhenMinOutputSpecified() public {
+        uint256 tokenId = lpm.nextTokenId();
+        bytes memory actions = getMintEncoded(config, 0, address(this), ZERO_BYTES);
+        lpm.modifyLiquidities(actions, _deadline);
+
+        assertEq(lpm.getPositionLiquidity(tokenId), 0);
+
+        Plan memory planner = Planner.init();
+        planner.add(Actions.BURN_POSITION, abi.encode(tokenId, 1 ether, 0, ZERO_BYTES));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(SlippageCheck.MinimumAmountInsufficient.selector, 1 ether, 0)
+        );
+        lpm.modifyLiquidities(planner.encode(), _deadline);
+    }
+
+    function test_burn_emptyPosition_succeedsWhenZeroMinOutputSpecified() public {
+        uint256 tokenId = lpm.nextTokenId();
+        bytes memory actions = getMintEncoded(config, 0, address(this), ZERO_BYTES);
+        lpm.modifyLiquidities(actions, _deadline);
+
+        assertEq(lpm.getPositionLiquidity(tokenId), 0);
+
+        Plan memory planner = Planner.init();
+        planner.add(Actions.BURN_POSITION, abi.encode(tokenId, 0, 0, ZERO_BYTES));
+        lpm.modifyLiquidities(planner.encode(), _deadline);
+
+        vm.expectRevert();
+        IERC721(address(lpm)).ownerOf(tokenId);
     }
 }
