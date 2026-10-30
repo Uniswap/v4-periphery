@@ -119,6 +119,9 @@ interface ISwapAndAdd is IMulticall_v4, IMsgSender {
     /// @notice Thrown when POSM is in debt to the PoolManager.
     error PositionManagerInDebt(Currency currency);
 
+    /// @notice Thrown when PoolManager deltas are open before the route runs.
+    error UnsettledDeltas();
+
     /// @notice A non-pool token amount pulled to fund the route.
     /// @param token The token address, or address(0) for native ETH.
     /// @param amount The amount to pull via Permit2, or the expected msg.value for native ETH.

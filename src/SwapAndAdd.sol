@@ -534,6 +534,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // only ops with a native budget forward: an ERC20 alias of native (double entry) shares the balance
         uint256 value = cp.forwardNative ? address(this).balance : 0;
 
+        // open deltas here would be settled by the route from this contract's funds
+        if (poolManager.getNonzeroDeltaCount() != 0) revert UnsettledDeltas();
         universalRouter.execute{value: value}(commands, inputs);
 
         // router balances are permissionlessly sweepable, reclaim before anyone else can
