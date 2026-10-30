@@ -15,6 +15,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
@@ -29,6 +30,7 @@ import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {ReentrancyLock} from "./base/ReentrancyLock.sol";
 import {IPositionManager} from "./interfaces/IPositionManager.sol";
 import {ISwapAndAdd} from "./interfaces/ISwapAndAdd.sol";
+import {IMsgSender} from "./interfaces/IMsgSender.sol";
 import {IUniversalRouter} from "./interfaces/external/IUniversalRouter.sol";
 
 /// @title SwapAndAdd
@@ -165,6 +167,10 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             params.routeFunding,
             params.route
         );
+        // the pull can run caller code, so authorize again
+        if (_authAndResolveRecipient(params.tokenId, params.recipient) != recipient) {
+            revert NotAuthorizedForToken(params.tokenId);
+        }
 
         // burn in POSM's own unlock and resolve the net budgets before the main unlock opens
         _burnAndWithdraw(key, params.tokenId, params.hookData);
@@ -213,6 +219,10 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
         // accrued fees are collected inside the unlock callback
         _pull(cp.key, params.amount0In, params.amount1In, params.routeFunding, params.route);
+        // the pull can run caller code, so authorize again
+        if (_authAndResolveRecipient(params.tokenId, params.recipient) != recipient) {
+            revert NotAuthorizedForToken(params.tokenId);
+        }
         (, liquidityAdded, amount0, amount1) = _run(cp);
         emit Increased(recipient, params.tokenId, msg.sender, liquidityAdded, amount0, amount1);
 
@@ -247,6 +257,11 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     function sweep(Currency token, address recipient) external payable isNotLocked {
         _validateRecipient(recipient);
         _sweep(token, recipient);
+    }
+
+    /// @inheritdoc IMsgSender
+    function msgSender() external view returns (address) {
+        return _getLocker();
     }
 
     /// @dev Shared CoreParams for grow-in-place operations. Budgets are set in the callback after
@@ -382,6 +397,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         if (sqrtPriceX96 < cp.sqrtPriceMinX96 || sqrtPriceX96 > cp.sqrtPriceMaxX96) {
             revert PriceOutOfBand(sqrtPriceX96, cp.sqrtPriceMinX96, cp.sqrtPriceMaxX96);
         }
+        // dynamic fees are decided at swap time, the stored one may not apply
+        if (LPFeeLibrary.isDynamicFee(cp.key.fee)) lpFee = 0;
         liquidity = SwapAndAddMath.getLiquidityFeeAware(
             sqrtPriceX96, sqrtLower, sqrtUpper, cp.budget0, cp.budget1, protocolFee, lpFee
         );
@@ -517,6 +534,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // only ops with a native budget forward: an ERC20 alias of native (double entry) shares the balance
         uint256 value = cp.forwardNative ? address(this).balance : 0;
 
+        // open deltas here would be settled by the route from this contract's funds
+        if (poolManager.getNonzeroDeltaCount() != 0) revert UnsettledDeltas();
         universalRouter.execute{value: value}(commands, inputs);
 
         // router balances are permissionlessly sweepable, reclaim before anyone else can

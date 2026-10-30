@@ -12,6 +12,7 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 import {PosmTestSetup} from "./shared/PosmTestSetup.sol";
 import {MockSwapRoute} from "./mocks/MockSwapRoute.sol";
+import {MockPositionHandoffToken} from "./mocks/MockPositionHandoffToken.sol";
 import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
 
@@ -347,5 +348,70 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         assertGt(liq, 0);
         assertEq(IERC721(address(lpm)).ownerOf(newTokenId), address(this));
         assertEq(tokenX.balanceOf(address(zap)), 0, "no X at rest");
+    }
+
+    // a funding token hands the position to a buyer who approved the zap, mid-pull
+
+    function _handoffFunding(uint256 tokenId) internal returns (ISwapAndAdd.TokenAmount[] memory) {
+        address buyer = makeAddr("buyer");
+        vm.prank(buyer);
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+
+        MockPositionHandoffToken handoff = new MockPositionHandoffToken(IERC721(address(lpm)));
+        handoff.mint(address(this), 1e18);
+        handoff.approve(address(permit2), type(uint256).max);
+        permit2.approve(address(handoff), address(zap), type(uint160).max, type(uint48).max);
+        IERC721(address(lpm)).approve(address(handoff), tokenId);
+        handoff.setHandoff(tokenId, buyer);
+        _configXRoute(0);
+        return _funding(address(handoff), 1e18);
+    }
+
+    /// @dev Regression: a position handed off during the pull must not be burned for the caller.
+    function test_rebalance_funding_positionHandedOffDuringPull_reverts() public {
+        uint256 tokenId = _mintViaZap();
+        ISwapAndAdd.TokenAmount[] memory funding = _handoffFunding(tokenId);
+
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.NotAuthorizedForToken.selector, tokenId));
+        zap.rebalance(
+            ISwapAndAdd.RebalanceParams({
+                tokenId: tokenId,
+                additional0: 0,
+                additional1: 0,
+                newTickLower: -1200,
+                newTickUpper: 1200,
+                route: ROUTE_PAYLOAD,
+                routeFunding: funding,
+                minLiquidity: 1,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
+                recipient: address(this),
+                hookData: "",
+                deadline: block.timestamp + 1
+            })
+        );
+    }
+
+    /// @dev Regression: a position handed off during the pull must not have its fees collected for the caller.
+    function test_increase_funding_positionHandedOffDuringPull_reverts() public {
+        uint256 tokenId = _mintViaZap();
+        ISwapAndAdd.TokenAmount[] memory funding = _handoffFunding(tokenId);
+
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.NotAuthorizedForToken.selector, tokenId));
+        zap.increase(
+            ISwapAndAdd.IncreaseParams({
+                tokenId: tokenId,
+                amount0In: 1e18,
+                amount1In: 0,
+                route: ROUTE_PAYLOAD,
+                routeFunding: funding,
+                minLiquidityAdded: 1,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
+                recipient: address(this),
+                hookData: "",
+                deadline: block.timestamp + 1
+            })
+        );
     }
 }

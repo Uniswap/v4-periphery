@@ -19,6 +19,7 @@ import {ActionConstants} from "../src/libraries/ActionConstants.sol";
 import {IV4Router} from "../src/interfaces/IV4Router.sol";
 
 import {PosmTestSetup} from "../test/shared/PosmTestSetup.sol";
+import {MockRouterDebtSubscriber} from "../test/mocks/MockRouterDebtSubscriber.sol";
 import {SwapAndAdd} from "../src/SwapAndAdd.sol";
 import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
@@ -88,6 +89,38 @@ contract SwapAndAddRouteTest is PosmTestSetup {
         pure
         returns (bytes memory)
     {
+        bytes memory commands = abi.encodePacked(bytes1(uint8(Commands.V4_SWAP)));
+        bytes[] memory inputs = new bytes[](1);
+        inputs[0] = _v4SwapInput(poolKey, zeroForOne, amtIn, inCcy, outCcy);
+        return abi.encode(commands, inputs);
+    }
+
+    /// @dev Builds a UR route that initializes `newKey` (allow-revert, a no-op if it already exists),
+    ///      then runs a single exact-in V4_SWAP on `poolKey`.
+    function _initAndSwapRoute(
+        PoolKey memory newKey,
+        uint160 sqrtPriceX96,
+        PoolKey memory poolKey,
+        bool zeroForOne,
+        uint128 amtIn,
+        Currency inCcy,
+        Currency outCcy
+    ) internal pure returns (bytes memory) {
+        bytes memory commands = abi.encodePacked(
+            bytes1(uint8(Commands.V4_INITIALIZE_POOL)) | Commands.FLAG_ALLOW_REVERT, bytes1(uint8(Commands.V4_SWAP))
+        );
+        bytes[] memory inputs = new bytes[](2);
+        inputs[0] = abi.encode(newKey, sqrtPriceX96);
+        inputs[1] = _v4SwapInput(poolKey, zeroForOne, amtIn, inCcy, outCcy);
+        return abi.encode(commands, inputs);
+    }
+
+    /// @dev Encodes a V4_SWAP plan: exact-in swap, settle from the caller, take to the caller.
+    function _v4SwapInput(PoolKey memory poolKey, bool zeroForOne, uint128 amtIn, Currency inCcy, Currency outCcy)
+        internal
+        pure
+        returns (bytes memory)
+    {
         IV4Router.ExactInputSingleParams memory sp = IV4Router.ExactInputSingleParams({
             poolKey: poolKey,
             zeroForOne: zeroForOne,
@@ -103,11 +136,7 @@ contract SwapAndAddRouteTest is PosmTestSetup {
         plan = plan.add(Actions.SETTLE, abi.encode(inCcy, ActionConstants.OPEN_DELTA, true));
         // MSG_SENDER inside UR resolves to the zap (UR's caller), so the output lands back in the zap.
         plan = plan.add(Actions.TAKE, abi.encode(outCcy, ActionConstants.MSG_SENDER, ActionConstants.OPEN_DELTA));
-
-        bytes memory commands = abi.encodePacked(bytes1(uint8(Commands.V4_SWAP)));
-        bytes[] memory inputs = new bytes[](1);
-        inputs[0] = plan.encode();
-        return abi.encode(commands, inputs);
+        return plan.encode();
     }
 
     /// @notice Single-token1 budget: the UR route swaps token1 -> token0 on `routeKey` inside the unlock.
@@ -198,6 +227,85 @@ contract SwapAndAddRouteTest is PosmTestSetup {
         assertEq(address(router).balance, 0, "native stranded in UR");
         assertEq(address(zap).balance, 0, "native stranded in zap");
         assertEq(currency1.balanceOf(address(zap)), 0, "token1 stranded in zap");
+    }
+
+    /// @dev An uninitialized pool next to `key` and `routeKey` (distinct tick spacing).
+    function _freshKey() internal view returns (PoolKey memory) {
+        return
+            PoolKey({currency0: currency0, currency1: currency1, fee: 3000, tickSpacing: 10, hooks: IHooks(address(0))});
+    }
+
+    /// @dev Single-token1 add into `poolKey` with a ±1% band around price 1.
+    function _bandedAddParams(PoolKey memory poolKey, uint256 amount1In, bytes memory route)
+        internal
+        view
+        returns (ISwapAndAdd.AddParams memory)
+    {
+        return ISwapAndAdd.AddParams({
+            poolKey: poolKey,
+            tickLower: TICK_LOWER,
+            tickUpper: TICK_UPPER,
+            amount0In: 0,
+            amount1In: amount1In,
+            route: route,
+            routeFunding: new ISwapAndAdd.TokenAmount[](0),
+            minLiquidity: 0,
+            sqrtPriceMinX96: uint160(uint256(SQRT_PRICE_1_1) * 99 / 100),
+            sqrtPriceMaxX96: uint160(uint256(SQRT_PRICE_1_1) * 101 / 100),
+            recipient: address(this),
+            hookData: "",
+            deadline: block.timestamp + 1
+        });
+    }
+
+    /// @notice The route initializes a fresh pool and does most of the balancing on `routeKey`. The
+    ///         remaining imbalance reconciles against the caller's own position, the pool's only liquidity.
+    function test_add_uninitializedPool_routeInitializes_smallReconcile() public {
+        PoolKey memory newKey = _freshKey();
+        (uint160 sqrtBefore,,,) = manager.getSlot0(newKey.toId());
+        assertEq(sqrtBefore, 0, "pool starts uninitialized");
+
+        uint256 amount1In = 10e18;
+        // a little under half, so the route leaves a small token0 deficit for the reconcile
+        bytes memory route = _initAndSwapRoute(newKey, SQRT_PRICE_1_1, routeKey, false, 4.9e18, currency1, currency0);
+        uint256 c0Before = currency0.balanceOf(address(this));
+        uint256 c1Before = currency1.balanceOf(address(this));
+        (uint160 routeSpBefore,,,) = manager.getSlot0(routeKey.toId());
+
+        (uint256 tokenId, uint128 liq,,) = zap.add(_bandedAddParams(newKey, amount1In, route));
+
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
+        assertEq(manager.getLiquidity(newKey.toId()), liq, "caller is the pool's only liquidity");
+        // only the reconcile trades in the new pool, so any move off the initial price proves it ran
+        (uint160 sqrtAfter,,,) = manager.getSlot0(newKey.toId());
+        assertTrue(sqrtAfter != SQRT_PRICE_1_1, "reconcile swap ran");
+        assertApproxEqRel(sqrtAfter, SQRT_PRICE_1_1, 0.005e18, "small drift from the initial price");
+
+        (uint160 routeSpAfter,,,) = manager.getSlot0(routeKey.toId());
+        assertGt(routeSpAfter, routeSpBefore, "UR route did not raise routeKey sqrtPrice");
+
+        uint256 dust0 = currency0.balanceOf(address(this)) - c0Before;
+        uint256 dust1 = currency1.balanceOf(address(this)) + amount1In - c1Before;
+        assertLt(dust0 + dust1, amount1In / 10_000, "dust under 1 bp of the budget");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+    }
+
+    /// @notice A front-runner initializes the pool at another price first. The route's allow-revert
+    ///         initialize becomes a no-op, and the band rejects sizing at the front-run price.
+    function test_add_uninitializedPool_frontRunInit_revertsOutOfBand() public {
+        PoolKey memory newKey = _freshKey();
+        manager.initialize(newKey, SQRT_PRICE_2_1);
+
+        bytes memory route = _initAndSwapRoute(newKey, SQRT_PRICE_1_1, routeKey, false, 4.9e18, currency1, currency0);
+        ISwapAndAdd.AddParams memory p = _bandedAddParams(newKey, 10e18, route);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ISwapAndAdd.PriceOutOfBand.selector, SQRT_PRICE_2_1, p.sqrtPriceMinX96, p.sqrtPriceMaxX96
+            )
+        );
+        zap.add(p);
     }
 
     /// @notice Rebalance whose surplus -> deficit swap runs through the real UR within the unlock. The new
@@ -310,5 +418,52 @@ contract SwapAndAddRouteTest is PosmTestSetup {
         // proof the UR route executed on routeKey (touched only by the route leg)
         (uint160 routeSpAfter,,,) = manager.getSlot0(routeKey.toId());
         assertGt(routeSpAfter, routeSpBefore, "UR route did not raise routeKey sqrtPrice");
+    }
+
+    /// @dev Regression: debt a subscriber plants on the router during fee collection must not reach the route.
+    function test_increase_subscriberPlantsRouterDebt_reverts() public {
+        ISwapAndAdd.AddParams memory ap = ISwapAndAdd.AddParams({
+            poolKey: key,
+            tickLower: TICK_LOWER,
+            tickUpper: TICK_UPPER,
+            amount0In: 10e18,
+            amount1In: 10e18,
+            route: "",
+            routeFunding: new ISwapAndAdd.TokenAmount[](0),
+            minLiquidity: 0,
+            sqrtPriceMinX96: 0,
+            sqrtPriceMaxX96: type(uint160).max,
+            recipient: address(this),
+            hookData: "",
+            deadline: block.timestamp + 1
+        });
+        (uint256 tokenId,,,) = zap.add(ap);
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+
+        // the subscriber takes token1 on the router's tab when the fees are collected
+        MockRouterDebtSubscriber subscriber = new MockRouterDebtSubscriber();
+        lpm.subscribe(tokenId, address(subscriber), "");
+        bytes[] memory inputs = new bytes[](1);
+        inputs[0] = Planner.init().add(Actions.TAKE, abi.encode(currency1, ActionConstants.MSG_SENDER, 1e18)).encode();
+        subscriber.arm(
+            IUniversalRouter(address(router)), abi.encode(abi.encodePacked(bytes1(uint8(Commands.V4_SWAP))), inputs)
+        );
+
+        vm.expectRevert(ISwapAndAdd.UnsettledDeltas.selector);
+        zap.increase(
+            ISwapAndAdd.IncreaseParams({
+                tokenId: tokenId,
+                amount0In: 0,
+                amount1In: 5e18,
+                route: _v4SwapRoute(routeKey, false, 1e18, currency1, currency0),
+                routeFunding: new ISwapAndAdd.TokenAmount[](0),
+                minLiquidityAdded: 0,
+                sqrtPriceMinX96: 0,
+                sqrtPriceMaxX96: type(uint160).max,
+                recipient: address(this),
+                hookData: "",
+                deadline: block.timestamp + 1
+            })
+        );
     }
 }
