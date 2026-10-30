@@ -27,6 +27,7 @@ import {IMsgSender} from "./IMsgSender.sol";
 ///        and this contract needs ERC-721 approval on the position in POSM. Operator calls send
 ///        all output to the owner, though operators remain trusted since they set the `route` and
 ///        `minLiquidity` (and already have full custody on POSM).
+///      - Only v4 positions are supported, and the pool's hook must be trusted.
 ///      - Hooks with returns-delta permissions are rejected. Fee-on-transfer, rebasing, and
 ///        transfer-callback tokens are unsupported. The same `hookData` goes to every hook callback.
 ///      - Multicall batches carry at most one native-ETH operation because all subcalls share
