@@ -548,7 +548,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 liquidity = lpm.getPositionLiquidity(tokenId);
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
 
-        // did not recieve tokens, as they were forfeited with CLEAR
+        // did not receive tokens, as they were forfeited with CLEAR
         assertEq(currency0.balanceOfSelf(), balance0Before);
         assertEq(currency1.balanceOfSelf(), balance1Before);
     }

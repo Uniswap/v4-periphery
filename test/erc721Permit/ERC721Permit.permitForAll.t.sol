@@ -27,7 +27,7 @@ contract ERC721PermitForAllTest is Test {
         erc721Permit = new MockERC721Permit(name, symbol);
     }
 
-    // --- Test the overriden setApprovalForAll ---
+    // --- Test the overridden setApprovalForAll ---
     function test_fuzz_setApprovalForAll(address operator) public {
         assertEq(erc721Permit.isApprovedForAll(address(this), operator), false);
 

@@ -27,7 +27,7 @@ contract ERC721PermitTest is Test {
         erc721Permit = new MockERC721Permit(name, symbol);
     }
 
-    // --- Test the overriden approval ---
+    // --- Test the overridden approval ---
     function test_fuzz_approve(address spender) public {
         uint256 tokenId = erc721Permit.mint();
         assertEq(erc721Permit.getApproved(tokenId), address(0));
