@@ -5,6 +5,8 @@ import "forge-std/Test.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -29,6 +31,14 @@ import {Permit2SignatureHelpers} from "../shared/Permit2SignatureHelpers.sol";
 import {Permit2Forwarder, IPermit2Forwarder} from "../../src/base/Permit2Forwarder.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 import {IERC721Permit_v4} from "../../src/interfaces/IERC721Permit_v4.sol";
+
+contract MockRevertingBeforeInitializeHook {
+    error RevertingBeforeInitialize();
+
+    function beforeInitialize(address, PoolKey calldata, uint160) external pure returns (bytes4) {
+        revert RevertingBeforeInitialize();
+    }
+}
 
 contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
@@ -499,5 +509,71 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         assertEq(results[0], abi.encode(abi.encodeWithSelector(InvalidNonce.selector)));
 
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), charlie);
+    }
+
+    function test_initializePool_revertsOnCurrenciesOutOfOrderOrEqual() public {
+        PoolKey memory invalidKey =
+            PoolKey({currency0: currency1, currency1: currency0, fee: 0, tickSpacing: 10, hooks: IHooks(address(0))});
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPoolManager.CurrenciesOutOfOrderOrEqual.selector,
+                Currency.unwrap(currency1),
+                Currency.unwrap(currency0)
+            )
+        );
+        IPoolInitializer_v4(address(lpm)).initializePool(invalidKey, SQRT_PRICE_1_1);
+    }
+
+    function test_initializePool_revertsOnTickSpacingTooLarge() public {
+        PoolKey memory invalidKey = PoolKey({
+            currency0: currency0, currency1: currency1, fee: 0, tickSpacing: 32768, hooks: IHooks(address(0))
+        });
+        vm.expectRevert(abi.encodeWithSelector(IPoolManager.TickSpacingTooLarge.selector, int24(32768)));
+        IPoolInitializer_v4(address(lpm)).initializePool(invalidKey, SQRT_PRICE_1_1);
+    }
+
+    function test_initializePool_revertsOnHookAddressNotValid() public {
+        address invalidHookAddr = address(uint160(Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG));
+        PoolKey memory invalidKey = PoolKey({
+            currency0: currency0,
+            currency1: currency1,
+            fee: 0,
+            tickSpacing: 10,
+            hooks: IHooks(invalidHookAddr)
+        });
+        vm.expectRevert(abi.encodeWithSelector(Hooks.HookAddressNotValid.selector, invalidHookAddr));
+        IPoolInitializer_v4(address(lpm)).initializePool(invalidKey, SQRT_PRICE_1_1);
+    }
+
+    function test_initializePool_revertsOnHookBeforeInitializeRevert() public {
+        address hookAddr = address(uint160(Hooks.BEFORE_INITIALIZE_FLAG));
+        vm.etch(hookAddr, address(new MockRevertingBeforeInitializeHook()).code);
+
+        PoolKey memory hookKey = PoolKey({
+            currency0: currency0,
+            currency1: currency1,
+            fee: 0,
+            tickSpacing: 10,
+            hooks: IHooks(hookAddr)
+        });
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                hookAddr,
+                IHooks.beforeInitialize.selector,
+                abi.encodeWithSelector(MockRevertingBeforeInitializeHook.RevertingBeforeInitialize.selector),
+                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
+            )
+        );
+        IPoolInitializer_v4(address(lpm)).initializePool(hookKey, SQRT_PRICE_1_1);
+    }
+
+    function test_initializePool_twice_standalone_returnsMaxInt24WithoutRevert() public {
+        key = PoolKey({currency0: currency0, currency1: currency1, fee: 0, tickSpacing: 10, hooks: IHooks(address(0))});
+        manager.initialize(key, SQRT_PRICE_1_1);
+
+        int24 tick = IPoolInitializer_v4(address(lpm)).initializePool(key, SQRT_PRICE_1_1);
+        assertEq(tick, type(int24).max);
     }
 }
