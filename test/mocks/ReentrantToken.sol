@@ -22,7 +22,7 @@ contract ReentrantToken is MockERC20 {
         override
         returns (bool)
     {
-        // we dont need data because itll revert before it does anything
+        // we don't need data because itll revert before it does anything
         posm.modifyLiquidities("", type(uint256).max);
         return true;
     }

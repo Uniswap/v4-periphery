@@ -271,7 +271,7 @@ contract PosMGasTest is Test, PosmTestSetup {
                 Actions.INCREASE_LIQUIDITY,
                 abi.encode(tokenIdAlice, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
             );
-        // because its a perfect autocompound, the delta is exactly 0 and we dont need to "close" deltas
+        // because its a perfect autocompound, the delta is exactly 0 and we don't need to "close" deltas
         bytes memory calls = planner.encode();
 
         vm.prank(alice);

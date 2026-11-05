@@ -422,7 +422,7 @@ contract CalldataDecoderTest is Test {
 
     function _removeFinalByte(bytes memory params) internal pure returns (bytes memory result) {
         result = new bytes(params.length - 1);
-        // dont copy the final byte
+        // don't copy the final byte
         for (uint256 i = 0; i < params.length - 2; i++) {
             result[i] = params[i];
         }
