@@ -22,16 +22,27 @@ import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 ///         route through `ROUTE_SWAP`) can be driven over the tests' local v4 pools. Routing a v4 swap
 ///         through UR inside the router's own unlock exercises UR's already-unlocked `V4_SWAP` path.
 abstract contract MarginRouteHelpers is Test {
+    /// @dev The UR artifact the default build writes (pulled in by `script/URCompileAnchor.s.sol`).
+    ///      Read by path rather than as `UniversalRouter.sol:UniversalRouter` so the `coverage`
+    ///      profile, which builds into its own `out` directory and skips the anchor because UR cannot
+    ///      compile without via_ir, still finds it. Run `forge build` before `forge coverage`.
+    string internal constant UR_ARTIFACT = "foundry-out/UniversalRouter.sol/UniversalRouter.json";
+
     /// @notice Deploys a UniversalRouter bound to `manager`, `permit2`, and `weth9`. The v2/v3
-    ///         factories are left zero because the helper routes only over v4 pools; `vm.getCode` reads
-    ///         UR's own (via_ir) artifact so the concrete contract is never pulled into the test's
-    ///         compilation profile.
+    ///         factories are left zero because the helper routes only over v4 pools.
     function deployUniversalRouter(address manager, address permit2, address weth9) internal returns (address ur) {
         RouterParameters memory p;
         p.permit2 = permit2;
         p.weth9 = weth9;
         p.v4PoolManager = manager;
-        bytes memory initcode = abi.encodePacked(vm.getCode("UniversalRouter.sol:UniversalRouter"), abi.encode(p));
+        return deployUniversalRouter(p);
+    }
+
+    /// @notice Deploys a UniversalRouter from explicit `RouterParameters` (the fork tests pass the
+    ///         real v2/v3 factories). `vm.getCode` reads UR's own (via_ir) artifact so the concrete
+    ///         contract is never pulled into the test's compilation profile.
+    function deployUniversalRouter(RouterParameters memory p) internal returns (address ur) {
+        bytes memory initcode = abi.encodePacked(vm.getCode(UR_ARTIFACT), abi.encode(p));
         assembly {
             ur := create(0, add(initcode, 0x20), mload(initcode))
         }
@@ -39,11 +50,13 @@ abstract contract MarginRouteHelpers is Test {
     }
 
     /// @notice Deploys a MarginRouter from its own compiled artifact via `vm.getCode`, so the router's
-    ///         source is never pulled into a test's (via_ir=false) compilation profile — the same reason
+    ///         source is never pulled into a test's (via_ir=false) compilation profile, the same reason
     ///         `deployUniversalRouter` uses `getCode`. This lets MarginRouter be pinned to a smaller
     ///         optimizer-runs profile (which fits under the EIP-170 runtime size limit) without a
-    ///         source-level construction in a test forcing it to co-compile at the test profile. Returns
-    ///         the raw address; cast it to `MarginRouter` at the call site.
+    ///         source-level construction in a test forcing it to co-compile at the test profile. Under
+    ///         the `coverage` profile the artifact is the unoptimized build, so coverage attributes the
+    ///         deployed code back to source. Returns the raw address; cast it to `MarginRouter` at the
+    ///         call site.
     function deployMarginRouter(
         IPoolManager poolManager,
         IAllowanceTransfer permit2,
