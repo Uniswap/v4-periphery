@@ -141,15 +141,32 @@ contract AaveV4LendingAdapter is ILendingAdapter, PositionAmountResolver {
     ///      forwards the withdrawn underlying to its validated recipient. `account` must be the caller,
     ///      binding the otherwise-unused parameter and asserting the encoder only produces a withdrawal
     ///      for the account that calls it (the `MarginAccount` always passes its own address).
+    ///
+    ///      When the account has no debt in the market's debt reserve and `amount` empties the
+    ///      collateral reserve, a `setUsingAsCollateral(collateralReserveId, false, account)` is
+    ///      encoded first. The Spoke's `withdraw` prices every reserve flagged as collateral while it
+    ///      refreshes the account, so a full withdrawal would otherwise depend on the oracle even
+    ///      though nothing is borrowed; clearing the flag first (which clears the bit before
+    ///      refreshing) makes a full close oracle-independent. Partial withdrawals and withdrawals
+    ///      with debt outstanding encode the single `withdraw`, unchanged.
     function encodeWithdrawCollateral(address account, Market calldata market, uint256 amount, address)
         external
         view
         returns (Call[] memory calls)
     {
-        (uint256 collateralReserveId,) = _resolve(market);
+        (uint256 collateralReserveId, uint256 debtReserveId) = _resolve(market);
         if (account != msg.sender) revert AccountMismatch(account, msg.sender);
-        calls = new Call[](1);
-        calls[0] = Call({value: 0, data: abi.encodeCall(ISpoke.withdraw, (collateralReserveId, amount, account))});
+
+        bool disableCollateral = spoke.getUserTotalDebt(debtReserveId, account) == 0
+            && amount >= spoke.getUserSuppliedAssets(collateralReserveId, account);
+        calls = new Call[](disableCollateral ? 2 : 1);
+        uint256 last = calls.length - 1;
+        if (disableCollateral) {
+            calls[0] = Call({
+                value: 0, data: abi.encodeCall(ISpoke.setUsingAsCollateral, (collateralReserveId, false, account))
+            });
+        }
+        calls[last] = Call({value: 0, data: abi.encodeCall(ISpoke.withdraw, (collateralReserveId, amount, account))});
     }
 
     /// @inheritdoc ILendingAdapter

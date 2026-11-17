@@ -165,6 +165,22 @@ contract AaveV4LendingAdapterForkTest is Test, MarginRouteHelpers {
         _assertBorrowedActualCost(account, maxDebtIn);
     }
 
+    /// @notice A full close does not depend on the Spoke's oracle. The Spoke's `withdraw` prices every
+    ///         reserve still flagged as collateral, so with the oracle reverting the close only
+    ///         succeeds because the adapter clears the collateral flag, after the close's repay has
+    ///         cleared the borrow, before it withdraws.
+    function test_fork_shortEth_fullClose_succeedsDuringOracleOutage() public {
+        address account = router.accountOf(address(this), 0);
+        _stageOpen(account);
+
+        // the oracle now reverts for every call
+        vm.etch(EXPECTED_ORACLE, hex"60006000fd");
+        vm.expectRevert();
+        ISpoke(MAIN_SPOKE).getUserAccountData(account);
+
+        _stageClose(account);
+    }
+
     // -------------------------------------------------------------------------
     // Lifecycle stages (split to keep locals-per-frame low: tests compile without via_ir)
     // -------------------------------------------------------------------------

@@ -191,6 +191,8 @@ contract AaveV4LendingAdapterTest is Test {
     }
 
     function test_encodeWithdrawCollateral_targetSelectorAndArgs() public {
+        // a partial withdrawal of a supplied balance: the single withdraw, whatever the debt
+        spoke.seedSupplied(USDC_RESERVE_ID, account, 1_000e6);
         vm.prank(account);
         Call[] memory calls = adapter.encodeWithdrawCollateral(account, market, 500e6, makeAddr("receiver"));
         assertEq(calls.length, 1);
@@ -202,6 +204,52 @@ contract AaveV4LendingAdapterTest is Test {
         assertEq(reserveId, USDC_RESERVE_ID);
         assertEq(amount, 500e6);
         assertEq(onBehalfOf, account);
+    }
+
+    /// @dev With debt outstanding a full withdrawal is the single `withdraw`: the collateral flag must
+    ///      stay on to back the borrow.
+    function test_encodeWithdrawCollateral_debtOutstanding_fullAmountIsSingleWithdraw() public {
+        spoke.seedSupplied(USDC_RESERVE_ID, account, 1_000e6);
+        spoke.seedDebt(WETH_RESERVE_ID, account, 0.1e18);
+        vm.prank(account);
+        Call[] memory calls = adapter.encodeWithdrawCollateral(account, market, 1_000e6, account);
+        assertEq(calls.length, 1, "one call");
+        assertEq(bytes4(calls[0].data), ISpoke.withdraw.selector);
+    }
+
+    /// @dev With no debt a partial withdrawal leaves collateral supplied, so the flag stays on.
+    function test_encodeWithdrawCollateral_zeroDebt_partialAmountIsSingleWithdraw() public {
+        spoke.seedSupplied(USDC_RESERVE_ID, account, 1_000e6);
+        vm.prank(account);
+        Call[] memory calls = adapter.encodeWithdrawCollateral(account, market, 999e6, account);
+        assertEq(calls.length, 1, "one call");
+        assertEq(bytes4(calls[0].data), ISpoke.withdraw.selector);
+    }
+
+    /// @dev With no debt a withdrawal that empties the reserve first clears the collateral flag, so the
+    ///      Spoke has no flagged reserve to price and the full close is oracle-independent. Covers the
+    ///      exact balance and the `type(uint256).max` form.
+    function test_encodeWithdrawCollateral_zeroDebt_fullAmountDisablesCollateralFirst() public {
+        spoke.seedSupplied(USDC_RESERVE_ID, account, 1_000e6);
+        uint256[2] memory amounts = [uint256(1_000e6), type(uint256).max];
+        for (uint256 i; i < amounts.length; i++) {
+            vm.prank(account);
+            Call[] memory calls = adapter.encodeWithdrawCollateral(account, market, amounts[i], account);
+            assertEq(calls.length, 2, "disable then withdraw");
+            assertEq(calls[0].value, 0);
+            assertEq(bytes4(calls[0].data), ISpoke.setUsingAsCollateral.selector, "disable first");
+            (uint256 flagReserveId, bool usingAsCollateral, address flagOnBehalfOf) =
+                this.decodeSetCollateral(calls[0].data);
+            assertEq(flagReserveId, USDC_RESERVE_ID, "the collateral reserve");
+            assertFalse(usingAsCollateral, "cleared");
+            assertEq(flagOnBehalfOf, account);
+            assertEq(calls[1].value, 0);
+            assertEq(bytes4(calls[1].data), ISpoke.withdraw.selector, "then withdraw");
+            (uint256 reserveId, uint256 amount, address onBehalfOf) = this.decodeWithdraw(calls[1].data);
+            assertEq(reserveId, USDC_RESERVE_ID);
+            assertEq(amount, amounts[i]);
+            assertEq(onBehalfOf, account);
+        }
     }
 
     function test_encodeWithdrawCollateral_revertsWhenAccountNotCaller() public {

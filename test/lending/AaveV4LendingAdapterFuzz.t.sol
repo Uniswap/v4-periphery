@@ -154,6 +154,8 @@ contract AaveV4LendingAdapterFuzzTest is Test {
     // -------------------------------------------------------------------------
 
     function testFuzz_encodeWithdrawCollateral_shape(address account, uint256 amount, address receiver) public {
+        // outstanding debt keeps the collateral flag on, so any amount is the single withdraw
+        spoke.seedDebt(WETH_RESERVE_ID, account, 1e18);
         vm.prank(account);
         Call[] memory calls = adapter.encodeWithdrawCollateral(account, market, amount, receiver);
         assertEq(calls.length, 1, "withdraw is one call");
