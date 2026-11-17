@@ -202,10 +202,12 @@ contract MarginRouterRouteSpendTest is RoutingTestHelpers, MarginRouteHelpers, D
     // ─────────────────────────────── Pre-funded Universal Router ────────────────────────────────
 
     /// @notice A Universal Router pre-funded with more input than the route costs, with a trailing
-    ///         whole-balance sweep to the router, no longer censors the increase: the credit is capped
-    ///         at the spend, so the router's delta cannot turn positive. The excess stays on the router
-    ///         (sweepable), and the position borrows nothing for a swap the donor paid for.
-    function test_increase_preFundedUniversalRouter_cannotCensor() public {
+    ///         whole-balance sweep to the router, no longer flips the router's delta positive (which
+    ///         reverted the next `OPEN_DELTA` action): the credit is capped at the spend. The excess stays
+    ///         on the router (sweepable) and the swap nets to zero spend. The mock venue accepts the
+    ///         resulting zero borrow, so the increase completes here; a real venue rejects a zero-amount
+    ///         borrow, which is the same outcome as any route that costs nothing.
+    function test_increase_preFundedUniversalRouter_cannotFlipDeltaPositive() public {
         address account = marginRouter.accountOf(address(this), 0);
         MockERC20(Currency.unwrap(debt)).transfer(ur, MAX_IN);
         (bytes memory cmds, bytes[] memory ins) = _sweepSuffixedRoute(account);
