@@ -18,7 +18,7 @@ A "margin" position is leveraged spot exposure:
 
 The sequence runs inside one `PoolManager` unlock using v4 flash accounting, which lets us swap debt tokens we don't have yet for the collateral we'll use to borrow it. The result is a position that is **long the collateral token and short the debt token**, at a leverage chosen by the caller and bounded only by the maximum LTV of the chosen market.
 
-The swap itself routes through the **Universal Router** (the `ROUTE_SWAP` action), so liquidity can be sourced across v2, v3, and v4 rather than a single v4 pool. Because the Universal Router self-settles its own swap, the router wraps the call in a flash-take envelope: it flash-takes the input from the PoolManager, funds the Universal Router to spend exactly what the swap costs (a scoped Permit2 allowance = `maxDebtIn`/`maxCollateralIn`), and settles only this call's unspent flash-take (a pre-existing balance on the router is left untouched, never swept into the settle) — leaving the same net delta a native v4 swap would, so the surrounding borrow/supply/settle are unchanged. You supply the route: `increasePosition`/`decreasePosition` take the Universal Router `routeCommands`/`routeInputs` you build off-chain (see §6.5), and the router only requires that the route delivers the bought output to your account (enforced by `ASSERT_ACCOUNT_BALANCE`) and stays within the `maxDebtIn`/`maxCollateralIn` cap — it does not trust the route's internals. The Universal Router is supplied per call - in `IncreaseParams`/`DecreaseParams` for the curated flows, and as the first field of the `ROUTE_SWAP` action for `execute` plans - rather than fixed at deployment; it must be non-zero on the swap path (the call reverts `UniversalRouterNotSet` otherwise) and must carry already-unlocked `V4_SWAP` support (a Universal Router built after PR #491). Because the Universal Router is a per-call argument, different calls can point at different Universal Router deployments, so callers can adopt an improved or newer Universal Router over time without redeploying the margin router.
+The swap itself routes through the **Universal Router** (the `ROUTE_SWAP` action), so liquidity can be sourced across v2, v3, and v4 rather than a single v4 pool. Because the Universal Router self-settles its own swap, the router wraps the call in a flash-take envelope: it flash-takes the input from the PoolManager, funds the Universal Router to spend exactly what the swap costs (a scoped Permit2 allowance = `maxDebtIn`/`maxCollateralIn`), and settles the unspent flash-take (the swap's cost is what Permit2 actually pulled from the router, input the route returns to the router is credited back, and a pre-existing balance on the router is left untouched, never swept into the settle), leaving the same net delta a native v4 swap would, so the surrounding borrow/supply/settle are unchanged. You supply the route: `increasePosition`/`decreasePosition` take the Universal Router `routeCommands`/`routeInputs` you build off-chain (see §6.5), and the router only requires that the route delivers the bought output to your account (enforced by `ASSERT_ACCOUNT_BALANCE`) and stays within the `maxDebtIn`/`maxCollateralIn` cap, and it does not trust the route's internals. The Universal Router is supplied per call - in `IncreaseParams`/`DecreaseParams` for the curated flows, and as the first field of the `ROUTE_SWAP` action for `execute` plans - rather than fixed at deployment; it must be non-zero on the swap path (the call reverts `UniversalRouterNotSet` otherwise) and must carry already-unlocked `V4_SWAP` support (a Universal Router built after PR #491). Because the Universal Router is a per-call argument, different calls can point at different Universal Router deployments, so callers can adopt an improved or newer Universal Router over time without redeploying the margin router.
 
 Each user's position lives in their own **`MarginAccount`** — a minimal, soulbound contract that is
 itself the borrower/supplier in the lending protocol. The **`MarginRouter`** orchestrates the flows
@@ -225,13 +225,36 @@ A curated position swap is an **exact-output** swap you route through the Univer
 (`routeCommands`/`routeInputs`); the route can source liquidity across v2/v3/v4:
 
 - `maxDebtIn` (open/increase) / `maxCollateralIn` (close/decrease) is the **mandatory, binding**
-slippage bound: the absolute cap on the swap input. The router flash-takes this amount and grants the
-Universal Router a Permit2 allowance of exactly this much, so it binds regardless of what the route's
-own `amountInMaximum` says. Derive it from a quote, not spot price. It must also stay within the
-flash-takeable PoolManager liquidity of the input token, so size it as a realistic slippage cap, not an
+slippage bound: the absolute cap on the swap input. The router flash-takes up to this amount and grants
+the Universal Router a Permit2 allowance of exactly that much, so it binds regardless of what the
+route's own `amountInMaximum` says. Derive it from a quote, not spot price. The flash-take is capped at
+the PoolManager's balance of the input token, so a cap above that inventory still bounds the route, but
+a route that needs more than the inventory fails; size it as a realistic slippage cap, not an
 arbitrary large value.
 - Any per-hop price bound (e.g. v4's `minHopPriceX36`) is encoded **inside your route**, not passed as a
 separate param.
+- **Route postcondition: unspent input returns to the margin router.** The router measures what your
+route spent as what Permit2 actually pulled from it (`maxIn` minus the allowance left after the call),
+and credits input that comes back to the router in the input currency against that spend. Draw only
+what the swap needs, or return the change to the router: a route that pulls the whole cap into the
+Universal Router first (for example `PERMIT2_TRANSFER_FROM` of `maxIn`) must send the remainder back to
+`MSG_SENDER`. A WETH-through-native route (pull WETH, `UNWRAP_WETH`, swap against a native pool, wrap the
+change) must end with `WRAP_ETH(MSG_SENDER, CONTRACT_BALANCE)`, not `WRAP_ETH(account, ...)`. Change that
+a route sends to the active account is swept back to the router and credited (the router compares the
+account's balance of the input before and after the route and moves only the in-route increase, so a
+balance the account already held is never touched), but the `MSG_SENDER` shape is the documented one,
+and in an `execute` plan that runs `ROUTE_SWAP` before `SET_ACCOUNT` there is no active account, so
+nothing is repatriated there.
+- **A route must consume nonzero input.** The curated increase borrows, and the partial decrease
+withdraws, exactly what the swap owed the pool. A route that delivers its output at zero cost leaves
+nothing owed, so the venue rejects the resulting zero-amount borrow or withdraw and the call reverts
+atomically. That is deliberate: collateral delivered with no debt is a deposit (`addCollateral`), and
+debt token delivered with no collateral sold is a repay (`execute` or the account's `repay`).
+- **Prefer explicit `SETTLE` amounts in Universal Router routes.** A `SETTLE` with `OPEN_DELTA` pays
+whatever the Universal Router owes at that point, while an explicit amount pays exactly what you
+intended. The router also refuses to start a route while the Universal Router already owes the pool in
+the input currency (`UniversalRouterDeltaNotZero`), so a delta left by an earlier action or a hook
+cannot be paid out of your allowance.
 - `deadline` is a Unix timestamp; the call reverts (`DeadlinePassed`) if `block.timestamp` exceeds it.
 - **Position swaps are all-or-nothing on amount.** An exact-output swap can partially fill on a thin
 pool. After the routed swap, both the increase and the decrease/close assert the account received the
@@ -253,7 +276,7 @@ All entry points operate on the caller's own account, derived from the authentic
 | ---------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `increasePosition` (payable) | `IncreaseParams`      | Deploys the account if needed, pulls equity, opens a leveraged position. Calling again on an account that already holds a position adds leverage to it; set `equity = 0` and send no value for a pure leverage increase. Optional `maxLtvAfter` bound. |
 | `addCollateral` (payable)    | `AddCollateralParams` | Supplies more collateral without changing debt (delevers / improves health). No swap.                                                                                        |
-| `decreasePosition`           | `DecreaseParams`      | Partial delever: repays `debtToRepay` by selling collateral, position stays open, enforces `maxLtvAfter`. A **full close** is `debtToRepay == type(uint256).max`: repay all debt, withdraw all collateral, return the residual (realized PnL) to the caller (a zero-debt position is withdrawn directly with no swap; `maxLtvAfter` ignored). |
+| `decreasePosition`           | `DecreaseParams`      | Partial delever: repays `debtToRepay` by selling collateral, position stays open, enforces `maxLtvAfter`. A **full close** is `debtToRepay == type(uint256).max`: repay all debt, withdraw all collateral, return the residual (realized PnL) to the caller (a zero-debt position is withdrawn directly with no swap, deploying the account first if collateral was supplied to its address before it existed; `maxLtvAfter` ignored). |
 | `execute` (payable)          | `bytes, uint256`      | Runs an arbitrary caller-supplied plan of routing + margin actions in one unlock. The general-purpose counterpart to the curated entries; see §4.1. |
 
 
@@ -288,7 +311,7 @@ set (swap / settle / take, and `SWEEP` / `WRAP` / `UNWRAP`) plus the margin opco
 | `PULL_TO_ACCOUNT(currency, amount, payerIsUser)` | Move a token into the active account: pulled from the caller via Permit2 (`payerIsUser = true`) or from the router's own balance (`false`). Enables repay-from-wallet and native equity. |
 | `ACCOUNT_SUPPLY_COLLATERAL` / `ACCOUNT_BORROW` | Supply/borrow on the active account with the encoded (caller-chosen) adapter and market. |
 | `ACCOUNT_WITHDRAW_COLLATERAL` / `ACCOUNT_REPAY` / `ACCOUNT_SWEEP` | Withdraw/repay/sweep on the active account. |
-| `ROUTE_SWAP(universalRouter, input, maxIn, commands, inputs)` | Route a swap through the caller-supplied `universalRouter` (a Universal Router carrying already-unlocked `V4_SWAP`; must be non-zero, else `UniversalRouterNotSet`) across v2/v3/v4: flash-take up to `maxIn` of `input`, fund UR via a scoped Permit2 allowance, run the caller-built UR `commands`/`inputs` (which must deliver the output to the active account and self-settle), then settle only this call's unspent take (any pre-existing router balance is left untouched). Leaves the same net delta a native v4 swap would, so a following `ACCOUNT_BORROW`/`SETTLE` nets via `OPEN_DELTA`. |
+| `ROUTE_SWAP(universalRouter, input, maxIn, commands, inputs)` | Route a swap through the caller-supplied `universalRouter` (a Universal Router carrying already-unlocked `V4_SWAP`; must be non-zero, else `UniversalRouterNotSet`) across v2/v3/v4: flash-take up to `maxIn` of `input` (never more than the PoolManager holds), fund UR via a scoped Permit2 allowance, run the caller-built UR `commands`/`inputs` (which must deliver the output to the active account and self-settle), then settle the unspent take. The spend is what Permit2 pulled from the router (`maxIn` minus the allowance left); input that came back to the router during the call is credited against it, capped at the spend so the delta never turns positive, and any pre-existing router balance is left untouched. **Postcondition: unspent input must return to the margin router in the input currency**; a WETH-through-native route must wrap its change to `MSG_SENDER` (`WRAP_ETH(MSG_SENDER, CONTRACT_BALANCE)`), not to the account. If a route sends its change to the active account anyway, the router sweeps the in-route rise of the account's `input` balance back and credits it; with no active account (a `ROUTE_SWAP` before `SET_ACCOUNT`) nothing is repatriated. Reverts `UniversalRouterDeltaNotZero` if the Universal Router already owes the pool in `input`, and `UnboundedRouteAllowance` for `maxIn == type(uint160).max`. Leaves the same net delta a native v4 swap would, so a following `ACCOUNT_BORROW`/`SETTLE` nets via `OPEN_DELTA`. |
 | `ASSERT_HEALTH(adapter, market, maxLtv)` / `ASSERT_ACCOUNT_BALANCE(currency, minAmount)` | Opt-in guards; encode them yourself. `ASSERT_ACCOUNT_BALANCE` checks the active account's ABSOLUTE balance is at least `minAmount`: a floor any pre-existing balance counts toward, not a fill delta; see the note below on getting a delta guarantee from it. |
 
 `execute` does no entry validation — it gives exactly the guardrails the plan encodes. Composing plans
@@ -306,8 +329,14 @@ protocol-protected.
 4. **Adapter trust is yours.** Every account action takes the adapter you encode; there is no
 allowlist. A hostile adapter reaches only your own account, which item 7 already makes the plan
 builder's responsibility.
-5. **`PULL_TO_ACCOUNT`.** An encoded `0` amount reverts (it is not an `OPEN_DELTA` full-balance
-sentinel, unlike the other opcodes); `CONTRACT_BALANCE` is honored only on the router-balance path;
+5. **Zero amounts mean something different per opcode.** An encoded `0` (`OPEN_DELTA`) resolves as
+follows. `ACCOUNT_SUPPLY_COLLATERAL` supplies the account's whole collateral balance. `ACCOUNT_BORROW`
+and `ACCOUNT_WITHDRAW_COLLATERAL` use the router's current delta with the pool, which is what the swap
+owes. `ACCOUNT_REPAY` repays the account's whole balance of the debt token and reverts `ZeroAmount` when
+that balance is empty (`type(uint256).max` repays the full debt in the venue's terms). `ACCOUNT_SWEEP`
+and `ASSERT_ACCOUNT_BALANCE` take `0` literally: a zero sweep moves nothing and a zero floor always
+passes. `ASSERT_HEALTH` treats a zero bound as "skip the check", and `PULL_TO_ACCOUNT` reverts
+`ZeroAmount`. `CONTRACT_BALANCE` is honored only on the router-balance path of `PULL_TO_ACCOUNT`;
 native currency is unsupported (wrap to WETH first).
 6. **Events.** Every position mutation (supply, withdraw, borrow, repay) on every router path,
 including inside an `execute` plan and on the unlock-free paths (`addCollateral` and the zero-debt
@@ -361,6 +390,10 @@ bool ok = adapter.isSupportedMarket(market);
 
 `account` for `(owner, subId)` is `router.accountOf(owner, subId)`. The account exposes `owner()` and
 `manager()`.
+
+`currentLtvWad` rounds up, so a position sitting at a bound is never certified by a floored ratio, and it
+returns zero without consulting any price source when the account has no debt in the market, so reading
+or asserting health on a debt-free position does not depend on an oracle.
 
 ---
 
@@ -495,6 +528,14 @@ contract MarginIntegrator {
 > in §6.2 (or `ADDR.universalRouter` in TypeScript), a UR carrying already-unlocked `V4_SWAP` - supplied
 > per call so a later call can point at a newer UR.
 
+> **Route postcondition.** The `_v4Route` above pays the swap straight from the router via Permit2, so
+> the Universal Router never holds input and there is no change. A route that instead pulls the whole
+> `maxIn` into the Universal Router first (for example `PERMIT2_TRANSFER_FROM` of `maxIn`, then a swap
+> settled from the Universal Router's own balance) must send the unspent input back to the margin router
+> in the input currency, with a trailing `SWEEP(input, MSG_SENDER, 0)`. A WETH-through-native route
+> (pull WETH, `UNWRAP_WETH`, swap against a native pool, wrap the change) must end with
+> `WRAP_ETH(MSG_SENDER, CONTRACT_BALANCE)`, not `WRAP_ETH(account, ...)`. See §3.6.
+
 The router pulls `equity` from `msg.sender` (this contract) into the account, so this contract must
 hold the WETH and have done the two Permit2 approvals above.
 
@@ -611,12 +652,29 @@ function health(address owner, uint256 subId, Market memory market)
     maxLtvWad = Ltv.unwrap(adapter.maxLtvWad(market));
 }
 
-// the owner can always act directly on the lending protocol, bypassing the router
-function ownerRepayDirect(uint256 subId, Market memory market, bytes calldata morphoRepayCall) external {
+// the owner can always act directly on the lending protocol, bypassing the router.
+// `execute` forwards a RAW venue call as the account and grants no token allowance, so use it for
+// calls that pull nothing from the account: a withdraw, a borrow, a collateral flag change.
+function ownerWithdrawDirect(uint256 subId, bytes calldata venueWithdrawCall) external {
     address account = router.accountOf(address(this), subId);
-    IMarginAccount(account).execute(adapter, morphoRepayCall);
+    IMarginAccount(account).execute(adapter, venueWithdrawCall);
+}
+
+// a repay pulls the debt token with transferFrom, so it needs an allowance. `repay` approves the venue
+// for `amount` around the adapter's calls and clears the allowance afterward. The account must hold the
+// debt token, so send it there first.
+function ownerRepayDirect(uint256 subId, Market memory market, uint256 amount) external {
+    address account = router.accountOf(address(this), subId);
+    IMarginAccount(account).repay(adapter, market, amount); // type(uint256).max repays everything
 }
 ```
+
+`execute` is not a way to pull tokens out of the account: a raw `repay` or `supply` forwarded through it
+reverts at the venue, which finds no allowance. The adapter argument of `repay` and `supplyCollateral` is
+caller-chosen, which makes it the hook for any venue call shape that needs an allowance: pass a minimal
+adapter of your own whose `lendingProtocol()` is the venue and whose `encodeRepay` returns the raw venue
+call, and the account approves, executes, and clears the allowance around it. That also covers a market
+the official adapter rejects.
 
 ### 6.7 Notes for contract integrators
 
@@ -626,7 +684,20 @@ close is sent to your contract.
 - Batch multiple actions in one transaction with `multicall(bytes[])` (inherited). Do not batch two
 native-ETH position calls in one `multicall` — `msg.value` is shared and the second wrap would
 revert.
-- Markets are standard ERC-20 only (no fee-on-transfer or rebasing tokens).
+- `multicall` delegatecalls every leg with the batch's `msg.value`, so a `multicall` that carries value may
+contain only payable legs: `increasePosition`, `addCollateral`, and `execute`. `decreasePosition` is
+nonpayable by design and reverts inside a value-carrying batch; batch it value-free (for example with
+WETH equity via Permit2) or send it separately.
+- Markets are standard ERC-20 only (no fee-on-transfer or rebasing tokens). Permissioned tokens are not
+supported as market collateral or debt.
+- Curated flows present the margin router to the Universal Router as the swapper: inside the route,
+`msgSender()` is the router, not your account or your contract. A pool that gates on swapper identity,
+such as a permissioned pool, therefore rejects a curated route. Use native v4 actions in an `execute`
+plan instead; they run under the router's own lock, where `msgSender()` is the authenticated caller.
+- A hook that pays the swapper pays the margin router on a routed swap. Whatever sits on the router is
+claimable by the next caller (`SWEEP` is permissionless), so collect such a payout with a trailing
+`execute` `SWEEP` to yourself in the same `multicall`. ERC-6909 claims minted to the router are
+unsupported (the router has no burn action).
 - On a deployment without WETH9 (see §3.5) every native-ETH call reverts `NativeNotSupported`; use
 the Permit2 path.
 - Market selection is permissionless, so vet the market your `Market.data` names (on Morpho: the
@@ -903,6 +974,13 @@ account runs in the same sequence (idempotent, so top-ups are safe). The v3 adap
 its supply with `setUserUseReserveAsCollateral`, making both Aave adapters immune to the first-supply
 auto-enable gap; Morpho and Compound treat supplied collateral as collateral automatically and encode
 the supply alone.
+- **Full withdrawals clear the collateral flag first.** The Spoke's `withdraw` prices every reserve still
+flagged as collateral, so a full close would depend on the oracle even after the repay cleared the
+borrow. When the account has no debt in the debt reserve and the withdrawal empties the collateral
+reserve, `encodeWithdrawCollateral` encodes `setUsingAsCollateral(false)` before the `withdraw`, which
+makes the full close oracle-independent. Partial withdrawals are unchanged, so a partial
+`decreasePosition` still needs the oracle on v4: the Spoke prices the flagged reserve on any withdrawal
+that leaves collateral supplied.
 - **Premium-inclusive debt.** v4 debt is drawn debt plus accrued premium; `positionOf` and the
 full-repay path read `getUserTotalDebt`, and the router's close swap is sized off that figure.
 - **`maxLtvWad`** reads the collateral reserve's `collateralFactor`. v4's true liquidation point also
@@ -910,7 +988,8 @@ depends on the position's risk premium and dynamic config; integrators wanting a
 liquidation-distance check should also consult `healthFactor` from the Spoke's `getUserAccountData`.
 - **`currentLtvWad`** is the account-level LTV derived from the Spoke's `getUserAccountData` (Value
 units are USD scaled by the oracle decimals; the debt total carries an extra RAY factor that the
-adapter normalizes), so it is decimal-agnostic like the v3 adapter.
+adapter normalizes), so it is decimal-agnostic like the v3 adapter. It is zero, without calling the
+Spoke, when the account has no debt in the market's debt reserve.
 
 v4's position-manager / intent apparatus (for third-party relayers) is irrelevant here: the account is
 its own `onBehalfOf` and the direct caller, so it needs no registration, activation, or signatures.
@@ -1101,11 +1180,18 @@ or switch off a position.
 as long as its venue market exists: every call re-validates against the live venue, so a Compound
 collateral delisting or an Aave v4 reserve-layout change is reflected immediately (`MarketNotSupported`
 or `ReserveMismatch` on the next call). Withdraw and repay never gate on the venue-side reads beyond
-key validation, and the owner `execute` escape hatch acts on the lending protocol directly, so a position
-on a market the venue itself has withdrawn remains exitable.
+key validation, and the owner escape hatch acts on the lending protocol directly (`execute` for a raw
+call, `repay` with a caller-chosen adapter for a repay), so a position on a market the venue itself has
+withdrawn remains exitable.
 - **Exit is always available.** Closing and delevering use the same caller-chosen adapter as opening,
-and the owner `execute` escape hatch can act directly on the lending protocol, so funds are never
-trapped by router-side configuration (there is none).
+and the owner can act on the lending protocol directly without the router: `execute` forwards a raw
+venue call (it carries no token allowance, so it suits withdrawals and borrows), and `repay` or
+`supplyCollateral` with a caller-chosen adapter run any call shape that needs an allowance. Funds are
+never trapped by router-side configuration (there is none). A venue oracle outage still blocks any exit
+whose venue call needs a price, such as a partial decrease that leaves debt outstanding. A partial
+decrease that repays the whole debt does not need a price on Morpho, Compound v3, or Aave v3 (the
+adapters' `currentLtvWad` returns zero at zero debt without reading one), and an Aave v4 full close does
+not either (the adapter clears the collateral flag before the final withdrawal).
 - **Venue is swappable behind `ILendingAdapter`.** The lending venue is an implementation detail of
 the adapter; a new venue is supported by deploying a new adapter and passing it, with no router or
 account changes.
@@ -1285,7 +1371,7 @@ listed Comet collateral asset. Its `lendingProtocol()` is the bound Comet.
 | router   | `SlippageBoundRequired()`                                        | a mandatory swap slippage bound is zero: `maxDebtIn` on an increase, `maxCollateralIn` on a decrease or close that swaps  |
 | router   | `LtvBoundRequired()`                                             | a partial decrease's mandatory `maxLtvAfter` is zero (optional only on an increase, where zero skips the check)           |
 | router   | `IneffectiveLtvBound(Ltv)`                                       | a non-zero `maxLtvAfter` is at or above 100% (`1e18`), so it could never bind (supply a bound below 100%, or 0 to skip)   |
-| router   | `ZeroAmount()`                                                   | a required amount is zero: `collateralToBuy`, an `addCollateral` or `PULL_TO_ACCOUNT` amount, or a partial `debtToRepay`  |
+| router   | `ZeroAmount()`                                                   | a required amount is zero: `collateralToBuy`, an `addCollateral` or `PULL_TO_ACCOUNT` amount, a partial `debtToRepay`, or an `ACCOUNT_REPAY` whose zero amount resolves to an empty debt-token balance  |
 | router   | `PositionUnhealthy()`                                            | resulting LTV exceeds the bound                                                                                           |
 | router   | `NoDebtToRepay()`                                                | a partial decrease targeted a debt-free position (nothing to repay; exit with a full close instead)                       |
 | router   | `NativeCollateralMismatch()`                                     | native ETH sent but collateral is not WETH                                                                                |
@@ -1293,6 +1379,8 @@ listed Comet collateral asset. Its `lendingProtocol()` is the bound Comet.
 | router   | `IncompleteFill(uint256 requested, uint256 received)`            | the exact-output position swap (increase or decrease/close) under-filled (thin pool); the swap is all-or-nothing           |
 | router   | `NoActiveAccount()`                                              | an `execute` plan ran an account-scoped action with no preceding `SET_ACCOUNT`                                            |
 | router   | `UniversalRouterNotSet()`                                        | a `ROUTE_SWAP` (a curated swap or an `execute` route action) named the zero address as its Universal Router              |
+| router   | `UniversalRouterDeltaNotZero(Currency, int256)`                  | a `ROUTE_SWAP` started while the Universal Router already owed the pool in the route's input currency (left by an earlier action or a hook) |
+| router   | `UnboundedRouteAllowance()`                                      | a `ROUTE_SWAP` set `maxIn` to `type(uint160).max`, the one Permit2 allowance that is never decremented, so the spend could not be measured |
 | V4Router | `V4TooMuchRequested(uint256 maxAmountInRequested, uint256 amountRequested)` | an exact-output swap would consume more input than its maximum (a `maxDebtIn` / `maxCollateralIn` below the true swap cost on the curated flows) |
 | V4Router | `V4ExactOutputUnfilled(uint256 amountOutRequested, uint256 amountOutReceived)` | a native v4 exact-output swap (or hop) delivered less than requested, e.g. the pool ran dry before the price limit; exact output is all-or-nothing |
 | V4Router | `V4TooMuchRequestedPerHopSingle(uint256 minPrice, uint256 priceX36)` | a swap's realized per-hop price fell below the caller's `minHopPriceX36` bound                                        |
@@ -1319,6 +1407,11 @@ two same-pair markets on one venue stay distinguishable. The adapters emit no ev
 `Repaid`, `Swept` (account); `AccountCreated` (account factory). Indexers can key on `PositionUpdated`
 for resulting state uniformly across curated and `execute` paths; the `Position*` increase/decrease
 events add the per-operation deltas on the curated path — see §4.1.
+
+`AccountCreated` accompanies a `PositionIncreased` only when that transaction deploys the account: the
+public `createAccount`, `addCollateral`, and an `execute` plan's `SET_ACCOUNT` can all deploy it earlier.
+Classify an open versus an add from the position's prior debt (the event's resulting `debtTotal` minus
+`debtDrawn`), not from the factory event.
 
 Event-field caveats:
 

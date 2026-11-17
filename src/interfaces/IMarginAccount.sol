@@ -142,10 +142,17 @@ interface IMarginAccount {
     /// @param to The recipient address; must be the manager or owner.
     function sweep(Currency currency, uint256 amount, address to) external;
 
-    /// @notice Owner-only escape hatch. Runs an adapter-encoded call against the adapter's lending
-    ///         protocol as this account, so the owner can always close a position or recover funds
-    ///         without involving the manager. The call target is the adapter's `lendingProtocol()`.
-    /// @dev Callable only by the owner (not the manager).
+    /// @notice Owner-only escape hatch. Forwards a raw call to the adapter's `lendingProtocol()` as
+    ///         this account, so the owner can act on the venue without involving the manager. The call
+    ///         target is the adapter's `lendingProtocol()`.
+    /// @dev Callable only by the owner (not the manager). It grants no token allowance: a call that
+    ///      pulls tokens from the account (a repay or a supply) reverts at the venue unless the
+    ///      allowance already exists. Calls that move nothing in from the account, such as a
+    ///      withdraw, a borrow, or a collateral flag change, work as they are. To run a venue call
+    ///      that does need an allowance, use `repay` or `supplyCollateral` with an adapter whose
+    ///      `lendingProtocol()` is the venue and whose encoder returns the raw call: the adapter
+    ///      argument is caller-chosen, and the account approves the venue for the amount around the
+    ///      call and clears the allowance afterward.
     /// @param adapter The lending adapter whose `lendingProtocol()` is the call target.
     /// @param adapterCall Raw calldata to forward to the lending protocol.
     /// @return result The raw bytes returned by the lending protocol call.

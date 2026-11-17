@@ -48,9 +48,14 @@ import {PositionData} from "./types/PositionData.sol";
 ///         reaches only the caller's own account (see `MarginAccount`). The supported venues list
 ///         standard ERC-20 markets (no fee-on-transfer or rebasing tokens), under which every curated
 ///         flow (the fixed plan behind `increasePosition`, `decreasePosition`, or `addCollateral`, as
-///         opposed to a plan the caller builds for `execute`) nets to zero with no router residual by
-///         construction; a non-standard token fails the flows' fill and settle assertions rather than
-///         leaving a residual.
+///         opposed to a plan the caller builds for `execute`) nets its own token movements to zero on
+///         the router; a non-standard token fails the flows' fill and settle assertions rather than
+///         leaving a residual. That covers what the flow itself moves. Anything a third party sends
+///         to the router, or a hook or route pays to the router as the swapper (a curated route runs
+///         under the router's own address, so a payout addressed to the swapper lands here), is not
+///         part of the flow and stays on the router until someone sweeps it: `SWEEP` is permissionless,
+///         and a caller whose route earns such a payout collects it with a trailing `execute`
+///         `SWEEP` in the same `multicall`.
 ///
 ///         The `execute` entry point runs an arbitrary caller-supplied plan of the same actions.
 ///         It does not guarantee zero residual: a plan MUST net the router itself (terminate with
@@ -351,8 +356,8 @@ contract MarginRouter is
         // the router is the account manager, so it can supply directly without an unlock
         IMarginAccount(account).supplyCollateral(params.adapter, params.market, amount);
         // best-effort events: no unlock ran, so the PositionUpdated snapshot and CollateralAdded both
-        // come from this one venue read, which can revert (oracle downtime, even on a debt-free Morpho
-        // position). The supply has already completed, so emit both on success and skip both on
+        // come from this one venue read, which can revert (oracle downtime on a position with debt).
+        // The supply has already completed, so emit both on success and skip both on
         // failure rather than roll it back.
         (bool read, PositionData memory position) = _readPosition(params.adapter, params.market, account);
         if (read) {

@@ -17,23 +17,32 @@ pragma solidity 0.8.26;
 ///         market currency and assert the bought output landed in the account (via
 ///         `ASSERT_ACCOUNT_BALANCE`), so a pool/market mismatch cannot reach the lending legs.
 library MarginActions {
-    /// @notice Instructs the account to supply collateral to the lending protocol.
+    /// @notice Instructs the account to supply collateral to the lending protocol. An amount of
+    ///         `0` (`OPEN_DELTA`) supplies the account's whole collateral balance.
     ///         Decoded with `MarginCalldataDecoder.decodeAdapterMarketAmount`.
     uint256 internal constant ACCOUNT_SUPPLY_COLLATERAL = 0x30;
 
-    /// @notice Instructs the account to withdraw collateral from the lending protocol.
+    /// @notice Instructs the account to withdraw collateral from the lending protocol. An amount of
+    ///         `0` (`OPEN_DELTA`) withdraws exactly the router's current collateral delta with the
+    ///         pool, i.e. what the swap owes.
     ///         Decoded with `MarginCalldataDecoder.decodeAdapterMarketAmountReceiver`.
     uint256 internal constant ACCOUNT_WITHDRAW_COLLATERAL = 0x31;
 
-    /// @notice Instructs the account to borrow debt from the lending protocol.
+    /// @notice Instructs the account to borrow debt from the lending protocol. An amount of `0`
+    ///         (`OPEN_DELTA`) borrows exactly the router's current debt-token delta with the pool,
+    ///         i.e. what the swap owes.
     ///         Decoded with `MarginCalldataDecoder.decodeAdapterMarketAmountReceiver`.
     uint256 internal constant ACCOUNT_BORROW = 0x32;
 
-    /// @notice Instructs the account to repay debt to the lending protocol.
+    /// @notice Instructs the account to repay debt to the lending protocol. An amount of `0`
+    ///         (`OPEN_DELTA`) repays the account's whole balance of the debt token and reverts
+    ///         `ZeroAmount` when that balance is empty; `type(uint256).max` repays the full debt,
+    ///         resolved by the adapter in the venue's own terms.
     ///         Decoded with `MarginCalldataDecoder.decodeAdapterMarketAmount`.
     uint256 internal constant ACCOUNT_REPAY = 0x33;
 
-    /// @notice Instructs the account to sweep a token balance to a recipient.
+    /// @notice Instructs the account to sweep a token balance to a recipient. The amount is literal:
+    ///         `0` sweeps nothing.
     ///         Decoded with `MarginCalldataDecoder.decodeSweep`.
     uint256 internal constant ACCOUNT_SWEEP = 0x34;
 
@@ -56,8 +65,8 @@ library MarginActions {
 
     /// @notice Transfers a token into the active account: pulled from the caller via Permit2 when
     ///         `payerIsUser` is true, or moved from the router's own balance when false. Enables
-    ///         repay-from-wallet and native-equity flows. Unlike other opcodes, an encoded `0`
-    ///         amount reverts rather than resolving to a full-balance sentinel (`OPEN_DELTA`);
+    ///         repay-from-wallet and native-equity flows. An encoded `0` amount reverts `ZeroAmount`
+    ///         (the account-scoped opcodes above resolve `0` per opcode instead);
     ///         `CONTRACT_BALANCE` is honored only on the router-balance path. Decoded with
     ///         `MarginCalldataDecoder.decodePull`.
     uint256 internal constant PULL_TO_ACCOUNT = 0x38;
@@ -78,7 +87,8 @@ library MarginActions {
     uint256 internal constant ROUTE_SWAP = 0x39;
 
     /// @notice Asserts that the active account's ABSOLUTE balance of a currency is at least a
-    ///         minimum, reverting `IncompleteFill` otherwise. A floor, not a fill delta: any balance
+    ///         minimum, reverting `IncompleteFill` otherwise. A `0` minimum always passes. A floor,
+    ///         not a fill delta: any balance
     ///         the account already holds counts toward the minimum. The router's fixed flows turn it into a
     ///         swap-delta guarantee by setting the minimum to the account's pre-unlock balance plus
     ///         the amount the route must deliver; a hand-built plan gets a delta guarantee only from
