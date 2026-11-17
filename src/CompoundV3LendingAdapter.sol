@@ -248,8 +248,8 @@ contract CompoundV3LendingAdapter is ILendingAdapter, PositionAmountResolver {
             maxLtv: toLtv(liquidateCollateralFactor),
             currentLtv: _ltv(debtValue, collateralValue),
             // maxLtv / currentLtv == liquidateCF * collateralValue / debtValue (WAD). Guard on
-            // debtValue (the divisor), not the raw debt amount: a dust debt whose USD value rounds
-            // down to zero is non-zero as a raw amount but would still divide by zero here.
+            // debtValue (the divisor), not the raw debt amount: a debt valued at zero (a feed
+            // reporting a zero price) is non-zero as a raw amount but would still divide by zero here.
             healthFactorWad: debtValue == 0
                 ? type(uint256).max
                 : Math.mulDiv(collateralValue, liquidateCollateralFactor, debtValue)
