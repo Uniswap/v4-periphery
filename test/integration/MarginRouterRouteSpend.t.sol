@@ -234,6 +234,41 @@ contract MarginRouterRouteSpendTest is RoutingTestHelpers, MarginRouteHelpers, D
         assertEq(_balance(debt, address(marginRouter)), 0, "nothing stranded on the router");
     }
 
+    // ──────────────────────────────────── Inventory-capped take ─────────────────────────────────
+
+    /// @notice A `maxIn` above everything the PoolManager holds no longer blocks a route that needs
+    ///         only a fraction of it: the flash-take and the Permit2 allowance are capped at the
+    ///         inventory, and the position borrows the actual cost.
+    function test_increase_maxInAboveInventory_isCappedNotBlocked() public {
+        uint128 hugeMaxIn = 1e30;
+        assertLt(_balance(debt, address(manager)), hugeMaxIn, "sanity: maxIn exceeds the pool inventory");
+        address account = marginRouter.accountOf(address(this), 0);
+        MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, debt, collateral, BUY, hugeMaxIn, account);
+
+        marginRouter.increasePosition(
+            IMarginRouter.IncreaseParams({
+                adapter: adapter,
+                market: market,
+                equity: 0,
+                collateralToBuy: BUY,
+                maxDebtIn: hugeMaxIn,
+                universalRouter: ur,
+                routeCommands: cmds,
+                routeInputs: ins,
+                maxLtvAfter: Ltv.wrap(0),
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+
+        assertEq(protocol.collateralOf(account), 1 ether + BUY, "collateral bought");
+        assertGe(protocol.debtOf(account), BUY, "debt covers the purchase");
+        assertLt(protocol.debtOf(account), 3 ether, "debt is the actual cost");
+        assertEq(_balance(debt, address(marginRouter)), 0, "router nets to zero");
+    }
+
     // ─────────────────────────────────────── Full close ─────────────────────────────────────────
 
     /// @notice A full close whose route sends its unspent collateral to the account returns that

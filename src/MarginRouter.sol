@@ -587,7 +587,8 @@ contract MarginRouter is
     ///        Router is supplied per call (not a router immutable) so callers pick the UR deployment
     ///        their route targets; it must be non-zero and carry already-unlocked `V4_SWAP` support.
     ///        `maxIn` must be below `type(uint160).max`, the one Permit2 allowance that is never
-    ///        decremented.
+    ///        decremented. The flash-take and the allowance are capped at the PoolManager's balance of
+    ///        the input, so a `maxIn` above that inventory bounds the route without blocking it.
     function _routeSwap(bytes calldata params) private {
         (address universalRouter, Currency input, uint256 maxIn, bytes memory commands, bytes[] memory inputs) =
             params.decodeRouteSwap();
@@ -601,15 +602,19 @@ contract MarginRouter is
         int256 routerDelta = poolManager.currencyDelta(universalRouter, input);
         if (routerDelta != 0) revert UniversalRouterDeltaNotZero(input, routerDelta);
 
-        // 1. flash-borrow up to `maxIn` of the input from the PoolManager; the router now owes it
-        _take(input, address(this), maxIn);
+        // 1. flash-borrow up to `maxIn` of the input from the PoolManager, but never more than it holds:
+        //    a route that needs less than the whole inventory should not fail because a generous
+        //    `maxIn` asked for more than exists. The router now owes what it took.
+        uint256 funded = input.balanceOf(address(poolManager));
+        if (maxIn < funded) funded = maxIn;
+        _take(input, address(this), funded);
 
         // 2. fund the Universal Router to pull exactly what it spends, via a Permit2 allowance scoped
         //    to this call (approve the token to Permit2 once, lazily)
-        if (IERC20(token).allowance(address(this), address(permit2)) < maxIn) {
+        if (IERC20(token).allowance(address(this), address(permit2)) < funded) {
             IERC20(token).forceApprove(address(permit2), type(uint256).max);
         }
-        permit2.approve(token, universalRouter, maxIn.toUint160(), uint48(block.timestamp));
+        permit2.approve(token, universalRouter, funded.toUint160(), uint48(block.timestamp));
 
         // snapshots taken at the last moment before the route, so a balance that was already there
         // (anyone can send tokens to the router or the account) is never mistaken for the route's own
@@ -626,7 +631,7 @@ contract MarginRouter is
         //    much the route pulled from the router. The allowance expires on its own only after this
         //    block, so it is read now and cleared below
         (uint160 remaining,,) = permit2.allowance(address(this), token, universalRouter);
-        uint256 pulled = maxIn - remaining;
+        uint256 pulled = funded - remaining;
 
         // a route that sent its change to the active account rather than back to the router leaves it
         // idle there (and, unrepatriated, would leave the router owing the whole cap), so bring the
@@ -644,7 +649,7 @@ contract MarginRouter is
         uint256 routerAfter = input.balanceOfSelf();
         uint256 returned = routerAfter + pulled > routerBefore ? routerAfter + pulled - routerBefore : 0;
         uint256 leftover = returned < pulled ? returned : pulled;
-        _settle(input, address(this), maxIn - pulled + leftover);
+        _settle(input, address(this), funded - pulled + leftover);
 
         // 6. clear the scoped Permit2 allowance to the caller-supplied Universal Router. Permit2 spends
         //    while block.timestamp <= expiration, so a non-zero residual would stay live for the rest
