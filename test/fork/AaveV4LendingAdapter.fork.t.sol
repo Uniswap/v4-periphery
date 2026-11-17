@@ -181,6 +181,28 @@ contract AaveV4LendingAdapterForkTest is Test, MarginRouteHelpers {
         _stageClose(account);
     }
 
+    /// @notice `ACCOUNT_REPAY` with a zero amount repays the account's whole balance of the debt token
+    ///         on the live venue, and reverts `ZeroAmount` when that balance is empty instead of
+    ///         completing as a no-op.
+    function test_fork_shortEth_accountRepayZero_repaysDebtTokenBalance() public {
+        address account = router.accountOf(address(this), 0);
+        _stageOpen(account);
+        (, uint256 debtBefore) = adapter.positionOf(account, market);
+
+        uint256 funds = debtBefore / 2;
+        deal(WETH, account, funds);
+        router.execute(buildRepayZeroPlan(adapter, market, 0), block.timestamp + 1 hours);
+
+        (, uint256 debtAfter) = adapter.positionOf(account, market);
+        assertApproxEqAbs(debtBefore - debtAfter, funds, 1e3, "debt fell by the account's balance");
+        assertEq(IERC20(WETH).balanceOf(account), 0, "the whole balance was repaid");
+
+        // nothing left to repay: the plan fails loudly on every venue
+        bytes memory plan = buildRepayZeroPlan(adapter, market, 0);
+        vm.expectRevert(IMarginRouter.ZeroAmount.selector);
+        router.execute(plan, block.timestamp + 1 hours);
+    }
+
     /// @notice With no debt in the market the adapter reports a zero LTV without calling the Spoke's
     ///         account-level read, so the mandatory health assertion of a debt-clearing partial
     ///         decrease does not consult the oracle. Checked on the live Spoke with the oracle

@@ -704,8 +704,13 @@ contract MarginRouter is
 
     /// @notice Repays debt to the lending protocol. `type(uint256).max` repays the full debt,
     ///         resolved by the adapter in the venue's own terms (see `ILendingAdapter.encodeRepay`).
+    ///         `OPEN_DELTA` (zero) repays the account's whole balance of the debt token, mirroring the
+    ///         collateral supply, and reverts `ZeroAmount` when that balance is empty: a venue may
+    ///         accept a zero repay as a no-op (Comet does), so the router rejects it uniformly.
     function _repay(bytes calldata params, address account) private {
         (ILendingAdapter adapter, Market memory market, uint256 amount) = params.decodeAdapterMarketAmount();
+        if (amount == ActionConstants.OPEN_DELTA) amount = market.debt.balanceOf(account);
+        if (amount == 0) revert ZeroAmount();
         uint256 repaid = IMarginAccount(account).repay(adapter, market, amount);
         // recorded for the partial decrease, which checks after the unlock that a repay actually
         // happened; execute plans never read it

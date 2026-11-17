@@ -406,6 +406,37 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
         marginRouter.execute(ok.encode(), block.timestamp + 1);
     }
 
+    // ──────────────────────────────── ACCOUNT_REPAY zero amount ─────────────────────────────────
+
+    /// @dev An encoded `0` is the `OPEN_DELTA` form: it repays the account's whole balance of the debt
+    ///      token, mirroring `ACCOUNT_SUPPLY_COLLATERAL`.
+    function test_execute_accountRepay_zeroResolvesToAccountDebtBalance() public {
+        address account = _openViaExecute(0, 1 ether, 2 ether);
+        uint256 owedBefore = protocol.debtOf(account);
+        uint256 repayFunds = owedBefore / 2;
+        MockERC20(Currency.unwrap(debt)).transfer(account, repayFunds);
+
+        Plan memory plan = Planner.init();
+        plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
+        plan = plan.add(MarginActions.ACCOUNT_REPAY, abi.encode(adapter, market, uint256(ActionConstants.OPEN_DELTA)));
+        marginRouter.execute(plan.encode(), block.timestamp + 1);
+
+        assertEq(protocol.debtOf(account), owedBefore - repayFunds, "debt reduced by the account's balance");
+        assertEq(IERC20(Currency.unwrap(debt)).balanceOf(account), 0, "the whole balance was repaid");
+    }
+
+    /// @dev With nothing to repay the zero resolves to nothing and the plan reverts instead of silently
+    ///      doing nothing on a venue that accepts a zero repay.
+    function test_execute_accountRepay_zeroWithEmptyDebtBalance_revertsZeroAmount() public {
+        _openViaExecute(0, 1 ether, 2 ether);
+
+        Plan memory plan = Planner.init();
+        plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
+        plan = plan.add(MarginActions.ACCOUNT_REPAY, abi.encode(adapter, market, uint256(ActionConstants.OPEN_DELTA)));
+        vm.expectRevert(IMarginRouter.ZeroAmount.selector);
+        marginRouter.execute(plan.encode(), block.timestamp + 1);
+    }
+
     function test_execute_assertHealth_passesWhenBoundSatisfied() public {
         address account = _openViaExecute(0, 1 ether, 2 ether);
         // a bound at the reported LTV passes (the check is a strict `>` overflow)

@@ -15,6 +15,9 @@ import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
+import {MarginActions} from "../../src/libraries/MarginActions.sol";
+import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
+import {Market} from "../../src/types/Market.sol";
 
 /// @notice Shared helpers for margin tests that route position swaps through the Universal Router.
 ///         Deploys a UR bound to a local PoolManager and builds the UR command plan for a single-pool
@@ -129,5 +132,23 @@ abstract contract MarginRouteHelpers is Test {
         commands = abi.encodePacked(uint8(Commands.V4_SWAP));
         inputs = new bytes[](1);
         inputs[0] = abi.encode(v4Actions, v4Params);
+    }
+
+    /// @notice An `execute` plan that selects `subId` and runs `ACCOUNT_REPAY` with the zero
+    ///         (`OPEN_DELTA`) amount, which repays the account's whole balance of the debt token.
+    /// @param adapter The lending adapter to repay through.
+    /// @param market The market whose debt is repaid.
+    /// @param subId The sub-account whose account repays.
+    /// @return The ABI-encoded `(actions, params)` unlock data for `execute`.
+    function buildRepayZeroPlan(ILendingAdapter adapter, Market memory market, uint256 subId)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        bytes memory actions = abi.encodePacked(uint8(MarginActions.SET_ACCOUNT), uint8(MarginActions.ACCOUNT_REPAY));
+        bytes[] memory params = new bytes[](2);
+        params[0] = abi.encode(subId);
+        params[1] = abi.encode(adapter, market, uint256(ActionConstants.OPEN_DELTA));
+        return abi.encode(actions, params);
     }
 }
