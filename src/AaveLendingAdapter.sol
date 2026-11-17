@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
+import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -222,7 +223,7 @@ contract AaveLendingAdapter is ILendingAdapter, PositionAmountResolver {
     }
 
     /// @inheritdoc ILendingAdapter
-    /// @dev Computes the current LTV as `totalDebtBase * WAD / totalCollateralBase` from Aave's
+    /// @dev Computes the current LTV as `totalDebtBase * WAD / totalCollateralBase` (rounded up) from Aave's
     ///      account-level `getUserAccountData`, whose totals are denominated in the protocol's USD
     ///      base currency, so the collateral/debt decimal difference of a short needs no special
     ///      handling. Returns `type(uint256).max` (as an `Ltv`) when there is debt but zero
@@ -297,7 +298,8 @@ contract AaveLendingAdapter is ILendingAdapter, PositionAmountResolver {
     /// @return The current LTV as an `Ltv` (WAD, 1e18 == 100%).
     function _currentLtv(uint256 totalDebtBase, uint256 totalCollateralBase) internal pure returns (Ltv) {
         if (totalCollateralBase == 0) return toLtv(totalDebtBase == 0 ? 0 : type(uint256).max);
-        return toLtv(totalDebtBase * Units.WAD / totalCollateralBase);
+        // rounds up so a position at the bound is never certified by a floored ratio
+        return toLtv(Math.mulDiv(totalDebtBase, Units.WAD, totalCollateralBase, Math.Rounding.Ceil));
     }
 
     /// @notice Converts an Aave liquidation threshold (basis points) to a WAD-scaled `Ltv`.

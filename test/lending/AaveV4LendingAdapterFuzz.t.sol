@@ -266,8 +266,8 @@ contract AaveV4LendingAdapterFuzzTest is Test {
 
         ISpoke.UserAccountData memory data = spoke.getUserAccountData(account);
 
-        // LTV = mulDiv(totalDebtValueRay, WAD, totalCollateralValue * RAY)
-        uint256 expected = Math.mulDiv(data.totalDebtValueRay, WAD, data.totalCollateralValue * RAY);
+        // LTV = ceil(totalDebtValueRay * WAD / (totalCollateralValue * RAY))
+        uint256 expected = Math.mulDiv(data.totalDebtValueRay, WAD, data.totalCollateralValue * RAY, Math.Rounding.Ceil);
         assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), expected, "ltv formula mismatch");
     }
 

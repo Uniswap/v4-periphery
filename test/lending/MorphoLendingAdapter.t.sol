@@ -11,6 +11,8 @@ import {
     Market as MorphoMarket
 } from "morpho-blue/interfaces/IMorpho.sol";
 import {MarketParamsLib} from "morpho-blue/libraries/MarketParamsLib.sol";
+import {IOracle} from "morpho-blue/interfaces/IOracle.sol";
+import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {MorphoLendingAdapter} from "../../src/MorphoLendingAdapter.sol";
@@ -18,7 +20,7 @@ import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {PositionAmountResolver} from "../../src/base/PositionAmountResolver.sol";
 import {Call} from "../../src/types/Call.sol";
 import {Market} from "../../src/types/Market.sol";
-import {Ltv} from "../../src/types/Ltv.sol";
+import {Ltv, toLtv} from "../../src/types/Ltv.sol";
 import {MockMorpho} from "../mocks/MockMorpho.sol";
 
 contract MorphoLendingAdapterTest is Test {
@@ -351,5 +353,41 @@ contract MorphoLendingAdapterTest is Test {
     function test_maxLtvWad_returnsMarketLltv() public {
         _create();
         assertEq(Ltv.unwrap(adapter.maxLtvWad(market)), 0.86e18);
+    }
+
+    /// @dev The LTV rounds up, so a position whose unrounded ratio sits a fraction above a bound is over
+    ///      it: with a floored ratio the router's `ASSERT_HEALTH` (`currentLtv > bound`) would pass it.
+    function test_currentLtvWad_roundsUp() public {
+        _create();
+        _seedBorrow(marketParams, account, 1e18, 1e18, 1e18);
+        morpho.setPosition(
+            marketParams.id(), account, Position({supplyShares: 0, borrowShares: 1e18, collateral: 3e18})
+        );
+        vm.mockCall(marketParams.oracle, abi.encodeCall(IOracle.price, ()), abi.encode(uint256(1e36)));
+
+        (, uint256 debt) = adapter.positionOf(account, market);
+        uint256 collateralValue = 3e18;
+        assertGt(debt * 1e18 % collateralValue, 0, "sanity: the exact ratio is fractional");
+        uint256 floored = debt * 1e18 / collateralValue;
+
+        Ltv ltv = adapter.currentLtvWad(account, market);
+        assertEq(Ltv.unwrap(ltv), Math.mulDiv(debt, 1e18, collateralValue, Math.Rounding.Ceil));
+        assertEq(Ltv.unwrap(ltv), floored + 1, "one wad unit above the floored ratio");
+        assertTrue(ltv.gt(toLtv(floored)), "a bound at the floored ratio is exceeded");
+        assertEq(Ltv.unwrap(adapter.describePosition(account, market).currentLtv), Ltv.unwrap(ltv));
+    }
+
+    /// @dev An exact ratio is unchanged by the rounding direction.
+    function test_currentLtvWad_exactRatioIsNotRoundedUp() public {
+        _create();
+        _seedBorrow(marketParams, account, 1e18, 1e18, 1e18);
+        (, uint256 debt) = adapter.positionOf(account, market);
+        // collateral worth exactly twice the debt at a 1:1 oracle price
+        morpho.setPosition(
+            marketParams.id(), account, Position({supplyShares: 0, borrowShares: 1e18, collateral: uint128(2 * debt)})
+        );
+        vm.mockCall(marketParams.oracle, abi.encodeCall(IOracle.price, ()), abi.encode(uint256(1e36)));
+
+        assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0.5e18);
     }
 }

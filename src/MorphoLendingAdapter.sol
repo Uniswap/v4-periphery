@@ -168,7 +168,7 @@ contract MorphoLendingAdapter is ILendingAdapter, PositionAmountResolver {
     }
 
     /// @inheritdoc ILendingAdapter
-    /// @dev Computes the current LTV as `debt * WAD / collateralValue`, where `collateralValue` is
+    /// @dev Computes the current LTV as `debt * WAD / collateralValue` rounded up, where `collateralValue` is
     ///      the oracle's price of collateral quoted in the loan token (1e36-scaled). Returns
     ///      `type(uint256).max` (as an `Ltv`) when there is debt but zero collateral value (fully
     ///      undercollateralized). Returns 0 when there is no debt.
@@ -228,7 +228,9 @@ contract MorphoLendingAdapter is ILendingAdapter, PositionAmountResolver {
     /// @return The current LTV as an `Ltv` (WAD, 1e18 == 100%).
     function _ltv(uint256 debt, uint256 collateralValue) internal pure returns (Ltv) {
         if (collateralValue == 0) return toLtv(debt == 0 ? 0 : type(uint256).max);
-        return toLtv(debt * Units.WAD / collateralValue);
+        // rounds up so a position at the bound is never certified by a floored ratio; Morpho's own
+        // `_isHealthy` rounds against the borrower, and the two must agree at `bound == lltv`
+        return toLtv(Math.mulDiv(debt, Units.WAD, collateralValue, Math.Rounding.Ceil));
     }
 
     /// @notice Resolves a market key to the Morpho `MarketParams` it names, reverting unless the

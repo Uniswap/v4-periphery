@@ -11,7 +11,7 @@ import {IComet} from "../../src/interfaces/external/compound-v3/IComet.sol";
 import {PositionAmountResolver} from "../../src/base/PositionAmountResolver.sol";
 import {Call} from "../../src/types/Call.sol";
 import {Market} from "../../src/types/Market.sol";
-import {Ltv} from "../../src/types/Ltv.sol";
+import {Ltv, toLtv} from "../../src/types/Ltv.sol";
 import {PositionData} from "../../src/types/PositionData.sol";
 import {MockComet} from "../mocks/MockComet.sol";
 
@@ -276,6 +276,46 @@ contract CompoundV3LendingAdapterTest is Test {
         comet.setCollateralBalance(account, address(uni), 1_000e18);
         comet.setBorrowBalance(account, 3_500e6);
         assertApproxEqAbs(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0.5e18, 1);
+    }
+
+    /// @dev The LTV rounds up, so a position whose unrounded ratio sits a fraction above a bound is over
+    ///      it: with a floored ratio the router's `ASSERT_HEALTH` (`currentLtv > bound`) would pass it.
+    function test_currentLtvWad_roundsUp() public {
+        // 1000 UNI @ $7 = 7e11 collateral value; 3333.333333 USDC @ $1 = 333333333300 debt value
+        comet.setCollateralBalance(account, address(uni), 1_000e18);
+        comet.setBorrowBalance(account, 3_333_333_333);
+        uint256 collateralValue = 7e11;
+        uint256 debtValue = 333_333_333_300;
+        assertGt(debtValue * WAD % collateralValue, 0, "sanity: the exact ratio is fractional");
+        uint256 floored = debtValue * WAD / collateralValue;
+
+        Ltv ltv = adapter.currentLtvWad(account, market);
+        assertEq(Ltv.unwrap(ltv), floored + 1, "one wad unit above the floored ratio");
+        assertTrue(ltv.gt(toLtv(floored)), "a bound at the floored ratio is exceeded");
+        assertEq(Ltv.unwrap(adapter.describePosition(account, market).currentLtv), Ltv.unwrap(ltv));
+    }
+
+    /// @dev The debt's USD value rounds up (a floor would understate it) while the collateral's rounds
+    ///      down, so the ratio never flatters the position. 1 raw USDC unit is $0.000001, i.e. 100 price
+    ///      units, so use an 18-decimal base to get a fractional debt value.
+    function test_currentLtvWad_debtValuationRoundsUp() public {
+        MockERC20 weth = new MockERC20("Wrapped Ether", "WETH", 18);
+        address wethFeed = makeAddr("wethFeed");
+        MockComet wethComet = new MockComet(address(weth), wethFeed, 1e18);
+        wethComet.registerCollateral(address(uni), uniFeed, 1e18, UNI_BORROW_CF, UNI_LIQUIDATE_CF);
+        wethComet.setPrice(uniFeed, 7 * PRICE_SCALE);
+        wethComet.setPrice(wethFeed, 2_500 * PRICE_SCALE);
+        CompoundV3LendingAdapter wethAdapter = new CompoundV3LendingAdapter(wethComet);
+        Market memory wethMarket =
+            Market({collateral: Currency.wrap(address(uni)), debt: Currency.wrap(address(weth)), data: ""});
+
+        wethComet.setCollateralBalance(account, address(uni), 1_000e18);
+        // 4_000_001 wei * 2500e8 / 1e18 = 1.0000025 price units: floors to 1, ceils to 2
+        wethComet.setBorrowBalance(account, 4_000_001);
+
+        // collateral value 7e11; ceil(2e18 / 7e11) with the ceiled debt value, floor(1e18 / 7e11) without
+        assertEq(Ltv.unwrap(wethAdapter.currentLtvWad(account, wethMarket)), 2_857_143);
+        assertEq(Ltv.unwrap(wethAdapter.describePosition(account, wethMarket).currentLtv), 2_857_143);
     }
 
     function test_currentLtvWad_zeroDebtIsZero() public {

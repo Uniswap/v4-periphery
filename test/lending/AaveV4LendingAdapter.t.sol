@@ -11,7 +11,7 @@ import {ISpoke} from "../../src/interfaces/external/aave-v4/ISpoke.sol";
 import {PositionAmountResolver} from "../../src/base/PositionAmountResolver.sol";
 import {Call} from "../../src/types/Call.sol";
 import {Market} from "../../src/types/Market.sol";
-import {Ltv} from "../../src/types/Ltv.sol";
+import {Ltv, toLtv} from "../../src/types/Ltv.sol";
 import {MockAaveV4Spoke} from "../mocks/MockAaveV4Spoke.sol";
 
 contract AaveV4LendingAdapterTest is Test {
@@ -291,6 +291,23 @@ contract AaveV4LendingAdapterTest is Test {
         spoke.seedSupplied(USDC_RESERVE_ID, account, 10_000e6);
         spoke.seedDebt(WETH_RESERVE_ID, account, 2.5e18);
         assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0.5e18);
+    }
+
+    /// @dev The LTV rounds up, so a position whose unrounded ratio sits a fraction above a bound is over
+    ///      it: with a floored ratio the router's `ASSERT_HEALTH` (`currentLtv > bound`) would pass it.
+    function test_currentLtvWad_roundsUp() public {
+        // $3 of USDC collateral and $1 of WETH debt (5e14 wei at $2000): the exact ratio is 1/3
+        spoke.seedSupplied(USDC_RESERVE_ID, account, 3e6);
+        spoke.seedDebt(WETH_RESERVE_ID, account, 5e14);
+        uint256 debtValue = 1e8;
+        uint256 collateralValue = 3e8;
+        uint256 floored = debtValue * 1e18 / collateralValue;
+        assertGt(debtValue * 1e18 % collateralValue, 0, "sanity: the exact ratio is fractional");
+
+        Ltv ltv = adapter.currentLtvWad(account, market);
+        assertEq(Ltv.unwrap(ltv), floored + 1, "one wad unit above the floored ratio");
+        assertTrue(ltv.gt(toLtv(floored)), "a bound at the floored ratio is exceeded");
+        assertEq(Ltv.unwrap(adapter.describePosition(account, market).currentLtv), Ltv.unwrap(ltv));
     }
 
     function test_currentLtvWad_zeroWhenNoDebt() public {

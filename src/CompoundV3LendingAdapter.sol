@@ -216,7 +216,7 @@ contract CompoundV3LendingAdapter is ILendingAdapter, PositionAmountResolver {
     }
 
     /// @inheritdoc ILendingAdapter
-    /// @dev Current LTV as `borrowValue * WAD / collateralValue`, both valued in USD via Comet's
+    /// @dev Current LTV as `borrowValue * WAD / collateralValue` rounded up, both valued in USD via Comet's
     ///      price feeds (a common 1e8 price scale that cancels in the ratio). Returns
     ///      `type(uint256).max` (as an `Ltv`) when there is debt but zero collateral value, and 0 when
     ///      there is no debt.
@@ -279,8 +279,9 @@ contract CompoundV3LendingAdapter is ILendingAdapter, PositionAmountResolver {
         IComet.AssetInfo memory info = _resolve(market);
         collateral = uint256(comet.collateralBalanceOf(account, Currency.unwrap(market.collateral)));
         debt = comet.borrowBalanceOf(account);
-        collateralValue = _usd(collateral, comet.getPrice(info.priceFeed), info.scale);
-        debtValue = _usd(debt, comet.getPrice(baseTokenPriceFeed()), baseScale);
+        // collateral rounds down and debt rounds up, so the valuation never flatters the position
+        collateralValue = _usd(collateral, comet.getPrice(info.priceFeed), info.scale, Math.Rounding.Floor);
+        debtValue = _usd(debt, comet.getPrice(baseTokenPriceFeed()), baseScale, Math.Rounding.Ceil);
         liquidateCollateralFactor = info.liquidateCollateralFactor;
     }
 
@@ -288,9 +289,14 @@ contract CompoundV3LendingAdapter is ILendingAdapter, PositionAmountResolver {
     /// @param amount The asset amount, in the asset's native decimals.
     /// @param price The Comet USD price for the asset (1e8 scale).
     /// @param scale `10 ** assetDecimals` for the asset.
+    /// @param rounding The rounding direction of the division by `scale`.
     /// @return The USD value at Comet's price scale (1e8), full-precision.
-    function _usd(uint256 amount, uint256 price, uint256 scale) internal pure returns (uint256) {
-        return Math.mulDiv(amount, price, scale);
+    function _usd(uint256 amount, uint256 price, uint256 scale, Math.Rounding rounding)
+        internal
+        pure
+        returns (uint256)
+    {
+        return Math.mulDiv(amount, price, scale, rounding);
     }
 
     /// @notice Current LTV from USD debt and collateral values. `type(uint256).max` when there is debt
@@ -300,7 +306,8 @@ contract CompoundV3LendingAdapter is ILendingAdapter, PositionAmountResolver {
     /// @return The current LTV as an `Ltv` (WAD, 1e18 == 100%).
     function _ltv(uint256 debtValue, uint256 collateralValue) internal pure returns (Ltv) {
         if (collateralValue == 0) return toLtv(debtValue == 0 ? 0 : type(uint256).max);
-        return toLtv(Math.mulDiv(debtValue, Units.WAD, collateralValue));
+        // rounds up so a position at the bound is never certified by a floored ratio
+        return toLtv(Math.mulDiv(debtValue, Units.WAD, collateralValue, Math.Rounding.Ceil));
     }
 
     /// @notice Validates a market key against the bound Comet and returns the collateral's asset info

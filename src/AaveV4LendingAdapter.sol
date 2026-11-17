@@ -213,7 +213,7 @@ contract AaveV4LendingAdapter is ILendingAdapter, PositionAmountResolver {
     /// @dev Computes the current LTV from the Spoke's account-level data. `totalCollateralValue` is in
     ///      Value units (USD scaled by the oracle decimals) and `totalDebtValueRay` is the same Value
     ///      units additionally scaled by RAY, so the WAD LTV is
-    ///      `totalDebtValueRay * WAD / (totalCollateralValue * RAY)`. Returns `type(uint256).max` (as
+    ///      `totalDebtValueRay * WAD / (totalCollateralValue * RAY)`, rounded up. Returns `type(uint256).max` (as
     ///      an `Ltv`) when there is debt but zero collateral, and 0 when there is no debt. This is
     ///      ACCOUNT-LEVEL (Spoke-scoped): it equals the position LTV only when the account holds a
     ///      single position on this Spoke. Co-locating multiple Spoke markets under one `(owner, subId)`
@@ -274,8 +274,13 @@ contract AaveV4LendingAdapter is ILendingAdapter, PositionAmountResolver {
         // out with a trailing division rather than folding it into the denominator: a standalone
         // `totalCollateralValue * RAY` is a plain uint256 multiply outside mulDiv's full-precision path
         // and would overflow for a large collateral value. mulDiv here cannot overflow, and the LTV is
-        // recovered exactly by the final RAY division.
-        return toLtv(Math.mulDiv(data.totalDebtValueRay, Units.WAD, data.totalCollateralValue) / Units.RAY);
+        // recovered by the final RAY division. Both divisions round up (ceil of a ceil is the ceil of
+        // the quotient), so a position at the bound is never certified by a floored ratio.
+        return toLtv(
+            Math.ceilDiv(
+                Math.mulDiv(data.totalDebtValueRay, Units.WAD, data.totalCollateralValue, Math.Rounding.Ceil), Units.RAY
+            )
+        );
     }
 
     /// @notice Decodes a market key and validates it against the live Spoke, returning the reserve ids
