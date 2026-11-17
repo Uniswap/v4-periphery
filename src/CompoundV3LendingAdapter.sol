@@ -219,7 +219,8 @@ contract CompoundV3LendingAdapter is ILendingAdapter, PositionAmountResolver {
     /// @dev Current LTV as `borrowValue * WAD / collateralValue` rounded up, both valued in USD via Comet's
     ///      price feeds (a common 1e8 price scale that cancels in the ratio). Returns
     ///      `type(uint256).max` (as an `Ltv`) when there is debt but zero collateral value, and 0 when
-    ///      there is no debt.
+    ///      there is no debt, without reading either price feed: Comet itself treats a non-negative
+    ///      base principal as collateralized without pricing.
     function currentLtvWad(address account, Market calldata market) external view returns (Ltv) {
         (,, uint256 debtValue, uint256 collateralValue,) = _positionValues(account, market);
         return _ltv(debtValue, collateralValue);
@@ -262,8 +263,10 @@ contract CompoundV3LendingAdapter is ILendingAdapter, PositionAmountResolver {
     /// @param market The market key; validated by `_resolve`.
     /// @return collateral The account's supplied collateral, in the collateral token's native decimals.
     /// @return debt The account's accrued base borrow, in the base token's native decimals.
-    /// @return debtValue The base debt valued in USD (Comet price scale).
-    /// @return collateralValue The collateral valued in USD (Comet price scale).
+    /// @return debtValue The base debt valued in USD (Comet price scale). Zero when there is no debt.
+    /// @return collateralValue The collateral valued in USD (Comet price scale). Zero when there is
+    ///         no debt, in which case neither price feed is read: no consumer needs a value for a
+    ///         debt-free position, and a feed outage must not block one.
     /// @return liquidateCollateralFactor The collateral's liquidation collateral factor (WAD).
     function _positionValues(address account, Market calldata market)
         internal
@@ -279,10 +282,11 @@ contract CompoundV3LendingAdapter is ILendingAdapter, PositionAmountResolver {
         IComet.AssetInfo memory info = _resolve(market);
         collateral = uint256(comet.collateralBalanceOf(account, Currency.unwrap(market.collateral)));
         debt = comet.borrowBalanceOf(account);
+        liquidateCollateralFactor = info.liquidateCollateralFactor;
+        if (debt == 0) return (collateral, debt, 0, 0, liquidateCollateralFactor);
         // collateral rounds down and debt rounds up, so the valuation never flatters the position
         collateralValue = _usd(collateral, comet.getPrice(info.priceFeed), info.scale, Math.Rounding.Floor);
         debtValue = _usd(debt, comet.getPrice(baseTokenPriceFeed()), baseScale, Math.Rounding.Ceil);
-        liquidateCollateralFactor = info.liquidateCollateralFactor;
     }
 
     /// @notice Values `amount` of an asset in USD at Comet's price scale: `amount * price / scale`.

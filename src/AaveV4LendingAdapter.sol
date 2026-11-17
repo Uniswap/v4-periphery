@@ -231,15 +231,17 @@ contract AaveV4LendingAdapter is ILendingAdapter, PositionAmountResolver {
     ///      Value units (USD scaled by the oracle decimals) and `totalDebtValueRay` is the same Value
     ///      units additionally scaled by RAY, so the WAD LTV is
     ///      `totalDebtValueRay * WAD / (totalCollateralValue * RAY)`, rounded up. Returns `type(uint256).max` (as
-    ///      an `Ltv`) when there is debt but zero collateral, and 0 when there is no debt. This is
-    ///      ACCOUNT-LEVEL (Spoke-scoped): it equals the position LTV only when the account holds a
+    ///      an `Ltv`) when there is debt but zero collateral, and 0 when the account has no debt in
+    ///      this market's debt reserve, checked before `getUserAccountData` so no price is consulted
+    ///      (the Spoke needs none to exit a debt-free position). This is ACCOUNT-LEVEL (Spoke-scoped): it equals the position LTV only when the account holds a
     ///      single position on this Spoke. Co-locating multiple Spoke markets under one `(owner, subId)`
     ///      blends every reserve into these totals. The router does NOT enforce one position per
     ///      account; callers must use a distinct `subId` per Spoke position.
     /// @param market Must resolve on the Spoke (only the key is validated; the account's full Spoke
     ///        position determines the totals).
     function currentLtvWad(address account, Market calldata market) external view returns (Ltv) {
-        _resolve(market);
+        (, uint256 debtReserveId) = _resolve(market);
+        if (spoke.getUserTotalDebt(debtReserveId, account) == 0) return toLtv(0);
         ISpoke.UserAccountData memory data = spoke.getUserAccountData(account);
         return _currentLtv(data);
     }

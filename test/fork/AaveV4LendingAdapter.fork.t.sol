@@ -181,6 +181,32 @@ contract AaveV4LendingAdapterForkTest is Test, MarginRouteHelpers {
         _stageClose(account);
     }
 
+    /// @notice With no debt in the market the adapter reports a zero LTV without calling the Spoke's
+    ///         account-level read, so the mandatory health assertion of a debt-clearing partial
+    ///         decrease does not consult the oracle. Checked on the live Spoke with the oracle
+    ///         reverting. A partial decrease as a whole still needs the oracle on Aave v4, because the
+    ///         Spoke's own partial `withdraw` prices every reserve flagged as collateral; the full
+    ///         close, which clears the flag first, is the oracle-independent exit.
+    function test_fork_shortEth_currentLtv_zeroDebt_doesNotPriceDuringOracleOutage() public {
+        address account = router.accountOf(address(this), 0);
+        _stageOpen(account);
+
+        // clear the debt out of band: the owner repays it directly through the account
+        (, uint256 debt) = adapter.positionOf(account, market);
+        deal(WETH, account, debt + 1 ether);
+        MarginAccount(payable(account)).repay(adapter, market, type(uint256).max);
+        (uint256 collateral, uint256 debtAfter) = adapter.positionOf(account, market);
+        assertEq(debtAfter, 0, "debt cleared");
+        assertGt(collateral, 0, "collateral still supplied");
+
+        vm.etch(EXPECTED_ORACLE, hex"60006000fd");
+        ISpoke spoke = ISpoke(MAIN_SPOKE);
+        vm.expectRevert();
+        spoke.getUserAccountData(account);
+
+        assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0, "zero LTV without pricing");
+    }
+
     // -------------------------------------------------------------------------
     // Lifecycle stages (split to keep locals-per-frame low: tests compile without via_ir)
     // -------------------------------------------------------------------------

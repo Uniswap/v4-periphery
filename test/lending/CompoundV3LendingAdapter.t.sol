@@ -318,6 +318,29 @@ contract CompoundV3LendingAdapterTest is Test {
         assertEq(Ltv.unwrap(wethAdapter.describePosition(account, wethMarket).currentLtv), 2_857_143);
     }
 
+    /// @dev A debt-free position needs no price: neither feed is read, so a feed outage cannot block it.
+    function test_currentLtvWad_zeroDebt_doesNotReadPriceFeeds() public {
+        comet.setCollateralBalance(account, address(uni), 1_000e18);
+        vm.mockCallRevert(address(comet), abi.encodeWithSelector(IComet.getPrice.selector), "feed down");
+
+        assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0);
+        PositionData memory data = adapter.describePosition(account, market);
+        assertEq(data.collateralAmount, 1_000e18);
+        assertEq(Ltv.unwrap(data.currentLtv), 0);
+        assertEq(data.healthFactorWad, type(uint256).max);
+        assertEq(Ltv.unwrap(data.maxLtv), UNI_LIQUIDATE_CF);
+    }
+
+    /// @dev With debt outstanding the feeds are still needed, so an outage still surfaces.
+    function test_currentLtvWad_withDebt_readsPriceFeeds() public {
+        comet.setCollateralBalance(account, address(uni), 1_000e18);
+        comet.setBorrowBalance(account, 1e6);
+        vm.mockCallRevert(address(comet), abi.encodeWithSelector(IComet.getPrice.selector), "feed down");
+
+        vm.expectRevert("feed down");
+        adapter.currentLtvWad(account, market);
+    }
+
     function test_currentLtvWad_zeroDebtIsZero() public {
         comet.setCollateralBalance(account, address(uni), 1_000e18);
         assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0);

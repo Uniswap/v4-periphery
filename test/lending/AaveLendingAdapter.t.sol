@@ -299,6 +299,24 @@ contract AaveLendingAdapterTest is Test {
         assertEq(Ltv.unwrap(adapter.describePosition(account, market).currentLtv), Ltv.unwrap(ltv));
     }
 
+    /// @dev A market with no variable debt needs no price: the debt balance is checked before Aave's
+    ///      account-level read, so an oracle outage cannot block it.
+    function test_currentLtvWad_zeroDebt_doesNotPriceTheAccount() public {
+        _seedPosition(1_000e6, 0);
+        vm.mockCallRevert(address(pool), abi.encodeWithSelector(IPool.getUserAccountData.selector), "oracle down");
+
+        assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0);
+    }
+
+    /// @dev With variable debt outstanding Aave's pricing is still needed, so an outage still surfaces.
+    function test_currentLtvWad_withDebt_pricesTheAccount() public {
+        _seedPosition(1_000e6, 0.3e18);
+        vm.mockCallRevert(address(pool), abi.encodeWithSelector(IPool.getUserAccountData.selector), "oracle down");
+
+        vm.expectRevert("oracle down");
+        adapter.currentLtvWad(account, market);
+    }
+
     function test_currentLtvWad_zeroWhenNoDebt() public {
         _seedPosition(1_000e6, 0);
         assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0);

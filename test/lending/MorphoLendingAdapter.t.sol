@@ -21,6 +21,7 @@ import {PositionAmountResolver} from "../../src/base/PositionAmountResolver.sol"
 import {Call} from "../../src/types/Call.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Ltv, toLtv} from "../../src/types/Ltv.sol";
+import {PositionData} from "../../src/types/PositionData.sol";
 import {MockMorpho} from "../mocks/MockMorpho.sol";
 
 contract MorphoLendingAdapterTest is Test {
@@ -375,6 +376,30 @@ contract MorphoLendingAdapterTest is Test {
         assertEq(Ltv.unwrap(ltv), floored + 1, "one wad unit above the floored ratio");
         assertTrue(ltv.gt(toLtv(floored)), "a bound at the floored ratio is exceeded");
         assertEq(Ltv.unwrap(adapter.describePosition(account, market).currentLtv), Ltv.unwrap(ltv));
+    }
+
+    /// @dev A debt-free position needs no price: the LTV is zero and `describePosition` reports a maximal
+    ///      health factor without reading the oracle, so an oracle outage cannot block the position.
+    function test_currentLtvWad_zeroDebt_doesNotReadOracle() public {
+        _create();
+        morpho.setPosition(marketParams.id(), account, Position({supplyShares: 0, borrowShares: 0, collateral: 3e18}));
+        vm.mockCallRevert(marketParams.oracle, abi.encodeCall(IOracle.price, ()), "oracle outage");
+
+        assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0);
+        PositionData memory data = adapter.describePosition(account, market);
+        assertEq(data.collateralAmount, 3e18);
+        assertEq(Ltv.unwrap(data.currentLtv), 0);
+        assertEq(data.healthFactorWad, type(uint256).max);
+    }
+
+    /// @dev With debt outstanding the price is still needed, so an outage still surfaces.
+    function test_currentLtvWad_withDebt_readsOracle() public {
+        _create();
+        _seedBorrow(marketParams, account, 1e18, 1e18, 1e18);
+        vm.mockCallRevert(marketParams.oracle, abi.encodeCall(IOracle.price, ()), "oracle outage");
+
+        vm.expectRevert("oracle outage");
+        adapter.currentLtvWad(account, market);
     }
 
     /// @dev An exact ratio is unchanged by the rounding direction.

@@ -227,7 +227,9 @@ contract AaveLendingAdapter is ILendingAdapter, PositionAmountResolver {
     ///      account-level `getUserAccountData`, whose totals are denominated in the protocol's USD
     ///      base currency, so the collateral/debt decimal difference of a short needs no special
     ///      handling. Returns `type(uint256).max` (as an `Ltv`) when there is debt but zero
-    ///      collateral, and 0 when there is no debt. This is ACCOUNT-LEVEL: it equals the position LTV
+    ///      collateral, and 0 when the account has no variable debt in this market's debt reserve,
+    ///      checked before `getUserAccountData` so no price is consulted (Aave needs none to exit a
+    ///      debt-free position). This is ACCOUNT-LEVEL: it equals the position LTV
     ///      only when the account holds a single Aave position on this Pool. Co-locating multiple Aave
     ///      markets under one `(owner, subId)`, or supplying/borrowing extra reserves via the owner
     ///      escape hatch, blends every reserve into these totals. The router does NOT enforce one
@@ -235,7 +237,8 @@ contract AaveLendingAdapter is ILendingAdapter, PositionAmountResolver {
     /// @param market Must name two live reserves (only the key is validated; the account's full Aave
     ///        position determines the totals).
     function currentLtvWad(address account, Market calldata market) external view returns (Ltv) {
-        _resolve(market);
+        (, address vDebt) = _resolve(market);
+        if (IERC20(vDebt).balanceOf(account) == 0) return toLtv(0);
         (uint256 totalCollateralBase, uint256 totalDebtBase,,,,) = pool.getUserAccountData(account);
         return _currentLtv(totalDebtBase, totalCollateralBase);
     }

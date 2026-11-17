@@ -132,6 +132,44 @@ contract AaveLendingAdapterForkTest is Test, MarginRouteHelpers {
         _stageClose(account);
     }
 
+    /// @notice A partial decrease that repays the whole variable debt does not need Aave's price
+    ///         oracle. Aave runs its health check on a withdrawal only while the account is
+    ///         borrowing, and the adapter reports a zero LTV for a market with no variable debt without
+    ///         calling `getUserAccountData`, so with the oracle reverting the mandatory health
+    ///         assertion still passes and the collateral that was not sold stays supplied.
+    function test_fork_shortEth_partialDecreaseClearingAllDebt_succeedsDuringOracleOutage() public {
+        address account = router.accountOf(address(this), 0);
+        _stageOpen(account);
+        (uint256 collBefore, uint256 debtBefore) = adapter.positionOf(account, market);
+
+        vm.etch(PROVIDER.getPriceOracle(), hex"60006000fd");
+        IPool aavePool = IPool(PROVIDER.getPool());
+        vm.expectRevert();
+        aavePool.getUserAccountData(account);
+
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.collateral, market.debt, uint128(debtBefore), 3000e6, account);
+        router.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                adapter: adapter,
+                market: market,
+                debtToRepay: debtBefore,
+                maxCollateralIn: 3000e6,
+                universalRouter: ur,
+                routeCommands: cmds,
+                routeInputs: ins,
+                maxLtvAfter: toLtv(0.7e18),
+                subId: 0,
+                deadline: block.timestamp + 1 hours
+            })
+        );
+
+        (uint256 collAfter, uint256 debtAfter) = adapter.positionOf(account, market);
+        assertEq(debtAfter, 0, "decrease: all variable debt repaid");
+        assertLt(collAfter, collBefore, "decrease: collateral sold to fund the repay");
+        assertGt(collAfter, 0, "decrease: unsold collateral remains");
+    }
+
     // -------------------------------------------------------------------------
     // Lifecycle stages (split to keep locals-per-frame low: tests compile without via_ir)
     // -------------------------------------------------------------------------

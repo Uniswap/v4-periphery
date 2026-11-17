@@ -202,6 +202,42 @@ contract MarginRouterE2EForkTest is Test, MarginRouteHelpers {
         _assertNoDustRouter();
     }
 
+    /// @notice A partial decrease that repays the whole debt does not need the market oracle. Morpho
+    ///         itself treats a position with no borrow as healthy before reading the oracle, and the
+    ///         adapter reports a zero LTV for it without pricing, so with the oracle reverting the
+    ///         mandatory health assertion still passes and the collateral that was not sold stays put.
+    function test_fork_e2e_partialDecreaseClearingAllDebt_succeedsDuringOracleOutage() public {
+        address account = router.accountOf(address(this), 0);
+        _stageOpen(account);
+        (uint256 collBefore, uint256 debtBefore) = adapter.positionOf(account, market);
+
+        vm.etch(ORACLE, hex"60006000fd");
+        vm.expectRevert();
+        IOracle(ORACLE).price();
+
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.collateral, market.debt, uint128(debtBefore), 2 ether, account);
+        router.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                adapter: adapter,
+                market: market,
+                debtToRepay: debtBefore,
+                maxCollateralIn: 2 ether,
+                universalRouter: ur,
+                routeCommands: cmds,
+                routeInputs: ins,
+                maxLtvAfter: toLtv(0.7e18),
+                subId: 0,
+                deadline: block.timestamp + 1 hours
+            })
+        );
+
+        (uint256 collAfter, uint256 debtAfter) = adapter.positionOf(account, market);
+        assertEq(debtAfter, 0, "decrease: all debt repaid");
+        assertLt(collAfter, collBefore, "decrease: collateral sold to fund the repay");
+        assertGt(collAfter, 0, "decrease: unsold collateral remains");
+    }
+
     // -------------------------------------------------------------------------
     // Lifecycle stages (split to keep locals-per-frame low: tests compile without via_ir)
     // -------------------------------------------------------------------------

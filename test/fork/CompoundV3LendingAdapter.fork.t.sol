@@ -207,6 +207,67 @@ contract CompoundV3LendingAdapterForkTest is Test, MarginRouteHelpers {
         _assertNoDust(account);
     }
 
+    /// @notice A partial decrease that repays the whole borrow does not need Comet's price feeds. Comet
+    ///         treats a non-negative base principal as collateralized without pricing, and the adapter
+    ///         reports a zero LTV for a debt-free position without reading either feed, so with both
+    ///         feeds reverting the mandatory health assertion still passes and the collateral that was
+    ///         not sold stays supplied.
+    function test_fork_compound_partialDecreaseClearingAllDebt_succeedsDuringPriceFeedOutage() public {
+        address account = router.accountOf(address(this), 0);
+        deal(UNI, account, 1_000e18);
+        {
+            (bytes memory cmds, bytes[] memory ins) =
+                buildV4ExactOutRoute(poolKey, market.debt, market.collateral, 1_000e18, 20_000e6, account);
+            router.increasePosition(
+                IMarginRouter.IncreaseParams({
+                    adapter: adapter,
+                    market: market,
+                    equity: 0,
+                    collateralToBuy: 1_000e18,
+                    maxDebtIn: 20_000e6,
+                    universalRouter: ur,
+                    routeCommands: cmds,
+                    routeInputs: ins,
+                    maxLtvAfter: Ltv.wrap(0),
+                    subId: 0,
+                    deadline: block.timestamp + 1 hours
+                })
+            );
+        }
+        (uint256 collBefore, uint256 debtBefore) = adapter.positionOf(account, market);
+
+        // both feeds the position's valuation reads now revert
+        vm.etch(COMET.getAssetInfoByAddress(UNI).priceFeed, hex"60006000fd");
+        vm.etch(COMET.baseTokenPriceFeed(), hex"60006000fd");
+        address baseFeed = COMET.baseTokenPriceFeed();
+        vm.expectRevert();
+        COMET.getPrice(baseFeed);
+
+        {
+            (bytes memory cmds, bytes[] memory ins) =
+                buildV4ExactOutRoute(poolKey, market.collateral, market.debt, uint128(debtBefore), 2_000e18, account);
+            router.decreasePosition(
+                IMarginRouter.DecreaseParams({
+                    adapter: adapter,
+                    market: market,
+                    debtToRepay: debtBefore,
+                    maxCollateralIn: 2_000e18,
+                    universalRouter: ur,
+                    routeCommands: cmds,
+                    routeInputs: ins,
+                    maxLtvAfter: toLtv(0.7e18),
+                    subId: 0,
+                    deadline: block.timestamp + 1 hours
+                })
+            );
+        }
+
+        (uint256 collAfter, uint256 debtAfter) = adapter.positionOf(account, market);
+        assertEq(debtAfter, 0, "decrease: borrow fully repaid");
+        assertLt(collAfter, collBefore, "decrease: collateral sold to fund the repay");
+        assertGt(collAfter, 0, "decrease: unsold collateral remains");
+    }
+
     /// @notice A full close after a long idle period (no Comet interaction since the open) still zeroes
     ///         the borrow and withdraws all collateral with no dust. Comet's `borrowBalanceOf` is
     ///         re-accrued to `block.timestamp` in the view, so the close swap and the repay are sized

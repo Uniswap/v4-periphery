@@ -358,6 +358,25 @@ contract AaveV4LendingAdapterTest is Test {
         assertEq(Ltv.unwrap(adapter.describePosition(account, market).currentLtv), Ltv.unwrap(ltv));
     }
 
+    /// @dev A market with no debt needs no price: the debt is checked before the Spoke's account-level
+    ///      read, so an oracle outage cannot block it.
+    function test_currentLtvWad_zeroDebt_doesNotPriceTheAccount() public {
+        spoke.seedSupplied(USDC_RESERVE_ID, account, 1_000e6);
+        vm.mockCallRevert(address(spoke), abi.encodeWithSelector(ISpoke.getUserAccountData.selector), "oracle down");
+
+        assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0);
+    }
+
+    /// @dev With debt outstanding the Spoke's pricing is still needed, so an outage still surfaces.
+    function test_currentLtvWad_withDebt_pricesTheAccount() public {
+        spoke.seedSupplied(USDC_RESERVE_ID, account, 1_000e6);
+        spoke.seedDebt(WETH_RESERVE_ID, account, 0.3e18);
+        vm.mockCallRevert(address(spoke), abi.encodeWithSelector(ISpoke.getUserAccountData.selector), "oracle down");
+
+        vm.expectRevert("oracle down");
+        adapter.currentLtvWad(account, market);
+    }
+
     function test_currentLtvWad_zeroWhenNoDebt() public {
         spoke.seedSupplied(USDC_RESERVE_ID, account, 1_000e6);
         assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0);
