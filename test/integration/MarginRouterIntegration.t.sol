@@ -15,6 +15,7 @@ import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
+import {MarginAccountFactory} from "../../src/MarginAccountFactory.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Ltv, toLtv} from "../../src/types/Ltv.sol";
 import {PositionData} from "../../src/types/PositionData.sol";
@@ -583,6 +584,61 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
         assertEq(protocol.collateralOf(account), 0, "collateral fully withdrawn");
         assertEq(protocol.debtOf(account), 0, "position empty");
         assertEq(IERC20(Currency.unwrap(collateral)).balanceOf(address(marginRouter)), 0, "router holds no collateral");
+    }
+
+    function _closeZeroDebt() internal {
+        marginRouter.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                debtToRepay: type(uint256).max,
+                maxLtvAfter: Ltv.wrap(0),
+                adapter: adapter,
+                market: market,
+                maxCollateralIn: 0,
+                universalRouter: ur,
+                routeCommands: "",
+                routeInputs: new bytes[](0),
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+    }
+
+    /// @dev Collateral supplied on the venue for the predicted address before the account exists leaves
+    ///      a debt-free position with nothing deployed to withdraw it. The close deploys the account
+    ///      (emitting `AccountCreated`) and returns the collateral.
+    function test_close_zeroDebt_deploysPreFundedUndeployedAccount() public {
+        address account = marginRouter.accountOf(address(this), 0);
+        assertEq(account.code.length, 0, "account not deployed yet");
+
+        MockERC20(Currency.unwrap(collateral)).approve(address(protocol), 3 ether);
+        protocol.supplyCollateral(account, 3 ether);
+        uint256 callerBefore = IERC20(Currency.unwrap(collateral)).balanceOf(address(this));
+
+        vm.expectEmit(true, true, false, true, address(marginRouter));
+        emit MarginAccountFactory.AccountCreated(address(this), account, 0);
+        _closeZeroDebt();
+
+        assertGt(account.code.length, 0, "account deployed by the close");
+        assertEq(
+            IERC20(Currency.unwrap(collateral)).balanceOf(address(this)) - callerBefore,
+            3 ether,
+            "collateral returned to caller"
+        );
+        assertEq(protocol.collateralOf(account), 0, "collateral fully withdrawn");
+    }
+
+    /// @dev An empty position needs no account, so the zero-debt close leaves it undeployed.
+    function test_close_zeroDebt_emptyUndeployedAccount_staysUndeployed() public {
+        address account = marginRouter.accountOf(address(this), 0);
+
+        vm.recordLogs();
+        _closeZeroDebt();
+
+        assertEq(account.code.length, 0, "empty account is not deployed");
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 i; i < logs.length; i++) {
+            assertTrue(logs[i].topics[0] != MarginAccountFactory.AccountCreated.selector, "no AccountCreated");
+        }
     }
 
     /// @dev The zero-debt full close bypasses the unlock interpreter, so the entry point must emit

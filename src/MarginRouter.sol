@@ -144,7 +144,8 @@ contract MarginRouter is
     /// @notice Full close: repay all, withdraw all, and return the realized collateral plus any debt
     ///         the route over-bought to the caller. A debt-free position (funded only through
     ///         `addCollateral`, repaid out of band, or fully liquidated) needs no swap, so its
-    ///         collateral is withdrawn straight to the caller.
+    ///         collateral is withdrawn straight to the caller, deploying the account first if collateral
+    ///         was supplied to its address before it existed.
     /// @param params The decrease parameters.
     /// @param account The caller's MarginAccount.
     function _closePosition(DecreaseParams calldata params, address account) private {
@@ -152,6 +153,10 @@ contract MarginRouter is
 
         if (debt == 0) {
             if (collateralBefore > 0) {
+                // collateral can be supplied on the venue for the predicted address before the account
+                // exists; deploy it so the withdrawal has an account to call. An empty position needs
+                // no account, so it stays undeployed.
+                if (account.code.length == 0) createAccount(msgSender(), params.subId);
                 IMarginAccount(account).withdrawCollateral(params.adapter, params.market, collateralBefore, msgSender());
             }
             // no unlock ran, so no action handler emitted the snapshot; emit the terminal one here
