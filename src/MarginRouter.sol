@@ -4,6 +4,7 @@ pragma solidity 0.8.26;
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -70,6 +71,7 @@ contract MarginRouter is
     using SafeCast for uint256;
     using CurrencyLibrary for Currency;
     using SafeERC20 for IERC20;
+    using TransientStateLibrary for IPoolManager;
 
     /// @dev Reverts `DeadlinePassed` if `block.timestamp` has passed `deadline`.
     modifier checkDeadline(uint256 deadline) {
@@ -575,6 +577,12 @@ contract MarginRouter is
             params.decodeRouteSwap();
         if (universalRouter == address(0)) revert UniversalRouterNotSet();
         address token = Currency.unwrap(input);
+
+        // the Universal Router runs inside this unlock, so a delta it already carries in the input
+        // currency (left by an earlier action or a v4 hook) would be paid by the route's own SETTLE out
+        // of the caller's maxIn allowance; start the route from a clean slate instead
+        int256 routerDelta = poolManager.currencyDelta(universalRouter, input);
+        if (routerDelta != 0) revert UniversalRouterDeltaNotZero(input, routerDelta);
 
         // snapshot any balance the router already holds in the input currency, so step 4 settles only
         // THIS call's unspent flash-take and never a pre-existing balance. Anyone can inflate that

@@ -104,6 +104,14 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///      be dispatched to the zero address.
     error UniversalRouterNotSet();
 
+    /// @dev Thrown when a `ROUTE_SWAP` starts while the Universal Router already holds a non-zero
+    ///      delta in the route's input currency, for example because an earlier action or a v4 hook
+    ///      left the Universal Router owing the pool. The route's own `SETTLE` (`OPEN_DELTA`) would
+    ///      pay that debt out of the caller's `maxIn` allowance, so the route is refused instead.
+    /// @param currency The route's input currency.
+    /// @param delta The Universal Router's non-zero delta in `currency`.
+    error UniversalRouterDeltaNotZero(Currency currency, int256 delta);
+
     // -------------------------------------------------------------------------
     // Events
     // -------------------------------------------------------------------------
