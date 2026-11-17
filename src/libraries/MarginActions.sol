@@ -67,9 +67,14 @@ library MarginActions {
     ///         input currency from the PoolManager, funds the Universal Router to pull exactly what it
     ///         spends (via a scoped Permit2 allowance), runs the caller-built UR command plan (which
     ///         must deliver the output to the active account), then settles the unspent flash-take
-    ///         back. The router's remaining debt in the input currency then equals exactly what UR
-    ///         spent, so a downstream borrow/settle nets via `OPEN_DELTA` exactly as a native v4 swap
-    ///         would. Decoded with `MarginCalldataDecoder.decodeRouteSwap`.
+    ///         back. What the route spent is what Permit2 pulled from the router; input returned to the
+    ///         router during the call (or, when the plan has an active account, delivered to that
+    ///         account and swept back) is credited against it. The router's remaining debt in the
+    ///         input currency then equals exactly what the route cost, so a downstream borrow/settle
+    ///         nets via `OPEN_DELTA` exactly as a native v4 swap would. A route should return its
+    ///         unspent input to the router (`MSG_SENDER`); in a plan that has no active account yet
+    ///         (before `SET_ACCOUNT`) it must. `maxIn` of `type(uint160).max` is rejected. Decoded
+    ///         with `MarginCalldataDecoder.decodeRouteSwap`.
     uint256 internal constant ROUTE_SWAP = 0x39;
 
     /// @notice Asserts that the active account's ABSOLUTE balance of a currency is at least a

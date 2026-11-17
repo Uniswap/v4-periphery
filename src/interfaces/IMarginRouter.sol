@@ -112,6 +112,11 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     /// @param delta The Universal Router's non-zero delta in `currency`.
     error UniversalRouterDeltaNotZero(Currency currency, int256 delta);
 
+    /// @dev Thrown when a `ROUTE_SWAP` sets `maxIn` to `type(uint160).max`. Permit2 never decrements
+    ///      an allowance of that value, so the router could not measure what the route spent. Use the
+    ///      actual cap instead.
+    error UnboundedRouteAllowance();
+
     // -------------------------------------------------------------------------
     // Events
     // -------------------------------------------------------------------------

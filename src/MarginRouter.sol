@@ -564,18 +564,30 @@ contract MarginRouter is
     }
 
     /// @notice Runs the `ROUTE_SWAP` action: route a swap through the Universal Router (v2/v3/v4)
-    ///         behind a flash-take of the input. Because UR self-settles its own swap, wrapping the
-    ///         call in a flash-take/settle envelope leaves the router owing exactly what UR spent, the
-    ///         same negative delta a native v4 exact-output swap would leave, which a downstream
-    ///         `ACCOUNT_BORROW`/`SETTLE` then nets via `OPEN_DELTA`. Operates only on the router; the
-    ///         caller's route delivers the output to the account bound by `SET_ACCOUNT`.
+    ///         behind a flash-take of the input. The router owes the pool exactly what the route
+    ///         spent, the same negative delta a native v4 exact-output swap would leave, which a
+    ///         downstream `ACCOUNT_BORROW`/`SETTLE` then nets via `OPEN_DELTA`. Operates only on the
+    ///         router; the caller's route delivers the output to the account bound by `SET_ACCOUNT`.
+    /// @dev Spend is what Permit2 actually pulled (`maxIn` minus the allowance left after the call),
+    ///      not an inference from the router's balance, so a pre-funded Universal Router or a route
+    ///      that sends its change elsewhere cannot skew the accounting. Input that came back to the
+    ///      router during the call (the route's change, or a sweep of the Universal Router's own
+    ///      balance) is credited against the spend, capped at the spend so the router's delta can
+    ///      never turn positive. When a plan has an active account, any rise in that account's input
+    ///      balance during the call is the route's change delivered to the account; it is swept back
+    ///      to the router and credited the same way, leaving the account's earlier balance untouched.
+    ///      A plan that runs `ROUTE_SWAP` before `SET_ACCOUNT` has no active account, so a route there
+    ///      must return its change to the router (`MSG_SENDER`).
     /// @param params ABI-encoded `(universalRouter, input, maxIn, commands, inputs)`. The Universal
     ///        Router is supplied per call (not a router immutable) so callers pick the UR deployment
     ///        their route targets; it must be non-zero and carry already-unlocked `V4_SWAP` support.
+    ///        `maxIn` must be below `type(uint160).max`, the one Permit2 allowance that is never
+    ///        decremented.
     function _routeSwap(bytes calldata params) private {
         (address universalRouter, Currency input, uint256 maxIn, bytes memory commands, bytes[] memory inputs) =
             params.decodeRouteSwap();
         if (universalRouter == address(0)) revert UniversalRouterNotSet();
+        if (maxIn == type(uint160).max) revert UnboundedRouteAllowance();
         address token = Currency.unwrap(input);
 
         // the Universal Router runs inside this unlock, so a delta it already carries in the input
@@ -583,13 +595,6 @@ contract MarginRouter is
         // of the caller's maxIn allowance; start the route from a clean slate instead
         int256 routerDelta = poolManager.currencyDelta(universalRouter, input);
         if (routerDelta != 0) revert UniversalRouterDeltaNotZero(input, routerDelta);
-
-        // snapshot any balance the router already holds in the input currency, so step 4 settles only
-        // THIS call's unspent flash-take and never a pre-existing balance. Anyone can inflate that
-        // balance with a plain transfer to the router; folding it into the settle would flip the
-        // router's delta positive (reverting the curated flow) or silently subsidize the position. The
-        // pre-existing balance is left untouched, recoverable through the SWEEP action.
-        uint256 balanceBeforeTake = input.balanceOfSelf();
 
         // 1. flash-borrow up to `maxIn` of the input from the PoolManager; the router now owes it
         _take(input, address(this), maxIn);
@@ -601,18 +606,42 @@ contract MarginRouter is
         }
         permit2.approve(token, universalRouter, maxIn.toUint160(), uint48(block.timestamp));
 
+        // snapshots taken at the last moment before the route, so a balance that was already there
+        // (anyone can send tokens to the router or the account) is never mistaken for the route's own
+        // change; it stays where it is, recoverable through the SWEEP actions
+        address account = TransientPlanState.activeAccount();
+        uint256 accountBefore = account == address(0) ? 0 : input.balanceOf(account);
+        uint256 routerBefore = input.balanceOfSelf();
+
         // 3. run the caller-built route inside this existing unlock (already-unlocked V4_SWAP support);
         //    it delivers the output to the active account and self-settles its own swap
         IUniversalRouter(universalRouter).execute(commands, inputs, block.timestamp);
 
-        // 4. settle only the unspent portion of this call's flash-take (current balance minus what the
-        //    router held before the take), so its remaining input debt equals exactly what UR spent and
-        //    a donated/residual balance can neither flip the delta positive nor subsidize the position
-        uint256 balanceAfter = input.balanceOfSelf();
-        uint256 leftover = balanceAfter > balanceBeforeTake ? balanceAfter - balanceBeforeTake : 0;
-        if (leftover > 0) _settle(input, address(this), leftover);
+        // 4. Permit2 decrements every allowance below the maximum, so what is left says exactly how
+        //    much the route pulled from the router. The allowance expires on its own only after this
+        //    block, so it is read now and cleared below
+        (uint160 remaining,,) = permit2.allowance(address(this), token, universalRouter);
+        uint256 pulled = maxIn - remaining;
 
-        // 5. clear the scoped Permit2 allowance to the caller-supplied Universal Router. Permit2 spends
+        // a route that sent its change to the active account rather than back to the router leaves it
+        // idle there (and, unrepatriated, would leave the router owing the whole cap), so bring the
+        // in-route rise back; the account's own earlier balance is not touched
+        if (account != address(0)) {
+            uint256 accountAfter = input.balanceOf(account);
+            if (accountAfter > accountBefore) {
+                IMarginAccount(account).sweep(input, accountAfter - accountBefore, address(this));
+            }
+        }
+
+        // 5. settle the unspent flash-take plus whatever came back, capped at the spend: the router's
+        //    remaining debt is then what the route really cost, and a pre-funded Universal Router
+        //    swept back to the router can neither flip the delta positive nor subsidize the position
+        uint256 routerAfter = input.balanceOfSelf();
+        uint256 returned = routerAfter + pulled > routerBefore ? routerAfter + pulled - routerBefore : 0;
+        uint256 leftover = returned < pulled ? returned : pulled;
+        _settle(input, address(this), maxIn - pulled + leftover);
+
+        // 6. clear the scoped Permit2 allowance to the caller-supplied Universal Router. Permit2 spends
         //    while block.timestamp <= expiration, so a non-zero residual would stay live for the rest
         //    of the block; zeroing it leaves no spendable allowance to an unvalidated address past this
         //    call.
