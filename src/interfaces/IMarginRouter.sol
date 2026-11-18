@@ -508,9 +508,13 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///            `ASSERT_ACCOUNT_BALANCE` take `0` literally (a zero sweep moves nothing; a zero
     ///            floor always passes), `ASSERT_HEALTH` treats a zero bound as "skip the check", and
     ///            `PULL_TO_ACCOUNT` reverts `ZeroAmount` on `0`. `CONTRACT_BALANCE` is honored only
-    ///            on the router-balance path of `PULL_TO_ACCOUNT`. Native currency is unsupported:
-    ///            wrap to WETH first (on a deployment without WETH9, `WRAP` and `UNWRAP` revert
-    ///            `NativeNotSupported`).
+    ///            on the router-balance path of `PULL_TO_ACCOUNT`. That opcode does not inspect the
+    ///            currency: `address(0)` on the router-balance path forwards native value to the
+    ///            account, which holds it until the owner sweeps it (no adapter takes native
+    ///            collateral), and a currency with no code on the Permit2 path moves nothing while
+    ///            the pull succeeds, because Permit2 does not check for code. Wrap native value to
+    ///            WETH before anything a venue will use (on a deployment without WETH9, `WRAP` and
+    ///            `UNWRAP` revert `NativeNotSupported`).
     ///         7. Signing an `execute` plan is equivalent to handing over the sub-account: a
     ///            malicious plan can borrow to the market maximum, withdraw all collateral, and
     ///            direct everything to an arbitrary address, with no token approval required (the

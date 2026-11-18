@@ -311,7 +311,7 @@ set (swap / settle / take, and `SWEEP` / `WRAP` / `UNWRAP`) plus the margin opco
 | Opcode                       | Purpose                                                                                     |
 | ---------------------------- | ------------------------------------------------------------------------------------------- |
 | `SET_ACCOUNT(subId)`         | Bind the active account for subsequent account-scoped actions. Derived from the authenticated caller and `subId`, never from calldata. May appear multiple times (multi-sub-account plans). |
-| `PULL_TO_ACCOUNT(currency, amount, payerIsUser)` | Move a token into the active account: pulled from the caller via Permit2 (`payerIsUser = true`) or from the router's own balance (`false`). Enables repay-from-wallet and native equity. |
+| `PULL_TO_ACCOUNT(currency, amount, payerIsUser)` | Move a token into the active account: pulled from the caller via Permit2 (`payerIsUser = true`) or from the router's own balance (`false`). Enables repay-from-wallet and native equity (`WRAP` first, then pull from the router's balance). The currency is not inspected; see item 5 below for native value and addresses without code. |
 | `ACCOUNT_SUPPLY_COLLATERAL` / `ACCOUNT_BORROW` | Supply/borrow on the active account with the encoded (caller-chosen) adapter and market. |
 | `ACCOUNT_WITHDRAW_COLLATERAL` / `ACCOUNT_REPAY` / `ACCOUNT_SWEEP` | Withdraw/repay/sweep on the active account. |
 | `ROUTE_SWAP(universalRouter, input, maxIn, commands, inputs)` | Route a swap through the caller-supplied `universalRouter` (a Universal Router carrying already-unlocked `V4_SWAP`; must be non-zero, else `UniversalRouterNotSet`) across v2/v3/v4: flash-take up to `maxIn` of `input` (never more than the PoolManager holds), fund UR via a scoped Permit2 allowance, run the caller-built UR `commands`/`inputs` (which must deliver the output to the active account and self-settle), then settle the unspent take. The spend is what Permit2 pulled from the router (`maxIn` minus the allowance left); input that came back to the router during the call is credited against it, capped at the spend so the delta never turns positive, and any pre-existing router balance is left untouched. **Postcondition: unspent input must return to the margin router in the input currency**; a WETH-through-native route must wrap its change to `MSG_SENDER` (`WRAP_ETH(MSG_SENDER, CONTRACT_BALANCE)`), not to the account. If a route sends its change to the active account anyway, the router sweeps the in-route rise of the account's `input` balance back and credits it; with no active account (a `ROUTE_SWAP` before `SET_ACCOUNT`) nothing is repatriated. Reverts `UniversalRouterDeltaNotZero` if the Universal Router already owes the pool in `input`, and `UnboundedRouteAllowance` for `maxIn == type(uint160).max`. Leaves the same net delta a native v4 swap would, so a following `ACCOUNT_BORROW`/`SETTLE` nets via `OPEN_DELTA`. |
@@ -339,8 +339,12 @@ owes. `ACCOUNT_REPAY` repays the account's whole balance of the debt token and r
 that balance is empty (`type(uint256).max` repays the full debt in the venue's terms). `ACCOUNT_SWEEP`
 and `ASSERT_ACCOUNT_BALANCE` take `0` literally: a zero sweep moves nothing and a zero floor always
 passes. `ASSERT_HEALTH` treats a zero bound as "skip the check", and `PULL_TO_ACCOUNT` reverts
-`ZeroAmount`. `CONTRACT_BALANCE` is honored only on the router-balance path of `PULL_TO_ACCOUNT`;
-native currency is unsupported (wrap to WETH first).
+`ZeroAmount`. `CONTRACT_BALANCE` is honored only on the router-balance path of `PULL_TO_ACCOUNT`.
+That opcode does not inspect the currency: `address(0)` on the router-balance path forwards native
+value to the account, which holds it until the owner sweeps it (no adapter takes native collateral),
+and a currency with no code on the Permit2 path moves nothing while the pull succeeds, because
+Permit2 does not check for code, so a mistyped token address fails only at the next action that
+needs the balance. Wrap native value to WETH before anything a venue will use.
 6. **Events.** Every position mutation (supply, withdraw, borrow, repay) on every router path,
 including inside an `execute` plan and on the unlock-free paths (`addCollateral` and the zero-debt
 swap-free close), emits a `PositionUpdated` snapshot with the market key (`collateral`, `debt`, `marketData`) and the
@@ -1276,8 +1280,10 @@ account changes.
 protocol's responsibility (Morpho Blue, Aave v3, Aave v4, or Compound v3, depending on the adapter);
 the margin layer adds no independent oracle.
 - **ERC-20 only.** Markets must use standard ERC-20 tokens (no fee-on-transfer or rebasing).
-- **Native value is optional and never converted.** The router touches native value only to wrap it
-1:1 through the WETH9 it was deployed with. Where a chain has no such wrapper the router is deployed
+- **Native value is optional and never converted.** The router converts native value only by
+wrapping it 1:1 through the WETH9 it was deployed with; an `execute` plan can also forward it
+unconverted to the caller's own account (`PULL_TO_ACCOUNT` of `address(0)` from the router's
+balance), where it sits until swept. Where a chain has no such wrapper the router is deployed
 without one and refuses native value outright (`NativeNotSupported`), so a native token whose ERC-20
 view uses different decimals (Arc's USDC) can never be credited at the wrong scale.
 

@@ -65,9 +65,13 @@ library MarginActions {
 
     /// @notice Transfers a token into the active account: pulled from the caller via Permit2 when
     ///         `payerIsUser` is true, or moved from the router's own balance when false. Enables
-    ///         repay-from-wallet and native-equity flows. An encoded `0` amount reverts `ZeroAmount`
+    ///         repay-from-wallet and native-equity flows (native value wrapped by a preceding `WRAP`,
+    ///         then moved from the router's balance). An encoded `0` amount reverts `ZeroAmount`
     ///         (the account-scoped opcodes above resolve `0` per opcode instead);
-    ///         `CONTRACT_BALANCE` is honored only on the router-balance path. Decoded with
+    ///         `CONTRACT_BALANCE` is honored only on the router-balance path. The currency is not
+    ///         inspected: `address(0)` on the router-balance path forwards native value to the
+    ///         account, and a currency with no code on the Permit2 path moves nothing while the pull
+    ///         succeeds, as Permit2 does not check for code. Decoded with
     ///         `MarginCalldataDecoder.decodePull`.
     uint256 internal constant PULL_TO_ACCOUNT = 0x38;
 
