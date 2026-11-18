@@ -151,8 +151,11 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///        (the wrapped native amount when funded with ETH). The increase supplies the account's
     ///        FULL collateral balance, so any idle balance the account already held is committed on
     ///        top of this amount; `collateralTotal` reflects the true resulting supply.
-    /// @param collateralBought The collateral purchased by the increase swap, in the collateral
-    ///        token's native decimals.
+    /// @param collateralBought The collateral the route delivered to the account, in the collateral
+    ///        token's native decimals: what the increase supplied minus what the account held going
+    ///        into the unlock (the equity and any idle balance). At least `collateralToBuy`, which the
+    ///        fill check enforces as a floor; more when the route over-delivers, as a hook that adds
+    ///        output or an exact-input route does, since the supply commits the whole delivery.
     /// @param debtDrawn The debt borrowed to fund the swap (the entry notional), in the debt token's
     ///        native decimals.
     /// @param collateralTotal The account's total collateral after the increase.
@@ -291,9 +294,11 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///        Market selection is permissionless, so the caller vets the market it names.
     /// @param equity The amount of collateral the caller contributes as equity, in the collateral
     ///        token's native decimals. Ignored when `msg.value > 0` (native ETH is used instead).
-    /// @param collateralToBuy The exact amount of collateral the route buys (its exact-output amount),
-    ///        in the collateral token's native decimals. The router asserts the account received it, so
-    ///        it must match the `amountOut` encoded in the route.
+    /// @param collateralToBuy The amount of collateral the route buys (its exact-output amount), in
+    ///        the collateral token's native decimals. The router asserts the account received at least
+    ///        this much, so it must match the `amountOut` encoded in the route; a route that delivers
+    ///        more is accepted, the whole delivery is supplied, and `PositionIncreased.collateralBought`
+    ///        reports the delivered amount.
     /// @param maxDebtIn The maximum debt the router flash-takes and lets the Universal Router spend, in
     ///        the debt token's native decimals. Must be non-zero. It is the binding slippage cap (the
     ///        router grants the Universal Router a Permit2 allowance of exactly this much), independent

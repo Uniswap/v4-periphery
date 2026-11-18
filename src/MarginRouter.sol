@@ -112,7 +112,8 @@ contract MarginRouter is
         returns (address account)
     {
         uint256 debtBefore;
-        (account, debtBefore) = _increase(params);
+        uint256 collateralBought;
+        (account, debtBefore, collateralBought) = _increase(params);
         // best-effort rich event: a venue read that reverts (oracle downtime) must not roll back the
         // completed increase, and the PositionUpdated snapshots emitted inside the unlock already
         // carry the resulting state. The debt delta saturates at zero because a permissionless
@@ -126,7 +127,7 @@ contract MarginRouter is
                 params.market.debt,
                 params.market.data,
                 msg.value > 0 ? msg.value : params.equity,
-                params.collateralToBuy,
+                collateralBought,
                 position.debtAmount > debtBefore ? position.debtAmount - debtBefore : 0,
                 position.collateralAmount,
                 position.debtAmount,
@@ -433,7 +434,13 @@ contract MarginRouter is
     /// @return account The caller's MarginAccount address.
     /// @return debtBefore The account's debt before the increase; the caller derives debtDrawn as the
     ///         post-increase debt minus this, correct for both a fresh open and an increase.
-    function _increase(IncreaseParams calldata params) private returns (address account, uint256 debtBefore) {
+    /// @return collateralBought The collateral the route delivered: what the plan's supply committed
+    ///         minus what the account held going into the unlock (equity and any idle balance). The
+    ///         fill floor makes it at least `collateralToBuy`; a route that over-delivers raises it.
+    function _increase(IncreaseParams calldata params)
+        private
+        returns (address account, uint256 debtBefore, uint256 collateralBought)
+    {
         // a zero buy would feed the exact-output swap a zero, which the PoolManager rejects
         if (params.collateralToBuy == 0) revert ZeroAmount();
         if (params.maxDebtIn == 0) revert SlippageBoundRequired();
@@ -501,7 +508,13 @@ contract MarginRouter is
         // A zero bound skips the check, so callers relying on maxDebtIn alone are unaffected.
         actionParams[5] = abi.encode(params.adapter, params.market, params.maxLtvAfter);
 
+        // fail-closed: the plan's ACCOUNT_SUPPLY_COLLATERAL overwrites this with what it supplied
+        TransientPlanState.setLastSupplied(0);
         _unlockAs(account, actions, actionParams);
+        // the supply committed the whole balance, so what the route delivered is the part above the
+        // equity and idle balance held going in; the fill floor makes it at least collateralToBuy
+        uint256 supplied = TransientPlanState.lastSupplied();
+        collateralBought = supplied > collateralHeldBefore ? supplied - collateralHeldBefore : 0;
     }
 
     /// @notice Runs a plan inside one PoolManager unlock with `account` bound as the active account
@@ -694,6 +707,9 @@ contract MarginRouter is
         (ILendingAdapter adapter, Market memory market, uint256 amount) = params.decodeAdapterMarketAmount();
         if (amount == ActionConstants.OPEN_DELTA) amount = market.collateral.balanceOf(account);
         IMarginAccount(account).supplyCollateral(adapter, market, amount);
+        // recorded for the increase, which reports what its route delivered as the supplied amount
+        // minus what the account held going in; execute plans never read it
+        TransientPlanState.setLastSupplied(amount);
         (bool read, PositionData memory position) = _readPosition(adapter, market, account);
         if (read) _emitPosition(market, account, position);
     }
