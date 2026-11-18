@@ -180,9 +180,12 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     );
 
     /// @notice Emitted when a position is reduced or fully closed via `decreasePosition`. A full close
-    ///         is indicated by `debtTotal == 0`, and the residual (realized PnL) returned to the caller
-    ///         is `collateralReturned`. The resulting-state fields let an indexer reconstruct the full
-    ///         position from this one log.
+    ///         (the `type(uint256).max` request) ends with `collateralTotal == 0` and `debtTotal == 0`,
+    ///         and the residual (realized PnL) returned to the caller is `collateralReturned`.
+    ///         `debtTotal` alone does not identify a close: a partial decrease that repays the whole
+    ///         debt also reports `debtTotal == 0` while `collateralTotal` stays positive and the
+    ///         position stays open, so classify a close from `collateralTotal == 0`. The
+    ///         resulting-state fields let an indexer reconstruct the full position from this one log.
     /// @param owner The position owner (the authenticated caller).
     /// @param account The MarginAccount holding the position.
     /// @param collateral The collateral currency of the market.
@@ -199,8 +202,10 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///        close).
     /// @param collateralReturned The collateral returned to the caller, in the collateral token's
     ///        native decimals: zero on a partial decrease, the realized PnL on a full close.
-    /// @param collateralTotal The account's total collateral after the operation (zero on a full close).
-    /// @param debtTotal The account's total debt after the operation (zero on a full close).
+    /// @param collateralTotal The account's total collateral after the operation: zero on a full close,
+    ///        which is what identifies one.
+    /// @param debtTotal The account's total debt after the operation: zero on a full close and also
+    ///        after a partial decrease that repaid the whole debt, so not a close indicator on its own.
     /// @param currentLtv The position's LTV after the operation (WAD, 1e18 == 100%).
     /// @param healthFactorWad The position health factor after the operation (WAD, 1e18 == 1.0).
     event PositionDecreased(
