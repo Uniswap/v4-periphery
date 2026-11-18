@@ -992,13 +992,64 @@ makes the full close oracle-independent. Partial withdrawals are unchanged, so a
 that leaves collateral supplied.
 - **Premium-inclusive debt.** v4 debt is drawn debt plus accrued premium; `positionOf` and the
 full-repay path read `getUserTotalDebt`, and the router's close swap is sized off that figure.
-- **`maxLtvWad`** reads the collateral reserve's `collateralFactor`. v4's true liquidation point also
-depends on the position's risk premium and dynamic config; integrators wanting a strict
-liquidation-distance check should also consult `healthFactor` from the Spoke's `getUserAccountData`.
+- **`maxLtvWad`** reads the collateral reserve's `collateralFactor` from the reserve's newest dynamic
+config key. v4's true liquidation point also depends on the position's risk premium and dynamic
+config; integrators wanting a strict liquidation-distance check should also consult `healthFactor`
+from the Spoke's `getUserAccountData`.
 - **`currentLtvWad`** is the account-level LTV derived from the Spoke's `getUserAccountData` (Value
 units are USD scaled by the oracle decimals; the debt total carries an extra RAY factor that the
 adapter normalizes), so it is decimal-agnostic like the v3 adapter. It is zero, without calling the
 Spoke, when the account has no debt in the market's debt reserve.
+
+**The Spoke re-keys a position on `withdraw`, not on `repay`.** A v4 position carries the dynamic
+config key it was opened under. Liquidation values it by that key, `withdraw` moves it to the
+reserve's newest key and validates health under it, and `repay` leaves the key alone. After a
+governance cut to the collateral factor, a position opened under the old key therefore stays healthy
+and unliquidatable while every curated partial `decreasePosition` (which withdraws the collateral
+that pays the swap) reverts at the Spoke with `HealthFactorBelowThreshold`; a new position takes the
+newest key, so a new open is sized by the cut factor and fails at the borrow when the factor is zero.
+The full close still works (the repay clears the debt before the withdrawal and the adapter clears
+the collateral flag first), and `maxLtvWad` follows the newest key while the position's
+`healthFactor` is its own, so a front end sees the mismatch from the two reads it already makes. A
+position that must delever before the venue restores the factor repays without withdrawing through
+an `execute` plan (§4.1). Both shapes below are verified on the Main Spoke after such a cut;
+`cmds`/`ins` is the §6.2 route, which pays the router straight through Permit2 and leaves no change
+to sweep.
+
+```solidity
+// (a) the curated decrease without its withdrawal: route the swap, repay, settle the flash-take from
+//     the caller's wallet through Permit2 instead of from withdrawn collateral, assert health. The
+//     caller needs a Permit2 allowance for `maxCollateralIn` of the collateral.
+bytes memory actions = abi.encodePacked(
+    uint8(MarginActions.SET_ACCOUNT),
+    uint8(MarginActions.ROUTE_SWAP),
+    uint8(MarginActions.ACCOUNT_REPAY),
+    uint8(Actions.SETTLE),
+    uint8(MarginActions.ASSERT_HEALTH)
+);
+bytes[] memory params = new bytes[](5);
+params[0] = abi.encode(subId);
+params[1] = abi.encode(universalRouter, market.collateral, uint256(maxCollateralIn), cmds, ins);
+params[2] = abi.encode(adapter, market, debtToRepay);
+params[3] = abi.encode(market.collateral, uint256(ActionConstants.OPEN_DELTA), true); // payerIsUser
+params[4] = abi.encode(adapter, market, maxLtvAfter);
+router.execute(abi.encode(actions, params), deadline);
+
+// (b) no swap: pull the debt token from the caller's wallet and repay the pulled balance. The caller
+//     needs a Permit2 allowance for `amount` of the debt token.
+actions = abi.encodePacked(
+    uint8(MarginActions.SET_ACCOUNT),
+    uint8(MarginActions.PULL_TO_ACCOUNT),
+    uint8(MarginActions.ACCOUNT_REPAY),
+    uint8(MarginActions.ASSERT_HEALTH)
+);
+params = new bytes[](4);
+params[0] = abi.encode(subId);
+params[1] = abi.encode(market.debt, amount, true);                            // payerIsUser
+params[2] = abi.encode(adapter, market, uint256(ActionConstants.OPEN_DELTA)); // repay the pulled balance
+params[3] = abi.encode(adapter, market, maxLtvAfter);
+router.execute(abi.encode(actions, params), deadline);
+```
 
 v4's position-manager / intent apparatus (for third-party relayers) is irrelevant here: the account is
 its own `onBehalfOf` and the direct caller, so it needs no registration, activation, or signatures.
@@ -1200,7 +1251,11 @@ never trapped by router-side configuration (there is none). A venue oracle outag
 whose venue call needs a price, such as a partial decrease that leaves debt outstanding. A partial
 decrease that repays the whole debt does not need a price on Morpho, Compound v3, or Aave v3 (the
 adapters' `currentLtvWad` returns zero at zero debt without reading one), and an Aave v4 full close does
-not either (the adapter clears the collateral flag before the final withdrawal).
+not either (the adapter clears the collateral flag before the final withdrawal). A venue
+risk-parameter change can block the same partial exits on Aave v4: after a governance cut to the
+collateral factor the Spoke rejects any withdrawal from a position opened under the old key, so
+curated partial decreases fail while the full close and the repay-only `execute` plans in §9 still
+work.
 - **Venue is swappable behind `ILendingAdapter`.** The lending venue is an implementation detail of
 the adapter; a new venue is supported by deploying a new adapter and passing it, with no router or
 account changes.
@@ -1274,7 +1329,9 @@ is reserveId `7` (the collateral leg, collateral factor `7800` bps, which
 `AaveV4LendingAdapter.maxLtvWad` returns as `0.78e18`). Both reserves are on the Core Hub, so the
 short-ETH key is `Market.data = abi.encode(uint256(7), uint256(0))` and the long-ETH key
 `abi.encode(uint256(0), uint256(7))`. The
-addresses, reserve ids, and collateral factor were verified on a mainnet fork at block 25330047.
+addresses, reserve ids, and collateral factor were verified on a mainnet fork at block 25330047. The
+collateral factor is a governance parameter on the reserve's dynamic config, so read `maxLtvWad` live
+before sizing a position; §9 describes what a cut does to positions opened under the earlier value.
 
 Compound v3 long-UNI market (collateral UNI, debt USDC) on the cUSDCv3 Comet: UNI's borrow collateral
 factor is `0.68e18` (Comet enforces this at borrow time, capping leverage near ~3.1x) and its liquidate
