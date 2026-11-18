@@ -350,7 +350,15 @@ positions from router logs alone (take the last `PositionUpdated` per
 `MarginAccount` directly) bypass the router and emit no snapshot. `execute` plans also emit the account-level delta events
 (`CollateralSupplied`, `Borrowed`, `Repaid`, `Swept`, `AccountCreated`). Only the curated entry
 points additionally emit the richer `PositionIncreased`/`PositionDecreased`/`CollateralAdded` events
-that fold the per-operation deltas and resulting snapshot into one log.
+that fold the per-operation deltas and resulting snapshot into one log. Every one of these reads is
+best-effort and runs on a fixed gas budget: before each read the router checks that
+`POSITION_READ_GAS` (250k, scaled by 64/63 for the share a call cannot forward) plus
+`POSITION_EVENT_GAS` (25k, for the events after the read) is still available, reverts
+`GasLimitTooLow` when it is not, and then gives the read exactly the budget. A node's estimate
+therefore covers the read, a transaction sent at the estimate carries its events, and more gas never
+fails a call that less gas completed. A read dearer than the budget (an account holding many Aave
+reserves, or one whose price source converts through a vault) is skipped and the action completes
+without its events, as it does when the venue read reverts.
 
 **The curated flows' swap-delta guarantee is not replicable inside a plan.** `ASSERT_ACCOUNT_BALANCE`
 is an absolute floor and its `minAmount` is static calldata: a plan cannot snapshot the account's
@@ -706,6 +714,11 @@ the Permit2 path.
 - Market selection is permissionless, so vet the market your `Market.data` names (on Morpho: the
 oracle, IRM, and LLTV; confirm the id and TVL with `cast`). Probe a key with
 `adapter.isSupportedMarket(market)` before building a transaction; it never reverts.
+- Let the node estimate gas. The position reads that fill the rich events carry a fixed budget
+(`POSITION_READ_GAS`, plus `POSITION_EVENT_GAS` for the events) checked before each read, so the
+limit a call needs sits about 280k above the gas it has used when it reaches its last read. A limit
+taken from an earlier receipt's gas used reverts `GasLimitTooLow` and rolls the action back (§4.1,
+item 6).
 
 ---
 
@@ -1447,6 +1460,7 @@ listed Comet collateral asset. Its `lendingProtocol()` is the bound Comet.
 | router   | `UniversalRouterNotSet()`                                        | a `ROUTE_SWAP` (a curated swap or an `execute` route action) named the zero address as its Universal Router              |
 | router   | `UniversalRouterDeltaNotZero(Currency, int256)`                  | a `ROUTE_SWAP` started while the Universal Router already owed the pool in the route's input currency (left by an earlier action or a hook) |
 | router   | `UnboundedRouteAllowance()`                                      | a `ROUTE_SWAP` set `maxIn` to `type(uint160).max`, the one Permit2 allowance that is never decremented, so the spend could not be measured |
+| router   | `GasLimitTooLow()`                                               | a position read was reached with less than `POSITION_READ_GAS * 64 / 63 + POSITION_EVENT_GAS` gas left: the gas limit cannot fund the best-effort read and its events, which a node's estimate covers (§4.1, item 6) |
 | V4Router | `V4TooMuchRequested(uint256 maxAmountInRequested, uint256 amountRequested)` | an exact-output swap would consume more input than its maximum (a `maxDebtIn` / `maxCollateralIn` below the true swap cost on the curated flows) |
 | V4Router | `V4ExactOutputUnfilled(uint256 amountOutRequested, uint256 amountOutReceived)` | a native v4 exact-output swap (or hop) delivered less than requested, e.g. the pool ran dry before the price limit; exact output is all-or-nothing |
 | V4Router | `V4TooMuchRequestedPerHopSingle(uint256 minPrice, uint256 priceX36)` | a swap's realized per-hop price fell below the caller's `minHopPriceX36` bound                                        |
