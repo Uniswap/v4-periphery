@@ -57,8 +57,11 @@ import {PositionData} from "./types/PositionData.sol";
 ///           the Comet base reverts `DebtNotBaseToken`, a `collateral` the Comet does not list reverts
 ///           `MarketNotSupported`, and non-empty `data` reverts `InvalidMarketData`, never a silent
 ///           default market. If Compound governance removes a collateral asset, every call for that
-///           market reverts `MarketNotSupported` from then on; funds stay exitable via the owner
-///           escape hatch.
+///           market reverts `MarketNotSupported` from then on, and the Comet itself then refuses any
+///           withdrawal or transfer of that asset (`BadAsset`), the owner escape hatch included,
+///           until the asset is listed again; the debt can still be repaid at the Comet. The
+///           protection is Compound's removal process, which zeroes balances first (deprecated
+///           assets stay listed with a zero cap), not the escape hatch.
 /// @custom:security-contact security@uniswap.org
 contract CompoundV3LendingAdapter is ILendingAdapter, PositionAmountResolver {
     /// @notice The Comet instance this adapter routes to. The single call target for every market;

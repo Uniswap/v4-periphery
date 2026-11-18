@@ -150,9 +150,10 @@ funds can never be redirected to a third party. `sweep` takes any currency, `add
 it is the only way native value leaves an account, since the withdraw and borrow primitives are
 pinned to the market's ERC-20 currencies.
 - **Owner escape hatch.** `execute(adapter, callData)` is owner-only and forwards a call to the
-adapter's lending protocol as the account. This lets the owner always manage or exit a position
-directly on the lending protocol without the router (for example if the router is paused or an
-adapter is removed).
+adapter's lending protocol as the account. This lets the owner manage or exit a position directly on
+the lending protocol without the router (for example if the router is paused or an adapter is
+removed), subject to what the venue itself still allows: a Comet collateral asset that governance has
+removed cannot be withdrawn by any Comet call until it is listed again (§9).
 
 ### 3.3 Lending adapter and adapter trust
 
@@ -1113,9 +1114,11 @@ Comet), and `currentLtvWad` is USD-valued through Comet's own price feeds (decim
 are account-level in the base, so keep one Compound position per `(owner, subId)` and use a distinct
 `subId` for each, as with the Aave adapters. The priced reads (`maxLtvWad`, `currentLtvWad`,
 `describePosition`) also depend on the live Comet configuration: if Compound governance ever removes a
-collateral asset from the Comet, every call for that market reverts `MarketNotSupported` from then on.
-Compound's removal process makes this realistic only after balances are zeroed, and funds remain
-exitable via the owner escape hatch regardless.
+collateral asset from the Comet, every call for that market reverts `MarketNotSupported` from then on,
+and the Comet itself then refuses any withdrawal or transfer of that asset (`BadAsset`), the owner
+escape hatch included, until the asset is listed again; the debt can still be repaid at the Comet in
+the meantime. The protection is Compound's removal process, which zeroes balances first (deprecated
+assets stay listed with a zero cap), not the escape hatch.
 
 ### 8.2 Open a short ETH position via Aave
 
@@ -1261,7 +1264,9 @@ collateral delisting or an Aave v4 reserve-layout change is reflected immediatel
 or `ReserveMismatch` on the next call). Withdraw and repay never gate on the venue-side reads beyond
 key validation, and the owner escape hatch acts on the lending protocol directly (`execute` for a raw
 call, `repay` with a caller-chosen adapter for a repay), so a position on a market the venue itself has
-withdrawn remains exitable.
+withdrawn remains exitable to the extent the venue still serves it: a removed Comet collateral asset
+cannot be withdrawn or transferred by any Comet call until it is listed again, while its debt can
+still be repaid (§9).
 - **Exit is always available.** Closing and delevering use the same caller-chosen adapter as opening,
 and the owner can act on the lending protocol directly without the router: `execute` forwards a raw
 venue call (it carries no token allowance, so it suits withdrawals and borrows), and `repay` or
