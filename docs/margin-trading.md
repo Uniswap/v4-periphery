@@ -146,7 +146,9 @@ deployment. There is no initializer and no transfer path.
 - **Self-custody with a manager.** The account's fund-moving primitives (`supplyCollateral`,
 `withdrawCollateral`, `borrow`, `repay`, `sweep`) are callable only by the **manager (router)** or
 the **owner**. Recipients of withdrawals/borrows/sweeps are constrained to the manager or owner, so
-funds can never be redirected to a third party.
+funds can never be redirected to a third party. `sweep` takes any currency, `address(0)` included:
+it is the only way native value leaves an account, since the withdraw and borrow primitives are
+pinned to the market's ERC-20 currencies.
 - **Owner escape hatch.** `execute(adapter, callData)` is owner-only and forwards a call to the
 adapter's lending protocol as the account. This lets the owner always manage or exit a position
 directly on the lending protocol without the router (for example if the router is paused or an
@@ -313,7 +315,7 @@ set (swap / settle / take, and `SWEEP` / `WRAP` / `UNWRAP`) plus the margin opco
 | `SET_ACCOUNT(subId)`         | Bind the active account for subsequent account-scoped actions. Derived from the authenticated caller and `subId`, never from calldata. May appear multiple times (multi-sub-account plans). |
 | `PULL_TO_ACCOUNT(currency, amount, payerIsUser)` | Move a token into the active account: pulled from the caller via Permit2 (`payerIsUser = true`) or from the router's own balance (`false`). Enables repay-from-wallet and native equity (`WRAP` first, then pull from the router's balance). The currency is not inspected; see item 5 below for native value and addresses without code. |
 | `ACCOUNT_SUPPLY_COLLATERAL` / `ACCOUNT_BORROW` | Supply/borrow on the active account with the encoded (caller-chosen) adapter and market. |
-| `ACCOUNT_WITHDRAW_COLLATERAL` / `ACCOUNT_REPAY` / `ACCOUNT_SWEEP` | Withdraw/repay/sweep on the active account. |
+| `ACCOUNT_WITHDRAW_COLLATERAL` / `ACCOUNT_REPAY` / `ACCOUNT_SWEEP` | Withdraw/repay/sweep on the active account. An `ACCOUNT_SWEEP` of `address(0)` moves native value, the account's only native exit. |
 | `ROUTE_SWAP(universalRouter, input, maxIn, commands, inputs)` | Route a swap through the caller-supplied `universalRouter` (a Universal Router carrying already-unlocked `V4_SWAP`; must be non-zero, else `UniversalRouterNotSet`) across v2/v3/v4: flash-take up to `maxIn` of `input` (never more than the PoolManager holds), fund UR via a scoped Permit2 allowance, run the caller-built UR `commands`/`inputs` (which must deliver the output to the active account and self-settle), then settle the unspent take. The spend is what Permit2 pulled from the router (`maxIn` minus the allowance left); input that came back to the router during the call is credited against it, capped at the spend so the delta never turns positive, and any pre-existing router balance is left untouched. **Postcondition: unspent input must return to the margin router in the input currency**; a WETH-through-native route must wrap its change to `MSG_SENDER` (`WRAP_ETH(MSG_SENDER, CONTRACT_BALANCE)`), not to the account. If a route sends its change to the active account anyway, the router sweeps the in-route rise of the account's `input` balance back and credits it; with no active account (a `ROUTE_SWAP` before `SET_ACCOUNT`) nothing is repatriated. Reverts `UniversalRouterDeltaNotZero` if the Universal Router already owes the pool in `input`, and `UnboundedRouteAllowance` for `maxIn == type(uint160).max`. Leaves the same net delta a native v4 swap would, so a following `ACCOUNT_BORROW`/`SETTLE` nets via `OPEN_DELTA`. |
 | `ASSERT_HEALTH(adapter, market, maxLtv)` / `ASSERT_ACCOUNT_BALANCE(currency, minAmount)` | Opt-in guards; encode them yourself. `ASSERT_ACCOUNT_BALANCE` checks the active account's ABSOLUTE balance is at least `minAmount`: a floor any pre-existing balance counts toward, not a fill delta; see the note below on getting a delta guarantee from it. |
 
@@ -1423,8 +1425,9 @@ The router has no governance functions: no allowlist, no owner, and no admin sur
 ### MarginAccount functions
 
 `owner()`, `manager()` (views); `supplyCollateral`, `withdrawCollateral`, `borrow`, `repay`, `sweep`
-(manager or owner; recipients constrained to manager/owner); `execute(adapter, adapterCall)` (owner
-only escape hatch).
+(manager or owner; recipients constrained to manager/owner; `sweep` with `address(0)` moves native
+value and is the account's only native exit); `execute(adapter, adapterCall)` (owner only escape
+hatch; payable, so it is the way native value gets in, with `sweep` as the way out).
 
 ### Lending adapter read functions
 

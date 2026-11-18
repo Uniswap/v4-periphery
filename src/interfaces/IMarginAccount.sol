@@ -136,9 +136,11 @@ interface IMarginAccount {
     function repay(ILendingAdapter adapter, Market calldata market, uint256 amount) external returns (uint256 repaid);
 
     /// @notice Transfer `amount` of `currency` out of the account to `to` (residual or realized
-    ///         PnL). `to` must be the manager or owner. Callable by the manager or owner.
-    /// @param currency The ERC-20 token to transfer out.
-    /// @param amount The amount to transfer, in the token's native decimals.
+    ///         PnL, or native value the account holds). `to` must be the manager or owner. Callable
+    ///         by the manager or owner. This is the account's only native exit: `withdrawCollateral`
+    ///         and `borrow` are pinned to the market's ERC-20 currencies.
+    /// @param currency The currency to transfer out; `address(0)` for native value.
+    /// @param amount The amount to transfer, in the currency's native decimals.
     /// @param to The recipient address; must be the manager or owner.
     function sweep(Currency currency, uint256 amount, address to) external;
 
@@ -152,7 +154,10 @@ interface IMarginAccount {
     ///      that does need an allowance, use `repay` or `supplyCollateral` with an adapter whose
     ///      `lendingProtocol()` is the venue and whose encoder returns the raw call: the adapter
     ///      argument is caller-chosen, and the account approves the venue for the amount around the
-    ///      call and clears the allowance afterward.
+    ///      call and clears the allowance afterward. Payable: `msg.value` is forwarded in full with
+    ///      the call (no in-tree adapter's venue takes native value). Native value the account holds,
+    ///      received through `receive` from a plan's `PULL_TO_ACCOUNT` of `address(0)`, a route, or a
+    ///      venue refund, leaves only through `sweep` with `address(0)`.
     /// @param adapter The lending adapter whose `lendingProtocol()` is the call target.
     /// @param adapterCall Raw calldata to forward to the lending protocol.
     /// @return result The raw bytes returned by the lending protocol call.
