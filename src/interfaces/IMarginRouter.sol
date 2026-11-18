@@ -118,6 +118,16 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///      actual cap instead.
     error UnboundedRouteAllowance();
 
+    /// @dev Thrown when a position read (`ILendingAdapter.describePosition`, made after a venue action
+    ///      to fill the position events) cannot be funded: the gas left is under
+    ///      `POSITION_READ_GAS * 64 / 63 + POSITION_EVENT_GAS`. The read is best-effort, so without
+    ///      this check an out-of-gas inside it would be swallowed like a venue revert: the action would
+    ///      complete without its events at a low gas limit, and a slightly higher limit would fail on
+    ///      the events after the read had just fit (a call keeps 1/64 of its gas under EIP-150).
+    ///      Reverting before the read makes every limit either fund the read in full or fail here,
+    ///      which also makes a node's gas estimate cover the read.
+    error GasLimitTooLow();
+
     // -------------------------------------------------------------------------
     // Events
     // -------------------------------------------------------------------------
@@ -439,6 +449,23 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     /// @param subId The sub-account index.
     /// @return The predicted MarginAccount clone address.
     function accountOf(address owner, uint256 subId) external view returns (address);
+
+    /// @notice The gas every position read (`ILendingAdapter.describePosition`, made after a venue
+    ///         action to fill the position events) is given, whatever the transaction's gas limit. A
+    ///         read that needs more is skipped and the action completes without its events; a limit
+    ///         that cannot fund it reverts `GasLimitTooLow` before the read.
+    /// @dev Twice the dearest single-position read measured on mainnet with the venue state warm and
+    ///      the oracle feeds cold, as a curated action leaves them (Aave v3, about 106k gas), rounded
+    ///      up to 50k. That also covers the same read with nothing warm (about 161k) and one more
+    ///      ordinary Aave reserve on the account. A reserve with a pathological price source (one
+    ///      whose adapter converts through a vault) can cost more than the whole budget on its own.
+    function POSITION_READ_GAS() external view returns (uint256);
+
+    /// @notice The gas kept back for the events emitted after a position read, so that a read which
+    ///         fits always leaves enough for them.
+    /// @dev Twice the dearest post-read path (`addCollateral`'s `PositionUpdated` and
+    ///      `CollateralAdded` with a 96-byte market key, about 10.3k gas), rounded up to 5k.
+    function POSITION_EVENT_GAS() external view returns (uint256);
 
     /// @notice Executes an arbitrary plan of v4 routing and margin actions atomically in one
     ///         PoolManager unlock. The general-purpose counterpart to the curated entry points:

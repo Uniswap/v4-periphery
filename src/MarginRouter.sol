@@ -78,6 +78,11 @@ contract MarginRouter is
     using SafeERC20 for IERC20;
     using TransientStateLibrary for IPoolManager;
 
+    /// @inheritdoc IMarginRouter
+    uint256 public constant POSITION_READ_GAS = 250_000;
+    /// @inheritdoc IMarginRouter
+    uint256 public constant POSITION_EVENT_GAS = 25_000;
+
     /// @dev Reverts `DeadlinePassed` if `block.timestamp` has passed `deadline`.
     modifier checkDeadline(uint256 deadline) {
         if (block.timestamp > deadline) revert DeadlinePassed(deadline);
@@ -112,7 +117,8 @@ contract MarginRouter is
         // completed increase, and the PositionUpdated snapshots emitted inside the unlock already
         // carry the resulting state. The debt delta saturates at zero because a permissionless
         // onBehalf repay landing inside the transaction can leave the debt below its start.
-        try params.adapter.describePosition(account, params.market) returns (PositionData memory position) {
+        (bool read, PositionData memory position) = _readPosition(params.adapter, params.market, account);
+        if (read) {
             emit PositionIncreased(
                 msgSender(),
                 account,
@@ -128,7 +134,7 @@ contract MarginRouter is
                 position.maxLtv,
                 position.healthFactorWad
             );
-        } catch {}
+        }
     }
 
     /// @inheritdoc IMarginRouter
@@ -238,7 +244,8 @@ contract MarginRouter is
         // completed decrease, and the PositionUpdated snapshots emitted inside the unlock already
         // carry the resulting state. The collateral delta saturates at zero because a permissionless
         // onBehalf supply landing inside the transaction can leave the collateral above its start.
-        try params.adapter.describePosition(account, params.market) returns (PositionData memory position) {
+        (bool read, PositionData memory position) = _readPosition(params.adapter, params.market, account);
+        if (read) {
             emit PositionDecreased(
                 msgSender(),
                 account,
@@ -253,7 +260,7 @@ contract MarginRouter is
                 position.currentLtv,
                 position.healthFactorWad
             );
-        } catch {}
+        }
     }
 
     /// @notice Builds the plan both decrease modes run: `ROUTE_SWAP` sells collateral for debt
@@ -734,7 +741,13 @@ contract MarginRouter is
     ///      and repay are intentionally never market-gated (a position must always be exitable), so a
     ///      failing read is swallowed rather than reverting the action. `describePosition` is `view`, so
     ///      the call is a STATICCALL and a hostile adapter can neither reenter nor mutate state through
-    ///      it.
+    ///      it. The read is given a fixed gas budget, after a check that the budget and the gas of the
+    ///      events after it are available, so its outcome depends on the venue and not on the
+    ///      transaction's gas limit: without the check an out-of-gas inside the read would be
+    ///      swallowed too, the action would complete without events at a low limit, and a slightly
+    ///      higher limit would fail on the events after the read had just fit (a call keeps 1/64 of
+    ///      its gas under EIP-150). A limit that cannot fund both reverts `GasLimitTooLow` before the
+    ///      read, which also makes a node's gas estimate cover the read.
     /// @return read True if the venue read succeeded.
     /// @return position The snapshot read; zeroed when `read` is false.
     function _readPosition(ILendingAdapter adapter, Market memory market, address account)
@@ -742,7 +755,9 @@ contract MarginRouter is
         view
         returns (bool read, PositionData memory position)
     {
-        try adapter.describePosition(account, market) returns (PositionData memory current) {
+        // the callee receives at most 63/64 of what is left, so the full budget needs 64/63 of it
+        if (gasleft() < POSITION_READ_GAS * 64 / 63 + POSITION_EVENT_GAS) revert GasLimitTooLow();
+        try adapter.describePosition{gas: POSITION_READ_GAS}(account, market) returns (PositionData memory current) {
             return (true, current);
         } catch {}
     }
