@@ -198,7 +198,9 @@ bound must be able to bind — strictly below `1e18` (100%); a value at or above
 exceeded by a real LTV, so it would silently disable the check and is rejected with `IneffectiveLtvBound`.
 Because an open sizes on the pool while liquidation uses the venue oracle, `maxLtvAfter` lets a caller bound leverage by
 health, not just by swap input, so adverse inclusion cannot land a fresh position near the
-liquidation LTV. `Ltv` is a WAD value (`1e18 == 100%`).
+liquidation LTV. It is a health backstop on top of the swap cap, not a substitute for a tight one:
+whatever slippage the cap admits is still paid, and only the resulting LTV is bounded. `Ltv` is a WAD
+value (`1e18 == 100%`).
 
 ### 3.5 Equity: Permit2 vs native ETH
 
@@ -227,7 +229,8 @@ A curated position swap is an **exact-output** swap you route through the Univer
 - `maxDebtIn` (open/increase) / `maxCollateralIn` (close/decrease) is the **mandatory, binding**
 slippage bound: the absolute cap on the swap input. The router flash-takes up to this amount and grants
 the Universal Router a Permit2 allowance of exactly that much, so it binds regardless of what the
-route's own `amountInMaximum` says. Derive it from a quote, not spot price. The flash-take is capped at
+route's own `amountInMaximum` says. Derive it from a quote, not spot price: a cap far above the quote is
+a loss budget that adverse inclusion can spend in full. The flash-take is capped at
 the PoolManager's balance of the input token, so a cap above that inventory still bounds the route, but
 a route that needs more than the inventory fails; size it as a realistic slippage cap, not an
 arbitrary large value.
@@ -888,8 +891,9 @@ const MAX_UINT256 = (1n << 256n) - 1n;
 
 async function closePosition(user: `0x${string}`, subId: bigint) {
   // full close = decreasePosition with debtToRepay == type(uint256).max
-  // size maxCollateralIn from current debt + a quote (omitted): cap the WETH sold
-  const maxCollateralIn = parseUnits("5", 18);
+  // cap the WETH sold at an exact-output quote for the current debt (omitted) plus a small buffer;
+  // a cap far above the quote is a loss budget adverse inclusion can spend in full
+  const maxCollateralIn = (quotedCollateralIn * 101n) / 100n;
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 900);
 
   const { request } = await publicClient.simulateContract({
@@ -906,8 +910,8 @@ async function closePosition(user: `0x${string}`, subId: bigint) {
 
 async function decreasePosition(user: `0x${string}`, subId: bigint) {
   const debtToRepay = parseUnits("1000", 6);   // repay 1000 USDC
-  const maxCollateralIn = parseUnits("2", 18);  // sell at most 2 WETH
-  const maxLtvAfter = parseUnits("0.7", 18);    // keep LTV <= 70%
+  const maxCollateralIn = (quotedCollateralIn * 101n) / 100n; // an exact-output quote for 1000 USDC (omitted) plus 1%
+  const maxLtvAfter = parseUnits("0.7", 18);    // keep LTV <= 70%: a health backstop, not a slippage bound
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 900);
 
   const { request } = await publicClient.simulateContract({
@@ -953,7 +957,12 @@ stored. Aave keys a market by the asset pair, so `Market.data` must be empty and
 assets are live Aave reserves is routable (`MarketNotSupported` otherwise). Reads mirror the Morpho adapter:
 `positionOf` returns the account's aToken and variableDebtToken balances, `maxLtvWad` returns the
 collateral reserve's liquidation threshold, and `currentLtvWad` is the account-level LTV from Aave's
-`getUserAccountData` (denominated in Aave's USD base currency, so it is decimal-agnostic). Because
+`getUserAccountData` (denominated in Aave's USD base currency, so it is decimal-agnostic), placed on the
+collateral reserve's liquidation-threshold scale: Aave liquidates on the threshold-weighted collateral
+sum, and anyone can supply any reserve on an account's behalf (Aave enables it as collateral), so a
+reserve with a lower threshold than the market collateral's counts only for what Aave's own health
+factor gives it, the read is never below the plain debt/collateral ratio, and a position reads at
+`maxLtvWad` exactly when Aave would liquidate it. Because
 these reads are account-level (true for both the v3 and v4 adapters), keep one Aave position per
 `(owner, subId)` and use a distinct `subId` for each — co-locating two Aave markets under one account
 blends the reads and can break a later close/decrease (see §3.2).

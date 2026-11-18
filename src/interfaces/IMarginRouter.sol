@@ -305,8 +305,9 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///        100%). Because the open sizes on the pool while liquidation uses the venue oracle,
     ///        adverse inclusion can consume the full `maxDebtIn` budget and land the position near
     ///        LLTV; this asserts the resulting oracle-LTV so a caller can bound leverage by health,
-    ///        not just by swap input. Zero skips the check (back-compatible with `maxDebtIn`-only
-    ///        callers).
+    ///        not just by swap input. The cap stays the slippage bound: this rejects an unhealthy
+    ///        result, it does not refund what the cap let the route spend. Zero skips the check
+    ///        (back-compatible with `maxDebtIn`-only callers).
     /// @param subId A caller-chosen sub-account index allowing one address to hold multiple
     ///        independent positions. The (caller, subId) pair determines the MarginAccount address.
     /// @param deadline A Unix timestamp; the call reverts if `block.timestamp` exceeds this value.
