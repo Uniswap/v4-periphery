@@ -147,7 +147,10 @@ interface ILendingAdapter {
     /// @dev This is the value `MarginRouter`'s post-action health check consumes. On venues with
     ///      account-level reads (Aave v3/v4 on both sides; Compound's base debt) it is an
     ///      account-level value, so it equals the position's LTV only under the
-    ///      one-position-per-`subId` usage requirement documented on each adapter.
+    ///      one-position-per-`subId` usage requirement documented on each adapter. Where a venue
+    ///      liquidates on a threshold-weighted collateral sum (Aave v3), the value is on the market
+    ///      collateral's own threshold scale, so a reserve anyone can supply on the account's behalf
+    ///      cannot pull it under a caller's bound.
     /// @param account The MarginAccount to query.
     /// @param market The market key identifying the target lending market.
     /// @return The current LTV as an `Ltv` (WAD, 1e18 == 100%).
