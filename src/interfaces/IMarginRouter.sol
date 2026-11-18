@@ -433,9 +433,12 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///         or fully closes it when `debtToRepay == type(uint256).max` (repay all, withdraw all,
     ///         and return the residual realized PnL to the caller). A partial decrease keeps the
     ///         position open and enforces `params.maxLtvAfter`; a full close ignores it.
-    /// @dev The adapter is caller-chosen, as on every flow. This is safe because the flow operates
-    ///      only on the caller's own account, and the MarginAccount constrains the receiver of every
-    ///      withdrawal and borrow regardless of the adapter.
+    /// @dev The adapter is caller-chosen, as on every flow. This is safe for everyone else because
+    ///      the flow operates only on the caller's own account: the MarginAccount calls only the
+    ///      adapter's declared `lendingProtocol()`, acts as its own `onBehalf`, and validates the
+    ///      receiver it is handed, but it trusts the recipient the adapter encodes into the venue
+    ///      call (see `ILendingAdapter`), so a hostile adapter can move the collateral of the caller
+    ///      who named it, and nothing else. Vet the adapter as you vet the market.
     /// @param params See `DecreaseParams`.
     /// @return account The caller's MarginAccount.
     function decreasePosition(DecreaseParams calldata params) external returns (address account);

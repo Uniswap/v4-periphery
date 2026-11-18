@@ -145,8 +145,10 @@ per `(account, collateral, debt, marketData)`, so keep one market per `subId` fo
 deployment. There is no initializer and no transfer path.
 - **Self-custody with a manager.** The account's fund-moving primitives (`supplyCollateral`,
 `withdrawCollateral`, `borrow`, `repay`, `sweep`) are callable only by the **manager (router)** or
-the **owner**. Recipients of withdrawals/borrows/sweeps are constrained to the manager or owner, so
-funds can never be redirected to a third party. `sweep` takes any currency, `address(0)` included:
+the **owner**. The `to` the caller names on a withdrawal, borrow, or sweep must be the manager or
+owner, so no caller can redirect funds to a third party; the venue-side recipient inside an adapter's
+calldata is trusted (§9), which is the one power a hostile adapter has. `sweep` takes any currency,
+`address(0)` included:
 it is the only way native value leaves an account, since the withdraw and borrow primitives are
 pinned to the market's ERC-20 currencies.
 - **Owner escape hatch.** `execute(adapter, callData)` is owner-only and forwards a call to the
@@ -169,8 +171,10 @@ every call, with no allowlist and no router governance**: you pass the adapter (
 both. This is safe for everyone else because the router only ever operates on the caller's own account
 (derived from the authenticated caller and `subId`), so a hostile adapter can reach that account and
 nothing more, a power the owner escape hatch already grants outright (see §9). The account's durable
-guarantees are that it acts as its own `onBehalf` and constrains every fund recipient to the owner or
-manager. A position can always be unwound with the same adapter it was opened with; nothing router-side
+guarantees are that it calls only the adapter's declared lending protocol, acts as its own `onBehalf`,
+and validates the recipient it is handed; the recipient the adapter writes into the venue call is
+trusted (see `ILendingAdapter`), which is exactly why a hostile adapter can move that one account's
+funds. A position can always be unwound with the same adapter it was opened with; nothing router-side
 can be switched off.
 
 ### 3.4 Leverage and LTV
@@ -1245,8 +1249,9 @@ owner do anything to their own account. Front ends should therefore hardcode the
 reviewed, never take an adapter address from untrusted input, and treat a transaction naming an
 unknown adapter like an `execute` plan from an untrusted builder (§4.1). The account's structural
 guarantees remain: it routes calls only to the adapter's declared `lendingProtocol()` with a regular
-call (never a delegatecall), acts as its own `onBehalf`, and constrains every fund recipient to the
-owner or manager.
+call (never a delegatecall), acts as its own `onBehalf`, and validates the recipient it is handed. It
+does not decode the calldata the adapter returns, so the venue-side recipient is the adapter's word,
+and that is the one power a hostile adapter has, over the one account that named it.
 - **Market trust is the caller's.** Market selection is permissionless: an adapter routes any market
 its venue has, and the adapter validates only that the key names a real venue market, not that the
 market is sound. On Aave and Compound the venue's own governance lists markets, so the
