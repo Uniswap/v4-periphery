@@ -6,6 +6,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 import {IMulticall_v4} from "./IMulticall_v4.sol";
+import {IMsgSender} from "./IMsgSender.sol";
 
 /// @title ISwapAndAdd
 /// @notice Turns a token budget in any ratio into a POSM position in one transaction.
@@ -20,18 +21,20 @@ import {IMulticall_v4} from "./IMulticall_v4.sol";
 ///        zap forwards its full native balance to the router on native pools or when ETH is sent.
 ///        Where native has an ERC20 alias (e.g. Arc's USDC), do not mix the two in one operation.
 ///      - Non-pool route outputs must appear in `routeFunding` to be swept. A zero amount is enough.
-///      - `minLiquidity` / `minLiquidityAdded` is the liquidity floor, applied post-trim.
-///        The sqrt price band bounds the price we size at (checked after the route).
+///      - `minLiquidity` / `minLiquidityAdded` is the liquidity floor, applied post-trim, and
+///        does not cover refunds. The sqrt price band bounds the price we size at (checked
+///        after the route).
 ///      - rebalance / increase / compound: the caller must be the owner or an approved operator,
 ///        and this contract needs ERC-721 approval on the position in POSM. Operator calls send
 ///        all output to the owner, though operators remain trusted since they set the `route` and
 ///        `minLiquidity` (and already have full custody on POSM).
+///      - Only v4 positions are supported, and the pool's hook must be trusted.
 ///      - Hooks with returns-delta permissions are rejected. Fee-on-transfer, rebasing, and
 ///        transfer-callback tokens are unsupported. The same `hookData` goes to every hook callback.
 ///      - Multicall batches carry at most one native-ETH operation because all subcalls share
 ///        `msg.value`; adding further operations reverts. Zero-value batches compose freely. Batch
 ///        native operations using WETH or separate transactions.
-interface ISwapAndAdd is IMulticall_v4 {
+interface ISwapAndAdd is IMulticall_v4, IMsgSender {
     /// @notice Emitted when a new position is minted via `add`.
     event Added(
         address indexed recipient,
@@ -115,6 +118,9 @@ interface ISwapAndAdd is IMulticall_v4 {
 
     /// @notice Thrown when POSM is in debt to the PoolManager.
     error PositionManagerInDebt(Currency currency);
+
+    /// @notice Thrown when PoolManager deltas are open before the route runs.
+    error UnsettledDeltas();
 
     /// @notice A non-pool token amount pulled to fund the route.
     /// @param token The token address, or address(0) for native ETH.

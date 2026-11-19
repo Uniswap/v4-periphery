@@ -30,6 +30,7 @@ import {MockERC20Permit2Native} from "./mocks/MockERC20Permit2Native.sol";
 import {MockERC20ApproveRace} from "./mocks/MockERC20ApproveRace.sol";
 import {MockERC20CappedAllowance} from "./mocks/MockERC20CappedAllowance.sol";
 import {MockDynamicFeeHook} from "./mocks/MockDynamicFeeHook.sol";
+import {MockMsgSenderHook} from "./mocks/MockMsgSenderHook.sol";
 import {MockPosmDebtHook} from "./mocks/MockPosmDebtHook.sol";
 import {MockDebtPlantingRoute} from "./mocks/MockDebtPlantingRoute.sol";
 import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
@@ -766,6 +767,58 @@ contract SwapAndAddTest is PosmTestSetup {
 
         p.minLiquidity = zeroFeeLiquidity;
         vm.expectPartialRevert(ISwapAndAdd.InsufficientLiquidity.selector);
+        zap.add(p);
+    }
+
+    /// @dev Regression: a stale stored fee on a dynamic-fee pool must not affect sizing.
+    function test_add_dynamicFee_staleStoredFee_doesNotChangeSizing() public {
+        bytes memory hookData = abi.encode("swap-and-add dynamic hook authorization");
+        address hookAddress = address(uint160(Hooks.BEFORE_SWAP_FLAG));
+        MockDynamicFeeHook implementation = new MockDynamicFeeHook();
+        vm.etch(hookAddress, address(implementation).code);
+        MockDynamicFeeHook(hookAddress).configure(hookData, 500); // the swap pays 0.05%
+
+        (PoolKey memory dynamicKey,) = initPoolAndAddLiquidity(
+            currency0, currency1, IHooks(hookAddress), LPFeeLibrary.DYNAMIC_FEE_FLAG, SQRT_PRICE_1_1
+        );
+        seedMoreLiquidity(dynamicKey, 1_000e18, 1_000e18);
+
+        ISwapAndAdd.AddParams memory p = _addParams(10e18, 0);
+        p.poolKey = dynamicKey;
+        p.hookData = hookData;
+
+        uint256 snapshot = vm.snapshotState();
+        (, uint128 liquidityFresh, uint256 amount0Fresh, uint256 amount1Fresh) = zap.add(p);
+        uint256 balance0Fresh = currency0.balanceOf(address(this));
+        uint256 balance1Fresh = currency1.balanceOf(address(this));
+        vm.revertToState(snapshot);
+
+        vm.prank(hookAddress);
+        manager.updateDynamicLPFee(dynamicKey, 20_000); // a stale 2% left by an earlier swap
+        (, uint128 liquidityStale, uint256 amount0Stale, uint256 amount1Stale) = zap.add(p);
+
+        assertEq(liquidityStale, liquidityFresh, "liquidity");
+        assertEq(amount0Stale, amount0Fresh, "amount0");
+        assertEq(amount1Stale, amount1Fresh, "amount1");
+        assertEq(currency0.balanceOf(address(this)), balance0Fresh, "token0 refund");
+        assertEq(currency1.balanceOf(address(this)), balance1Fresh, "token1 refund");
+    }
+
+    /// @dev Hooks reading msgSender() see the caller on the reconcile swap.
+    function test_add_msgSenderHook_seesCaller() public {
+        address hookAddress = address(uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG));
+        vm.etch(hookAddress, address(new MockMsgSenderHook()).code);
+        (PoolKey memory hookKey,) =
+            initPoolAndAddLiquidity(currency0, currency1, IHooks(hookAddress), 3000, SQRT_PRICE_1_1);
+        seedMoreLiquidity(hookKey, 1_000e18, 1_000e18);
+
+        ISwapAndAdd.AddParams memory p = _addParams(10e18, 0);
+        p.poolKey = hookKey;
+
+        vm.expectEmit(hookAddress);
+        emit MockMsgSenderHook.BeforeSwapMsgSender(address(this));
+        vm.expectEmit(hookAddress);
+        emit MockMsgSenderHook.AfterSwapMsgSender(address(this));
         zap.add(p);
     }
 

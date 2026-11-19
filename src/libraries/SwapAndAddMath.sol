@@ -28,7 +28,7 @@ library SwapAndAddMath {
     /// @param budget0 Currency0 available to put into the range.
     /// @param budget1 Currency1 available to put into the range.
     /// @param protocolFee Packed protocol fee from slot0; the surplus-side direction is used.
-    /// @param lpFee LP fee from slot0, combined with protocolFee on the surplus token.
+    /// @param lpFee LP fee assumed for the swap, combined with protocolFee on the surplus token.
     /// @return Liquidity that fits the budgets after discounting the surplus-side swap fee.
     function getLiquidityFeeAware(
         uint160 sqrtPriceX96,
