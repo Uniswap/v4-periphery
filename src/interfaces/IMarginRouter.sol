@@ -317,9 +317,10 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///        MarginAccount, drawing the input from the router (the payer) via Permit2, and any input
     ///        it does not spend must return to the router in the input currency (change sent to the
     ///        account is swept back and credited, but returning it to the router is the documented
-    ///        shape). The route must consume a nonzero input: a free fill leaves nothing owed and the
-    ///        venue rejects the zero borrow. Built off-chain so the caller can source liquidity across
-    ///        v2/v3/v4.
+    ///        shape). A route that consumes no input (a free fill, or a swap paid by input that
+    ///        already sat on the Universal Router and came back with the change) leaves nothing owed,
+    ///        so the borrow is skipped and the position carries no new debt. Built off-chain so the
+    ///        caller can source liquidity across v2/v3/v4.
     /// @param routeInputs The per-command ABI-encoded inputs for `routeCommands`.
     /// @param maxLtvAfter The maximum LTV the position may have after the increase (WAD, 1e18 ==
     ///        100%). Because the open sizes on the pool while liquidation uses the venue oracle,
@@ -380,8 +381,8 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///        drawing the input from the router (the payer) via Permit2, and any input it does not
     ///        spend must return to the router in the input currency (change sent to the account is
     ///        swept back and credited, but returning it to the router is the documented shape). A
-    ///        partial decrease's route must consume a nonzero input. Built off-chain so the caller can
-    ///        source liquidity across v2/v3/v4. Ignored on a zero-debt full close.
+    ///        partial decrease whose route consumes no input withdraws nothing. Built off-chain so the
+    ///        caller can source liquidity across v2/v3/v4. Ignored on a zero-debt full close.
     /// @param routeInputs The per-command ABI-encoded inputs for `routeCommands`.
     /// @param maxLtvAfter The maximum LTV the position may have after a partial decrease (WAD, 1e18 ==
     ///        100%). Must be non-zero for a partial decrease; ignored on a full close. Zero is the

@@ -255,11 +255,14 @@ account's balance of the input before and after the route and moves only the in-
 balance the account already held is never touched), but the `MSG_SENDER` shape is the documented one,
 and in an `execute` plan that runs `ROUTE_SWAP` before `SET_ACCOUNT` there is no active account, so
 nothing is repatriated there.
-- **A route must consume nonzero input.** The curated increase borrows, and the partial decrease
-withdraws, exactly what the swap owed the pool. A route that delivers its output at zero cost leaves
-nothing owed, so the venue rejects the resulting zero-amount borrow or withdraw and the call reverts
-atomically. That is deliberate: collateral delivered with no debt is a deposit (`addCollateral`), and
-debt token delivered with no collateral sold is a repay (`execute` or the account's `repay`).
+- **A route that consumes no input funds nothing.** The curated increase borrows, and the partial
+decrease withdraws, exactly what the swap owed the pool. A route that delivers its output at zero cost
+(a free fill, or a swap paid by input that already sat on the Universal Router and came back with the
+change) leaves nothing owed, so the venue leg is skipped rather than sent as a zero-amount call, which
+Morpho, Aave v3 and Aave v4 reject. The position then carries less debt than asked, still bounded by
+`maxLtvAfter`. This is also what makes pre-funding a shared Universal Router pointless: a pre-fund that
+a route sweeps back pays for the swap instead of reverting it, and whatever exceeds the cost stays on
+the router (or, on a decrease, goes to the caller with the rest of the payout).
 - **Prefer explicit `SETTLE` amounts in Universal Router routes.** A `SETTLE` with `OPEN_DELTA` pays
 whatever the Universal Router owes at that point, while an explicit amount pays exactly what you
 intended. The router also refuses to start a route while the Universal Router already owes the pool in

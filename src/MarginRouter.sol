@@ -670,7 +670,8 @@ contract MarginRouter is
 
         // 5. settle the unspent flash-take plus whatever came back, capped at the spend: the router's
         //    remaining debt is then what the route really cost, and a pre-funded Universal Router
-        //    swept back to the router can neither flip the delta positive nor subsidize the position
+        //    swept back to the router cannot flip the delta positive; what it covers of the spend is
+        //    simply not borrowed (`_borrow`), and the rest stays on the router, sweepable
         uint256 routerAfter = input.balanceOfSelf();
         uint256 returned = routerAfter + pulled > routerBefore ? routerAfter + pulled - routerBefore : 0;
         uint256 leftover = returned < pulled ? returned : pulled;
@@ -715,10 +716,19 @@ contract MarginRouter is
     }
 
     /// @notice Borrows debt to `to`. `OPEN_DELTA` borrows exactly the debt the swap owes the pool.
+    /// @dev An `OPEN_DELTA` that resolves to zero is skipped: the route cost nothing (a free fill, or
+    ///      a swap paid by input that already sat on the Universal Router and came back with the
+    ///      change), so there is nothing to fund and the position simply carries less debt than asked,
+    ///      still bounded by the plan's `ASSERT_HEALTH`. Forwarding the zero would revert on three of
+    ///      the four venues, which would let anyone who pre-funds a shared Universal Router revert
+    ///      every curated increase whose route sweeps that balance back.
     function _borrow(bytes calldata params, address account) private {
         (ILendingAdapter adapter, Market memory market, uint256 amount, address to) =
             params.decodeAdapterMarketAmountReceiver();
-        if (amount == ActionConstants.OPEN_DELTA) amount = _getFullDebt(market.debt);
+        if (amount == ActionConstants.OPEN_DELTA) {
+            amount = _getFullDebt(market.debt);
+            if (amount == 0) return;
+        }
         IMarginAccount(account).borrow(adapter, market, amount, to);
         (bool read, PositionData memory position) = _readPosition(adapter, market, account);
         if (read) _emitPosition(market, account, position);
@@ -726,10 +736,15 @@ contract MarginRouter is
 
     /// @notice Withdraws collateral to `to`. `OPEN_DELTA` withdraws exactly the collateral the swap
     ///         owes the pool (partial delever); a full close passes the explicit full collateral amount.
+    /// @dev An `OPEN_DELTA` that resolves to zero is skipped, for the same reason as in `_borrow`: the
+    ///      route cost nothing, so no collateral has to leave the venue.
     function _withdrawCollateral(bytes calldata params, address account) private {
         (ILendingAdapter adapter, Market memory market, uint256 amount, address to) =
             params.decodeAdapterMarketAmountReceiver();
-        if (amount == ActionConstants.OPEN_DELTA) amount = _getFullDebt(market.collateral);
+        if (amount == ActionConstants.OPEN_DELTA) {
+            amount = _getFullDebt(market.collateral);
+            if (amount == 0) return;
+        }
         IMarginAccount(account).withdrawCollateral(adapter, market, amount, to);
         (bool read, PositionData memory position) = _readPosition(adapter, market, account);
         if (read) _emitPosition(market, account, position);

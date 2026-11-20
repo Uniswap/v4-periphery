@@ -231,41 +231,48 @@ contract MarginRouterRouteSpendTest is RoutingTestHelpers, MarginRouteHelpers, D
     // ─────────────────────────────── Pre-funded Universal Router ────────────────────────────────
 
     /// @notice A Universal Router pre-funded with at least what the route costs, with a trailing
-    ///         whole-balance sweep to the router, can no longer flip the router's delta positive (the
-    ///         credit is capped at the spend), but the swap then nets to zero spend, the curated borrow
-    ///         of `OPEN_DELTA` resolves to zero, and the venue rejects it (Morpho, Aave v3 and the Aave
-    ///         v4 Spoke all do; the mock mirrors them). The pre-fund stays on the Universal Router,
-    ///         where anyone can sweep it.
-    function test_increase_preFundAtLeastCost_revertsAtTheVenue() public {
+    ///         whole-balance sweep to the router, cannot flip the router's delta positive (the credit
+    ///         is capped at the spend); the swap nets to zero spend, the `OPEN_DELTA` borrow resolves
+    ///         to zero and is skipped (the mock, like Morpho, Aave v3 and the Aave v4 Spoke, would
+    ///         reject it). The pre-fund paid for the swap and its excess sits on the router, sweepable.
+    function test_increase_preFundAtLeastCost_donorPaysTheSwap() public {
         address account = marginRouter.accountOf(address(this), 0);
-        MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
         MockERC20(Currency.unwrap(debt)).transfer(ur, MAX_IN);
         (bytes memory cmds, bytes[] memory ins) = _sweepSuffixedRoute(debt, collateral, BUY, MAX_IN, account);
 
-        vm.expectRevert(MockLendingProtocol.ZeroAmount.selector);
-        marginRouter.increasePosition(_increaseParams(0, cmds, ins));
+        _increase(0, cmds, ins);
 
-        assertEq(_balance(debt, ur), MAX_IN, "the pre-fund is still on the Universal Router");
+        assertEq(protocol.collateralOf(account), 1 ether + BUY, "collateral bought and supplied");
+        assertEq(protocol.debtOf(account), 0, "the pre-fund paid for the swap, nothing borrowed");
+        assertEq(_balance(debt, ur), 0, "swept out of the Universal Router");
+        assertGt(_balance(debt, address(marginRouter)), 0, "the excess sits on the router");
     }
 
     /// @notice The partial decrease has the same edge: a pre-fund of at least the collateral the route
     ///         costs, swept back with the change, leaves the router owing nothing, so the `OPEN_DELTA`
-    ///         withdrawal resolves to zero and the venue rejects it.
-    function test_decrease_preFundAtLeastCost_revertsAtTheVenue() public {
+    ///         withdrawal resolves to zero and is skipped. The debt is repaid without selling any
+    ///         collateral, and the excess reaches the caller with the rest of the payout.
+    function test_decrease_preFundAtLeastCost_donorPaysTheSwap() public {
         address account = marginRouter.accountOf(address(this), 0);
         (bytes memory openCmds, bytes[] memory openIns) =
             buildV4ExactOutRoute(poolKey, debt, collateral, BUY, MAX_IN, account);
         _increase(0, openCmds, openIns);
+        uint256 collateralBefore = protocol.collateralOf(account);
+        uint256 debtBefore = protocol.debtOf(account);
 
         uint128 repay = 0.5 ether;
         uint128 maxCollateralIn = 1 ether;
         MockERC20(Currency.unwrap(collateral)).transfer(ur, maxCollateralIn);
         (bytes memory cmds, bytes[] memory ins) = _sweepSuffixedRoute(collateral, debt, repay, maxCollateralIn, account);
 
-        vm.expectRevert(MockLendingProtocol.ZeroAmount.selector);
+        uint256 held = _balance(collateral, address(this));
         marginRouter.decreasePosition(_decreaseParams(0, repay, maxCollateralIn, cmds, ins));
 
-        assertEq(_balance(collateral, ur), maxCollateralIn, "the pre-fund is still on the Universal Router");
+        assertEq(protocol.debtOf(account), debtBefore - repay, "debt repaid from the swap's output");
+        assertEq(protocol.collateralOf(account), collateralBefore, "no collateral left the venue");
+        assertEq(_balance(collateral, ur), 0, "swept out of the Universal Router");
+        assertGt(_balance(collateral, address(this)), held, "the excess reached the caller");
+        assertEq(_balance(collateral, address(marginRouter)), 0, "router nets to zero");
     }
 
     /// @notice A pre-fund below the cost subsidizes the position by exactly that amount and nothing else.

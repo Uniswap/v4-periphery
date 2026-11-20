@@ -33,10 +33,10 @@ import {Ltv} from "../../src/types/Ltv.sol";
 /// @notice Sherlock #1 against the live venue. A Universal Router pre-funded with at least what a
 ///         route costs, swept back to the margin router with the change (the guide's postcondition
 ///         for a route that custodies input in the Universal Router), nets the route's spend to
-///         zero. The curated increase then asks Morpho to borrow zero and the partial decrease asks
-///         it to withdraw zero, and Morpho rejects both. The documented `V4_SWAP` route, paid
-///         straight from the router through Permit2, never touches the Universal Router's balance
-///         and is unaffected.
+///         zero. Morpho rejects a zero-amount borrow (`inconsistent input`) and withdrawal (`zero
+///         assets`), so the router skips the venue leg instead: the pre-fund pays for the swap. The
+///         documented `V4_SWAP` route, paid straight from the router through Permit2, never touches
+///         the Universal Router's balance and is unaffected.
 contract MarginRouterPreFundForkTest is Test, MarginRouteHelpers {
     using MarketParamsLib for MarketParams;
 
@@ -115,36 +115,46 @@ contract MarginRouterPreFundForkTest is Test, MarginRouteHelpers {
         assertEq(IERC20(USDC).balanceOf(ur), MAX_DEBT_IN, "the pre-fund was never touched");
     }
 
-    /// @notice A pre-fund of at least the cost, swept back with the change, zeroes the borrow and
-    ///         Morpho rejects it: `borrow(0 assets, 0 shares)` is `inconsistent input`.
-    function test_fork_increase_preFundAtLeastCost_revertsOnMorpho() public {
+    /// @notice A pre-fund of at least the cost, swept back with the change, zeroes the borrow; the
+    ///         router skips it (Morpho would reject `borrow(0 assets, 0 shares)` as `inconsistent
+    ///         input`), so the position opens with the collateral bought and no debt.
+    function test_fork_increase_preFundAtLeastCost_donorPaysOnMorpho() public {
         address account = _fundAccount(0);
         deal(USDC, ur, MAX_DEBT_IN);
         (bytes memory cmds, bytes[] memory ins) =
             _sweepSuffixedRoute(market.debt, market.collateral, BUY, MAX_DEBT_IN, account);
 
-        vm.expectRevert(bytes("inconsistent input"));
         router.increasePosition(_increaseParams(0, cmds, ins));
 
-        assertEq(IERC20(USDC).balanceOf(ur), MAX_DEBT_IN, "the pre-fund is still on the Universal Router");
+        (uint256 coll, uint256 debt) = adapter.positionOf(account, market);
+        assertEq(coll, EQUITY + BUY, "collateral bought and supplied");
+        assertEq(debt, 0, "the pre-fund paid for the swap, nothing borrowed");
+        assertEq(IERC20(USDC).balanceOf(ur), 0, "swept out of the Universal Router");
+        assertGt(IERC20(USDC).balanceOf(address(router)), 0, "the excess sits on the router");
     }
 
-    /// @notice Same on the partial decrease: the collateral withdrawal resolves to zero and Morpho
-    ///         rejects it with `zero assets`.
-    function test_fork_decrease_preFundAtLeastCost_revertsOnMorpho() public {
+    /// @notice Same on the partial decrease: the collateral withdrawal resolves to zero and is skipped
+    ///         (Morpho would reject it with `zero assets`), so the debt is repaid without selling any
+    ///         collateral and the excess reaches the caller with the payout.
+    function test_fork_decrease_preFundAtLeastCost_donorPaysOnMorpho() public {
         address account = _fundAccount(0);
         (bytes memory openCmds, bytes[] memory openIns) =
             buildV4ExactOutRoute(poolKey, market.debt, market.collateral, BUY, MAX_DEBT_IN, account);
         router.increasePosition(_increaseParams(0, openCmds, openIns));
+        (uint256 collBefore, uint256 debtBefore) = adapter.positionOf(account, market);
 
         deal(WETH, ur, MAX_COLLATERAL_IN);
         (bytes memory cmds, bytes[] memory ins) =
             _sweepSuffixedRoute(market.collateral, market.debt, REPAY, MAX_COLLATERAL_IN, account);
 
-        vm.expectRevert(bytes("zero assets"));
+        uint256 held = IERC20(WETH).balanceOf(address(this));
         router.decreasePosition(_decreaseParams(0, cmds, ins));
 
-        assertEq(IERC20(WETH).balanceOf(ur), MAX_COLLATERAL_IN, "the pre-fund is still on the Universal Router");
+        (uint256 coll, uint256 debt) = adapter.positionOf(account, market);
+        assertApproxEqAbs(debt, debtBefore - REPAY, 1, "debt repaid from the swap's output");
+        assertEq(coll, collBefore, "no collateral left Morpho");
+        assertEq(IERC20(WETH).balanceOf(ur), 0, "swept out of the Universal Router");
+        assertGt(IERC20(WETH).balanceOf(address(this)), held, "the excess reached the caller");
     }
 
     // -------------------------------------------------------------------------
