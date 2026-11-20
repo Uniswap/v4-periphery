@@ -108,39 +108,68 @@ contract MarginRouterRouteSpendTest is RoutingTestHelpers, MarginRouteHelpers, D
     }
 
     /// @dev The documented route (pull from the router straight into the pool) with a whole-balance
-    ///      sweep of the input back to the router appended.
-    function _sweepSuffixedRoute(address recipient)
+    ///      sweep of the input back to the router appended: the guide's postcondition for a route that
+    ///      custodies input in the Universal Router, and the shape that carries a pre-fund back.
+    function _sweepSuffixedRoute(Currency input, Currency output, uint128 amountOut, uint128 maxIn, address recipient)
         internal
         view
         returns (bytes memory commands, bytes[] memory inputs)
     {
-        (bytes memory baseCommands, bytes[] memory baseInputs) = buildV4ExactOutRoute(
-            poolKey, debt, collateral, BUY, MAX_IN, recipient
-        );
+        (bytes memory baseCommands, bytes[] memory baseInputs) =
+            buildV4ExactOutRoute(poolKey, input, output, amountOut, maxIn, recipient);
         commands = abi.encodePacked(baseCommands, uint8(Commands.SWEEP));
         inputs = new bytes[](2);
         inputs[0] = baseInputs[0];
-        inputs[1] = abi.encode(Currency.unwrap(debt), ActionConstants.MSG_SENDER, uint256(0));
+        inputs[1] = abi.encode(Currency.unwrap(input), ActionConstants.MSG_SENDER, uint256(0));
     }
 
     function _increase(uint256 subId, bytes memory commands, bytes[] memory inputs) internal returns (address account) {
         account = marginRouter.accountOf(address(this), subId);
         MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
-        marginRouter.increasePosition(
-            IMarginRouter.IncreaseParams({
-                adapter: adapter,
-                market: market,
-                equity: 0,
-                collateralToBuy: BUY,
-                maxDebtIn: MAX_IN,
-                universalRouter: ur,
-                routeCommands: commands,
-                routeInputs: inputs,
-                maxLtvAfter: Ltv.wrap(0),
-                subId: subId,
-                deadline: block.timestamp + 1
-            })
-        );
+        marginRouter.increasePosition(_increaseParams(subId, commands, inputs));
+    }
+
+    /// @dev Increase params for `subId`: the equity is already in the account, `BUY` bought under `MAX_IN`.
+    function _increaseParams(uint256 subId, bytes memory commands, bytes[] memory inputs)
+        internal
+        view
+        returns (IMarginRouter.IncreaseParams memory)
+    {
+        return IMarginRouter.IncreaseParams({
+            adapter: adapter,
+            market: market,
+            equity: 0,
+            collateralToBuy: BUY,
+            maxDebtIn: MAX_IN,
+            universalRouter: ur,
+            routeCommands: commands,
+            routeInputs: inputs,
+            maxLtvAfter: Ltv.wrap(0),
+            subId: subId,
+            deadline: block.timestamp + 1
+        });
+    }
+
+    /// @dev Partial-decrease params for `subId`: repay `repay` by selling at most `maxCollateralIn`.
+    function _decreaseParams(
+        uint256 subId,
+        uint256 repay,
+        uint128 maxCollateralIn,
+        bytes memory commands,
+        bytes[] memory inputs
+    ) internal view returns (IMarginRouter.DecreaseParams memory) {
+        return IMarginRouter.DecreaseParams({
+            adapter: adapter,
+            market: market,
+            debtToRepay: repay,
+            maxCollateralIn: maxCollateralIn,
+            universalRouter: ur,
+            routeCommands: commands,
+            routeInputs: inputs,
+            maxLtvAfter: Ltv.wrap(0.95e18), // a partial decrease must carry a bound
+            subId: subId,
+            deadline: block.timestamp + 1
+        });
     }
 
     function _balance(Currency currency, address who) internal view returns (uint256) {
@@ -201,35 +230,55 @@ contract MarginRouterRouteSpendTest is RoutingTestHelpers, MarginRouteHelpers, D
 
     // ─────────────────────────────── Pre-funded Universal Router ────────────────────────────────
 
-    /// @notice A Universal Router pre-funded with more input than the route costs, with a trailing
-    ///         whole-balance sweep to the router, no longer flips the router's delta positive (which
-    ///         reverted the next `OPEN_DELTA` action): the credit is capped at the spend. The excess stays
-    ///         on the router (sweepable) and the swap nets to zero spend. The mock venue accepts the
-    ///         resulting zero borrow, so the increase completes here; a real venue rejects a zero-amount
-    ///         borrow, which is the same outcome as any route that costs nothing.
-    function test_increase_preFundedUniversalRouter_cannotFlipDeltaPositive() public {
+    /// @notice A Universal Router pre-funded with at least what the route costs, with a trailing
+    ///         whole-balance sweep to the router, can no longer flip the router's delta positive (the
+    ///         credit is capped at the spend), but the swap then nets to zero spend, the curated borrow
+    ///         of `OPEN_DELTA` resolves to zero, and the venue rejects it (Morpho, Aave v3 and the Aave
+    ///         v4 Spoke all do; the mock mirrors them). The pre-fund stays on the Universal Router,
+    ///         where anyone can sweep it.
+    function test_increase_preFundAtLeastCost_revertsAtTheVenue() public {
         address account = marginRouter.accountOf(address(this), 0);
+        MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
         MockERC20(Currency.unwrap(debt)).transfer(ur, MAX_IN);
-        (bytes memory cmds, bytes[] memory ins) = _sweepSuffixedRoute(account);
+        (bytes memory cmds, bytes[] memory ins) = _sweepSuffixedRoute(debt, collateral, BUY, MAX_IN, account);
 
-        _increase(0, cmds, ins);
+        vm.expectRevert(MockLendingProtocol.ZeroAmount.selector);
+        marginRouter.increasePosition(_increaseParams(0, cmds, ins));
 
-        assertEq(protocol.debtOf(account), 0, "the donor paid for the swap");
-        assertGt(_balance(debt, address(marginRouter)), 0, "the excess donation sits on the router");
-        assertEq(_balance(debt, ur), 0, "swept out of the Universal Router");
+        assertEq(_balance(debt, ur), MAX_IN, "the pre-fund is still on the Universal Router");
     }
 
-    /// @notice A smaller pre-fund subsidizes the position by exactly that amount and nothing else.
+    /// @notice The partial decrease has the same edge: a pre-fund of at least the collateral the route
+    ///         costs, swept back with the change, leaves the router owing nothing, so the `OPEN_DELTA`
+    ///         withdrawal resolves to zero and the venue rejects it.
+    function test_decrease_preFundAtLeastCost_revertsAtTheVenue() public {
+        address account = marginRouter.accountOf(address(this), 0);
+        (bytes memory openCmds, bytes[] memory openIns) =
+            buildV4ExactOutRoute(poolKey, debt, collateral, BUY, MAX_IN, account);
+        _increase(0, openCmds, openIns);
+
+        uint128 repay = 0.5 ether;
+        uint128 maxCollateralIn = 1 ether;
+        MockERC20(Currency.unwrap(collateral)).transfer(ur, maxCollateralIn);
+        (bytes memory cmds, bytes[] memory ins) = _sweepSuffixedRoute(collateral, debt, repay, maxCollateralIn, account);
+
+        vm.expectRevert(MockLendingProtocol.ZeroAmount.selector);
+        marginRouter.decreasePosition(_decreaseParams(0, repay, maxCollateralIn, cmds, ins));
+
+        assertEq(_balance(collateral, ur), maxCollateralIn, "the pre-fund is still on the Universal Router");
+    }
+
+    /// @notice A pre-fund below the cost subsidizes the position by exactly that amount and nothing else.
     function test_increase_smallPreFund_subsidizesByTheDonation() public {
         address control = marginRouter.accountOf(address(this), 1);
-        (bytes memory cmdsC, bytes[] memory insC) = _sweepSuffixedRoute(control);
+        (bytes memory cmdsC, bytes[] memory insC) = _sweepSuffixedRoute(debt, collateral, BUY, MAX_IN, control);
         _increase(1, cmdsC, insC);
         uint256 cost = protocol.debtOf(control);
 
         uint256 donation = 0.5 ether;
         MockERC20(Currency.unwrap(debt)).transfer(ur, donation);
         address account = marginRouter.accountOf(address(this), 0);
-        (bytes memory cmds, bytes[] memory ins) = _sweepSuffixedRoute(account);
+        (bytes memory cmds, bytes[] memory ins) = _sweepSuffixedRoute(debt, collateral, BUY, MAX_IN, account);
         _increase(0, cmds, ins);
 
         assertApproxEqRel(protocol.debtOf(account) + donation, cost, 0.05e18, "borrow shrinks by the donation");
