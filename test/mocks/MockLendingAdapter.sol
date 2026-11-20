@@ -24,12 +24,21 @@ contract MockLendingAdapter is ILendingAdapter {
     // when set, encodeRepay returns no calls, modeling a debt-free repay the account must skip
     bool public repayNoOp;
 
+    // when set, describePosition consumes at least this much gas before returning, modeling a venue
+    // read with cold oracle feeds, or one dearer than the router's read budget; it runs out of gas
+    // when less is available, as a real read would
+    uint256 public describeGasBurn;
+
     constructor(address lendingProtocol_) {
         lendingProtocol = lendingProtocol_;
     }
 
     function setDescribeReverts(bool v) external {
         describeReverts = v;
+    }
+
+    function setDescribeGasBurn(uint256 v) external {
+        describeGasBurn = v;
     }
 
     function setRepayNoOp(bool v) external {
@@ -117,6 +126,7 @@ contract MockLendingAdapter is ILendingAdapter {
 
     function describePosition(address account, Market calldata) external view returns (PositionData memory data) {
         if (describeReverts) revert("oracle down");
+        if (describeGasBurn > 0) _burnGas(describeGasBurn);
         MockLendingProtocol p = MockLendingProtocol(lendingProtocol);
         uint256 collateral = p.collateralOf(account);
         uint256 debt = p.debtOf(account);
@@ -128,6 +138,13 @@ contract MockLendingAdapter is ILendingAdapter {
             currentLtv: currentLtv,
             healthFactorWad: _healthFactor(currentLtv)
         });
+    }
+
+    /// @dev Spins until `amount` gas has been consumed; with less than that available the loop runs
+    ///      out of gas, like a real read that needs more than it was given.
+    function _burnGas(uint256 amount) internal view {
+        uint256 start = gasleft();
+        while (start - gasleft() < amount) {}
     }
 
     /// @dev Zero debt is LTV 0; debt with no collateral is unbounded LTV; otherwise `debt/collateral`.

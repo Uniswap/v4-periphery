@@ -141,15 +141,32 @@ contract AaveV4LendingAdapter is ILendingAdapter, PositionAmountResolver {
     ///      forwards the withdrawn underlying to its validated recipient. `account` must be the caller,
     ///      binding the otherwise-unused parameter and asserting the encoder only produces a withdrawal
     ///      for the account that calls it (the `MarginAccount` always passes its own address).
+    ///
+    ///      When the account has no debt in the market's debt reserve and `amount` empties the
+    ///      collateral reserve, a `setUsingAsCollateral(collateralReserveId, false, account)` is
+    ///      encoded first. The Spoke's `withdraw` prices every reserve flagged as collateral while it
+    ///      refreshes the account, so a full withdrawal would otherwise depend on the oracle even
+    ///      though nothing is borrowed; clearing the flag first (which clears the bit before
+    ///      refreshing) makes a full close oracle-independent. Partial withdrawals and withdrawals
+    ///      with debt outstanding encode the single `withdraw`, unchanged.
     function encodeWithdrawCollateral(address account, Market calldata market, uint256 amount, address)
         external
         view
         returns (Call[] memory calls)
     {
-        (uint256 collateralReserveId,) = _resolve(market);
+        (uint256 collateralReserveId, uint256 debtReserveId) = _resolve(market);
         if (account != msg.sender) revert AccountMismatch(account, msg.sender);
-        calls = new Call[](1);
-        calls[0] = Call({value: 0, data: abi.encodeCall(ISpoke.withdraw, (collateralReserveId, amount, account))});
+
+        bool disableCollateral = spoke.getUserTotalDebt(debtReserveId, account) == 0
+            && amount >= spoke.getUserSuppliedAssets(collateralReserveId, account);
+        calls = new Call[](disableCollateral ? 2 : 1);
+        uint256 last = calls.length - 1;
+        if (disableCollateral) {
+            calls[0] = Call({
+                value: 0, data: abi.encodeCall(ISpoke.setUsingAsCollateral, (collateralReserveId, false, account))
+            });
+        }
+        calls[last] = Call({value: 0, data: abi.encodeCall(ISpoke.withdraw, (collateralReserveId, amount, account))});
     }
 
     /// @inheritdoc ILendingAdapter
@@ -213,16 +230,18 @@ contract AaveV4LendingAdapter is ILendingAdapter, PositionAmountResolver {
     /// @dev Computes the current LTV from the Spoke's account-level data. `totalCollateralValue` is in
     ///      Value units (USD scaled by the oracle decimals) and `totalDebtValueRay` is the same Value
     ///      units additionally scaled by RAY, so the WAD LTV is
-    ///      `totalDebtValueRay * WAD / (totalCollateralValue * RAY)`. Returns `type(uint256).max` (as
-    ///      an `Ltv`) when there is debt but zero collateral, and 0 when there is no debt. This is
-    ///      ACCOUNT-LEVEL (Spoke-scoped): it equals the position LTV only when the account holds a
+    ///      `totalDebtValueRay * WAD / (totalCollateralValue * RAY)`, rounded up. Returns `type(uint256).max` (as
+    ///      an `Ltv`) when there is debt but zero collateral, and 0 when the account has no debt in
+    ///      this market's debt reserve, checked before `getUserAccountData` so no price is consulted
+    ///      (the Spoke needs none to exit a debt-free position). This is ACCOUNT-LEVEL (Spoke-scoped): it equals the position LTV only when the account holds a
     ///      single position on this Spoke. Co-locating multiple Spoke markets under one `(owner, subId)`
     ///      blends every reserve into these totals. The router does NOT enforce one position per
     ///      account; callers must use a distinct `subId` per Spoke position.
     /// @param market Must resolve on the Spoke (only the key is validated; the account's full Spoke
     ///        position determines the totals).
     function currentLtvWad(address account, Market calldata market) external view returns (Ltv) {
-        _resolve(market);
+        (, uint256 debtReserveId) = _resolve(market);
+        if (spoke.getUserTotalDebt(debtReserveId, account) == 0) return toLtv(0);
         ISpoke.UserAccountData memory data = spoke.getUserAccountData(account);
         return _currentLtv(data);
     }
@@ -274,8 +293,13 @@ contract AaveV4LendingAdapter is ILendingAdapter, PositionAmountResolver {
         // out with a trailing division rather than folding it into the denominator: a standalone
         // `totalCollateralValue * RAY` is a plain uint256 multiply outside mulDiv's full-precision path
         // and would overflow for a large collateral value. mulDiv here cannot overflow, and the LTV is
-        // recovered exactly by the final RAY division.
-        return toLtv(Math.mulDiv(data.totalDebtValueRay, Units.WAD, data.totalCollateralValue) / Units.RAY);
+        // recovered by the final RAY division. Both divisions round up (ceil of a ceil is the ceil of
+        // the quotient), so a position at the bound is never certified by a floored ratio.
+        return toLtv(
+            Math.ceilDiv(
+                Math.mulDiv(data.totalDebtValueRay, Units.WAD, data.totalCollateralValue, Math.Rounding.Ceil), Units.RAY
+            )
+        );
     }
 
     /// @notice Decodes a market key and validates it against the live Spoke, returning the reserve ids

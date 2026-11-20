@@ -153,10 +153,6 @@ contract MarginRouterRouteSwapForkTest is Test, MarginRouteHelpers {
         p.pairInitCodeHash = V2_INIT_CODE_HASH;
         p.poolInitCodeHash = V3_INIT_CODE_HASH;
         p.v4PoolManager = address(manager);
-        bytes memory initcode = abi.encodePacked(vm.getCode("UniversalRouter.sol:UniversalRouter"), abi.encode(p));
-        assembly {
-            ur := create(0, add(initcode, 0x20), mload(initcode))
-        }
-        require(ur != address(0), "UR deploy failed");
+        return deployUniversalRouter(p);
     }
 }

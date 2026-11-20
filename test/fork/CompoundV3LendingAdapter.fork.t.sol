@@ -207,6 +207,71 @@ contract CompoundV3LendingAdapterForkTest is Test, MarginRouteHelpers {
         _assertNoDust(account);
     }
 
+    /// @notice `ACCOUNT_REPAY` with a zero amount repays the account's whole balance of the debt token.
+    ///         Comet accepts a zero base supply, so before the amount was resolved this plan completed
+    ///         without touching the debt; it now repays the balance, and reverts `ZeroAmount` when the
+    ///         balance is empty.
+    function test_fork_compound_accountRepayZero_repaysDebtTokenBalance() public {
+        address account = router.accountOf(address(this), 0);
+        _openUni(account);
+        (, uint256 debtBefore) = adapter.positionOf(account, market);
+
+        uint256 funds = debtBefore / 2;
+        deal(USDC, account, funds);
+        router.execute(buildRepayZeroPlan(adapter, market, 0), block.timestamp + 1 hours);
+
+        (, uint256 debtAfter) = adapter.positionOf(account, market);
+        assertApproxEqAbs(debtBefore - debtAfter, funds, 10, "debt fell by the account's balance");
+        assertEq(IERC20(USDC).balanceOf(account), 0, "the whole balance was repaid");
+
+        // nothing left to repay: the plan fails loudly instead of supplying zero to Comet
+        bytes memory plan = buildRepayZeroPlan(adapter, market, 0);
+        vm.expectRevert(IMarginRouter.ZeroAmount.selector);
+        router.execute(plan, block.timestamp + 1 hours);
+    }
+
+    /// @notice A partial decrease that repays the whole borrow does not need Comet's price feeds. Comet
+    ///         treats a non-negative base principal as collateralized without pricing, and the adapter
+    ///         reports a zero LTV for a debt-free position without reading either feed, so with both
+    ///         feeds reverting the mandatory health assertion still passes and the collateral that was
+    ///         not sold stays supplied.
+    function test_fork_compound_partialDecreaseClearingAllDebt_succeedsDuringPriceFeedOutage() public {
+        address account = router.accountOf(address(this), 0);
+        _openUni(account);
+        (uint256 collBefore, uint256 debtBefore) = adapter.positionOf(account, market);
+
+        // both feeds the position's valuation reads now revert
+        vm.etch(COMET.getAssetInfoByAddress(UNI).priceFeed, hex"60006000fd");
+        vm.etch(COMET.baseTokenPriceFeed(), hex"60006000fd");
+        address baseFeed = COMET.baseTokenPriceFeed();
+        vm.expectRevert();
+        COMET.getPrice(baseFeed);
+
+        {
+            (bytes memory cmds, bytes[] memory ins) =
+                buildV4ExactOutRoute(poolKey, market.collateral, market.debt, uint128(debtBefore), 2_000e18, account);
+            router.decreasePosition(
+                IMarginRouter.DecreaseParams({
+                    adapter: adapter,
+                    market: market,
+                    debtToRepay: debtBefore,
+                    maxCollateralIn: 2_000e18,
+                    universalRouter: ur,
+                    routeCommands: cmds,
+                    routeInputs: ins,
+                    maxLtvAfter: toLtv(0.7e18),
+                    subId: 0,
+                    deadline: block.timestamp + 1 hours
+                })
+            );
+        }
+
+        (uint256 collAfter, uint256 debtAfter) = adapter.positionOf(account, market);
+        assertEq(debtAfter, 0, "decrease: borrow fully repaid");
+        assertLt(collAfter, collBefore, "decrease: collateral sold to fund the repay");
+        assertGt(collAfter, 0, "decrease: unsold collateral remains");
+    }
+
     /// @notice A full close after a long idle period (no Comet interaction since the open) still zeroes
     ///         the borrow and withdraws all collateral with no dust. Comet's `borrowBalanceOf` is
     ///         re-accrued to `block.timestamp` in the view, so the close swap and the repay are sized
@@ -274,6 +339,29 @@ contract CompoundV3LendingAdapterForkTest is Test, MarginRouteHelpers {
     }
 
     // ---- helpers ----
+
+    /// @notice Pre-funds the account with 1000 UNI and opens a ~2x long: buy 1000 UNI more with borrowed
+    ///         USDC.
+    function _openUni(address account) internal {
+        deal(UNI, account, 1_000e18);
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.debt, market.collateral, 1_000e18, 20_000e6, account);
+        router.increasePosition(
+            IMarginRouter.IncreaseParams({
+                adapter: adapter,
+                market: market,
+                equity: 0,
+                collateralToBuy: 1_000e18,
+                maxDebtIn: 20_000e6,
+                universalRouter: ur,
+                routeCommands: cmds,
+                routeInputs: ins,
+                maxLtvAfter: Ltv.wrap(0),
+                subId: 0,
+                deadline: block.timestamp + 1 hours
+            })
+        );
+    }
 
     /// @dev Seeds a local UNI/USDC v4 pool at the Comet oracle price so the swap leg and the Comet
     ///      valuation agree. UNI (0x1f..) sorts below USDC (0xA0..), so currency0 = UNI.

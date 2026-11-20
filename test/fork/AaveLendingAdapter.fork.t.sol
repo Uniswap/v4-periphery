@@ -17,6 +17,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
@@ -29,6 +30,18 @@ import {IAaveOracle} from "../../src/interfaces/external/aave/IAaveOracle.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Ltv, toLtv} from "../../src/types/Ltv.sol";
 import {PositionData} from "../../src/types/PositionData.sol";
+
+/// @dev Live data-provider views outside the adapter's `IPoolDataProvider` surface: the per-user reserve
+///      flags (to show Aave enabled an injected reserve as collateral) and the supply cap (to size the
+///      injection to what the cap still admits at the fork block).
+interface IPoolDataProviderLive {
+    function getUserReserveData(address asset, address user)
+        external
+        view
+        returns (uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint40, bool usageAsCollateralEnabled);
+    function getReserveCaps(address asset) external view returns (uint256 borrowCap, uint256 supplyCap);
+    function getATokenTotalSupply(address asset) external view returns (uint256);
+}
 
 /// @notice Full-stack mainnet-fork test of a real ETH SHORT against the live Aave v3 deployment.
 ///         The position supplies USDC as collateral and borrows real WETH, routed through the entire
@@ -68,6 +81,11 @@ contract AaveLendingAdapterForkTest is Test, MarginRouteHelpers {
     uint256 internal constant USDC_LIQ_THRESHOLD_BPS = 7800;
     uint256 internal constant WAD = 1e18;
     uint256 internal constant BPS = 1e4;
+
+    // A live reserve with a near-zero liquidation threshold (10 bps); verified on-chain before use.
+    address internal constant SYRUP_USDT = 0x356B8d89c1e1239Cbbb9dE4815c39A1474d5BA7D;
+    uint256 internal constant SYRUP_LIQ_THRESHOLD_BPS = 10;
+    address internal thirdParty = makeAddr("thirdParty");
 
     // canonical Permit2, identical address on every chain (unused here; pre-fund equity path is taken)
     address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
@@ -130,6 +148,107 @@ contract AaveLendingAdapterForkTest is Test, MarginRouteHelpers {
         _stageAccrueInterest(account);
         _stageDecrease(account);
         _stageClose(account);
+    }
+
+    /// @notice `ACCOUNT_REPAY` with a zero amount repays the account's whole balance of the debt token
+    ///         on the live venue, and reverts `ZeroAmount` when that balance is empty instead of
+    ///         completing as a no-op.
+    function test_fork_shortEth_accountRepayZero_repaysDebtTokenBalance() public {
+        address account = router.accountOf(address(this), 0);
+        _stageOpen(account);
+        (, uint256 debtBefore) = adapter.positionOf(account, market);
+
+        uint256 funds = debtBefore / 2;
+        deal(WETH, account, funds);
+        router.execute(buildRepayZeroPlan(adapter, market, 0), block.timestamp + 1 hours);
+
+        (, uint256 debtAfter) = adapter.positionOf(account, market);
+        assertApproxEqAbs(debtBefore - debtAfter, funds, 1e3, "debt fell by the account's balance");
+        assertEq(IERC20(WETH).balanceOf(account), 0, "the whole balance was repaid");
+
+        // nothing left to repay: the plan fails loudly on every venue
+        bytes memory plan = buildRepayZeroPlan(adapter, market, 0);
+        vm.expectRevert(IMarginRouter.ZeroAmount.selector);
+        router.execute(plan, block.timestamp + 1 hours);
+    }
+
+    /// @notice A partial decrease that repays the whole variable debt does not need Aave's price
+    ///         oracle. Aave runs its health check on a withdrawal only while the account is
+    ///         borrowing, and the adapter reports a zero LTV for a market with no variable debt without
+    ///         calling `getUserAccountData`, so with the oracle reverting the mandatory health
+    ///         assertion still passes and the collateral that was not sold stays supplied.
+    function test_fork_shortEth_partialDecreaseClearingAllDebt_succeedsDuringOracleOutage() public {
+        address account = router.accountOf(address(this), 0);
+        _stageOpen(account);
+        (uint256 collBefore, uint256 debtBefore) = adapter.positionOf(account, market);
+
+        vm.etch(PROVIDER.getPriceOracle(), hex"60006000fd");
+        IPool aavePool = IPool(PROVIDER.getPool());
+        vm.expectRevert();
+        aavePool.getUserAccountData(account);
+
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.collateral, market.debt, uint128(debtBefore), 3000e6, account);
+        router.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                adapter: adapter,
+                market: market,
+                debtToRepay: debtBefore,
+                maxCollateralIn: 3000e6,
+                universalRouter: ur,
+                routeCommands: cmds,
+                routeInputs: ins,
+                maxLtvAfter: toLtv(0.7e18),
+                subId: 0,
+                deadline: block.timestamp + 1 hours
+            })
+        );
+
+        (uint256 collAfter, uint256 debtAfter) = adapter.positionOf(account, market);
+        assertEq(debtAfter, 0, "decrease: all variable debt repaid");
+        assertLt(collAfter, collBefore, "decrease: collateral sold to fund the repay");
+        assertGt(collAfter, 0, "decrease: unsold collateral remains");
+    }
+
+    /// @notice Anyone can supply a reserve on the account's behalf, and Aave enables it as collateral.
+    ///         A reserve with a near-zero liquidation threshold (syrupUSDT, 10 bps) adds its full value
+    ///         to Aave's collateral total but almost nothing to the health factor. The adapter's read
+    ///         stays on the USDC threshold's scale, equal to that threshold over Aave's health factor,
+    ///         so the injected value cannot pull it under a `maxLtvAfter` the position's own health
+    ///         would fail: a decrease bounded at the plain account ratio reverts `PositionUnhealthy`
+    ///         and the same decrease bounded at the adapter's read passes.
+    function test_fork_shortEth_thirdPartyLowThresholdSupply_cannotLowerTheHealthBound() public {
+        address account = router.accountOf(address(this), 0);
+        _stageOpen(account);
+        uint256 before = Ltv.unwrap(adapter.currentLtvWad(account, market));
+
+        // up to $500 next to ~$4000 of USDC, or what the reserve's supply cap still admits
+        uint256 injected = _thirdPartySuppliesLowThresholdReserve(account, 500e6);
+        console2.log("injected syrupUSDT (6 decimals):", injected);
+
+        (uint256 plainRatio, uint256 rescaled, uint256 thresholdOverHf) = _accountRatios(account);
+        uint256 read = Ltv.unwrap(adapter.currentLtvWad(account, market));
+        assertEq(read, rescaled, "read == ratio * collateralThreshold / accountThreshold");
+        assertGt(read, plainRatio, "the injected value lowers the plain ratio, not the read");
+        assertApproxEqRel(read, thresholdOverHf, 0.0002e18, "read == collateral threshold / Aave health factor");
+        assertApproxEqRel(read, before, 0.001e18, "the injection barely moves the read");
+
+        // what a quarter decrease leaves behind, on both scales
+        uint256 snap = vm.snapshotState();
+        router.decreasePosition(_quarterDecreaseParams(account, toLtv(0.99e18)));
+        (uint256 plainAfter, uint256 readAfter,) = _accountRatios(account);
+        assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), readAfter, "post-decrease read");
+        vm.revertToState(snap);
+        assertLt(plainAfter, readAfter, "sanity: the plain ratio would certify a tighter bound");
+
+        // a bound the plain ratio would pass but the position's own health does not: rejected
+        IMarginRouter.DecreaseParams memory rejected = _quarterDecreaseParams(account, toLtv(plainAfter));
+        vm.expectRevert(IMarginRouter.PositionUnhealthy.selector);
+        router.decreasePosition(rejected);
+
+        // the same decrease bounded at the read: accepted (the router accepts equality)
+        router.decreasePosition(_quarterDecreaseParams(account, toLtv(readAfter)));
+        assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), readAfter, "landed on the bound");
     }
 
     // -------------------------------------------------------------------------
@@ -281,6 +400,76 @@ contract AaveLendingAdapterForkTest is Test, MarginRouteHelpers {
                 deadline: block.timestamp + 1 hours
             })
         );
+    }
+
+    /// @notice A third party supplies syrupUSDT on the account's behalf through the live Pool's
+    ///         permissionless `supply`; Aave enables the first supply of a non-isolated reserve as
+    ///         collateral. Supplies `wanted`, or 90% of what the reserve's supply cap still admits at
+    ///         the fork block if that is less (the cap was nearly full there), and at least $10 so the
+    ///         injection is visible in the ratios. The reserve's near-zero threshold is verified
+    ///         on-chain first so a relisting fails loudly.
+    /// @return amount The amount supplied, in the reserve's 6 decimals.
+    function _thirdPartySuppliesLowThresholdReserve(address account, uint256 wanted) internal returns (uint256 amount) {
+        IPoolDataProviderLive live = IPoolDataProviderLive(address(adapter.dataProvider()));
+        (uint256 decimals,, uint256 threshold,,, bool collateralEnabled,,,,) =
+            adapter.dataProvider().getReserveConfigurationData(SYRUP_USDT);
+        assertEq(threshold, SYRUP_LIQ_THRESHOLD_BPS, "live syrupUSDT liquidation threshold");
+        assertTrue(collateralEnabled, "live syrupUSDT is collateral-enabled");
+        (, uint256 supplyCap) = live.getReserveCaps(SYRUP_USDT);
+        uint256 headroom = supplyCap * 10 ** decimals - live.getATokenTotalSupply(SYRUP_USDT);
+        amount = Math.min(wanted, headroom * 9 / 10);
+        assertGe(amount, 10e6, "live syrupUSDT supply cap admits at least $10");
+
+        IPool aavePool = IPool(PROVIDER.getPool());
+        deal(SYRUP_USDT, thirdParty, amount);
+        vm.startPrank(thirdParty);
+        IERC20(SYRUP_USDT).approve(address(aavePool), amount);
+        aavePool.supply(SYRUP_USDT, amount, account, 0);
+        vm.stopPrank();
+
+        (,,,,,,,, bool enabled) = live.getUserReserveData(SYRUP_USDT, account);
+        assertTrue(enabled, "Aave enabled the injected reserve as collateral for the account");
+    }
+
+    /// @notice The account's plain base-currency debt/collateral ratio, that ratio rescaled onto the
+    ///         USDC threshold (what the adapter reports with a lower-threshold reserve present), and
+    ///         the USDC threshold over Aave's own health factor, all WAD.
+    function _accountRatios(address account)
+        internal
+        view
+        returns (uint256 plain, uint256 rescaled, uint256 thresholdOverHf)
+    {
+        (uint256 collateralBase, uint256 debtBase,, uint256 accountThresholdBps,, uint256 healthFactor) =
+            IPool(PROVIDER.getPool()).getUserAccountData(account);
+        plain = Math.ceilDiv(debtBase * WAD, collateralBase);
+        rescaled = Math.ceilDiv(debtBase * USDC_LIQ_THRESHOLD_BPS * WAD, collateralBase * accountThresholdBps);
+        thresholdOverHf = USDC_LIQ_THRESHOLD_BPS * WAD / BPS * WAD / healthFactor;
+    }
+
+    /// @notice Params for a partial decrease repaying a quarter of the live WETH debt, capped at 2000
+    ///         USDC of collateral and bounded at `bound`. Built ahead of the call so an `expectRevert`
+    ///         targets the router call alone.
+    function _quarterDecreaseParams(address account, Ltv bound)
+        internal
+        view
+        returns (IMarginRouter.DecreaseParams memory)
+    {
+        (, uint256 debt) = adapter.positionOf(account, market);
+        uint256 debtToRepay = debt / 4;
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.collateral, market.debt, uint128(debtToRepay), 2000e6, account);
+        return IMarginRouter.DecreaseParams({
+            adapter: adapter,
+            market: market,
+            debtToRepay: debtToRepay,
+            maxCollateralIn: 2000e6,
+            universalRouter: ur,
+            routeCommands: cmds,
+            routeInputs: ins,
+            maxLtvAfter: bound,
+            subId: 0,
+            deadline: block.timestamp + 1 hours
+        });
     }
 
     // -------------------------------------------------------------------------

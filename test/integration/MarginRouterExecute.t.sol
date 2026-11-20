@@ -12,6 +12,9 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {IMorpho, MarketParams, Id, Position, Market as MorphoMarket} from "morpho-blue/interfaces/IMorpho.sol";
+import {IOracle} from "morpho-blue/interfaces/IOracle.sol";
+import {MarketParamsLib} from "morpho-blue/libraries/MarketParamsLib.sol";
 
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
@@ -25,6 +28,8 @@ import {BaseActionsRouter} from "../../src/base/BaseActionsRouter.sol";
 import {ReentrancyLock} from "../../src/base/ReentrancyLock.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Ltv, toLtv} from "../../src/types/Ltv.sol";
+import {MorphoLendingAdapter} from "../../src/MorphoLendingAdapter.sol";
+import {MockMorpho} from "../mocks/MockMorpho.sol";
 import {MockLendingAdapter} from "../mocks/MockLendingAdapter.sol";
 import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 
@@ -350,6 +355,85 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
         plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
         plan = plan.add(MarginActions.ASSERT_HEALTH, abi.encode(adapter, market, toLtv(0.5e18)));
         vm.expectRevert(IMarginRouter.PositionUnhealthy.selector);
+        marginRouter.execute(plan.encode(), block.timestamp + 1);
+    }
+
+    /// @dev A position whose exact LTV sits a fraction above the bound is over it. The Morpho adapter
+    ///      rounds the ratio up, so a bound at the floored ratio trips `PositionUnhealthy`; a bound one
+    ///      wad unit higher passes.
+    function test_execute_assertHealth_revertsWhenExactRatioFractionallyAboveBound() public {
+        MockMorpho morpho = new MockMorpho();
+        MorphoLendingAdapter morphoAdapter = new MorphoLendingAdapter(IMorpho(address(morpho)));
+        MarketParams memory mp = MarketParams({
+            loanToken: Currency.unwrap(debt),
+            collateralToken: Currency.unwrap(collateral),
+            oracle: makeAddr("oracle"),
+            irm: makeAddr("irm"),
+            lltv: 0.86e18
+        });
+        morpho.setMarketParams(mp);
+        Id id = MarketParamsLib.id(mp);
+        address account = marginRouter.accountOf(address(this), 0);
+        // debt exactly 1e18 (1:1 shares, accrual skipped), collateral worth 3e18: exact LTV is 1/3
+        morpho.setMarketState(
+            id,
+            MorphoMarket({
+                totalSupplyAssets: 0,
+                totalSupplyShares: 0,
+                totalBorrowAssets: 1e18,
+                totalBorrowShares: 1e18,
+                lastUpdate: uint128(block.timestamp),
+                fee: 0
+            })
+        );
+        morpho.setPosition(id, account, Position({supplyShares: 0, borrowShares: 1e18, collateral: 3e18}));
+        vm.mockCall(mp.oracle, abi.encodeCall(IOracle.price, ()), abi.encode(uint256(1e36)));
+        Market memory morphoMarket =
+            Market({collateral: collateral, debt: debt, data: abi.encode(mp.oracle, mp.irm, mp.lltv)});
+        (, uint256 reportedDebt) = morphoAdapter.positionOf(account, morphoMarket);
+        uint256 floored = reportedDebt * 1e18 / 3e18;
+        assertGt(reportedDebt * 1e18 % 3e18, 0, "sanity: the exact ratio is fractional");
+
+        Plan memory over = Planner.init();
+        over = over.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
+        over = over.add(MarginActions.ASSERT_HEALTH, abi.encode(morphoAdapter, morphoMarket, toLtv(floored)));
+        vm.expectRevert(IMarginRouter.PositionUnhealthy.selector);
+        marginRouter.execute(over.encode(), block.timestamp + 1);
+
+        Plan memory ok = Planner.init();
+        ok = ok.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
+        ok = ok.add(MarginActions.ASSERT_HEALTH, abi.encode(morphoAdapter, morphoMarket, toLtv(floored + 1)));
+        marginRouter.execute(ok.encode(), block.timestamp + 1);
+    }
+
+    // ──────────────────────────────── ACCOUNT_REPAY zero amount ─────────────────────────────────
+
+    /// @dev An encoded `0` is the `OPEN_DELTA` form: it repays the account's whole balance of the debt
+    ///      token, mirroring `ACCOUNT_SUPPLY_COLLATERAL`.
+    function test_execute_accountRepay_zeroResolvesToAccountDebtBalance() public {
+        address account = _openViaExecute(0, 1 ether, 2 ether);
+        uint256 owedBefore = protocol.debtOf(account);
+        uint256 repayFunds = owedBefore / 2;
+        MockERC20(Currency.unwrap(debt)).transfer(account, repayFunds);
+
+        Plan memory plan = Planner.init();
+        plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
+        plan = plan.add(MarginActions.ACCOUNT_REPAY, abi.encode(adapter, market, uint256(ActionConstants.OPEN_DELTA)));
+        marginRouter.execute(plan.encode(), block.timestamp + 1);
+
+        assertEq(protocol.debtOf(account), owedBefore - repayFunds, "debt reduced by the account's balance");
+        assertEq(IERC20(Currency.unwrap(debt)).balanceOf(account), 0, "the whole balance was repaid");
+    }
+
+    /// @dev With nothing to repay the zero resolves to nothing and the plan reverts instead of silently
+    ///      doing nothing on a venue that accepts a zero repay.
+    function test_execute_accountRepay_zeroWithEmptyDebtBalance_revertsZeroAmount() public {
+        _openViaExecute(0, 1 ether, 2 ether);
+
+        Plan memory plan = Planner.init();
+        plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
+        plan = plan.add(MarginActions.ACCOUNT_REPAY, abi.encode(adapter, market, uint256(ActionConstants.OPEN_DELTA)));
+        vm.expectRevert(IMarginRouter.ZeroAmount.selector);
         marginRouter.execute(plan.encode(), block.timestamp + 1);
     }
 

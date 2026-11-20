@@ -168,10 +168,12 @@ contract MorphoLendingAdapter is ILendingAdapter, PositionAmountResolver {
     }
 
     /// @inheritdoc ILendingAdapter
-    /// @dev Computes the current LTV as `debt * WAD / collateralValue`, where `collateralValue` is
+    /// @dev Computes the current LTV as `debt * WAD / collateralValue` rounded up, where `collateralValue` is
     ///      the oracle's price of collateral quoted in the loan token (1e36-scaled). Returns
     ///      `type(uint256).max` (as an `Ltv`) when there is debt but zero collateral value (fully
-    ///      undercollateralized). Returns 0 when there is no debt.
+    ///      undercollateralized). Returns 0 when there is no debt, without reading the oracle: a
+    ///      debt-free position has no ratio to price, and Morpho itself treats a position with no
+    ///      borrow as healthy before consulting the oracle.
     function currentLtvWad(address account, Market calldata market) external view returns (Ltv) {
         MarketParams memory marketParams = _resolve(market);
         (, uint256 debt, uint256 collateralValue) = _positionValues(marketParams, account);
@@ -207,7 +209,9 @@ contract MorphoLendingAdapter is ILendingAdapter, PositionAmountResolver {
     /// @param account The account to read.
     /// @return collateral The account's supplied collateral, in the collateral token's native decimals.
     /// @return debt The account's debt with accrued interest, in the loan token's native decimals.
-    /// @return collateralValue The collateral valued in loan-token units via the market oracle.
+    /// @return collateralValue The collateral valued in loan-token units via the market oracle. Zero
+    ///         when there is no debt, in which case the oracle is not read: no consumer needs a value
+    ///         for a debt-free position, and an oracle outage must not block one.
     function _positionValues(MarketParams memory marketParams, address account)
         internal
         view
@@ -215,6 +219,7 @@ contract MorphoLendingAdapter is ILendingAdapter, PositionAmountResolver {
     {
         collateral = uint256(morpho.position(marketParams.id(), account).collateral);
         debt = morpho.expectedBorrowAssets(marketParams, account);
+        if (debt == 0) return (collateral, debt, 0);
         // price() is 1e36-scaled, so mulDiv keeps the collateral * price product in full 512-bit
         // precision and avoids a phantom-overflow revert.
         collateralValue = Math.mulDiv(collateral, IOracle(marketParams.oracle).price(), ORACLE_PRICE_SCALE);
@@ -228,7 +233,9 @@ contract MorphoLendingAdapter is ILendingAdapter, PositionAmountResolver {
     /// @return The current LTV as an `Ltv` (WAD, 1e18 == 100%).
     function _ltv(uint256 debt, uint256 collateralValue) internal pure returns (Ltv) {
         if (collateralValue == 0) return toLtv(debt == 0 ? 0 : type(uint256).max);
-        return toLtv(debt * Units.WAD / collateralValue);
+        // rounds up so a position at the bound is never certified by a floored ratio; Morpho's own
+        // `_isHealthy` rounds against the borrower, and the two must agree at `bound == lltv`
+        return toLtv(Math.mulDiv(debt, Units.WAD, collateralValue, Math.Rounding.Ceil));
     }
 
     /// @notice Resolves a market key to the Morpho `MarketParams` it names, reverting unless the

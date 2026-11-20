@@ -100,13 +100,17 @@ interface ILendingAdapter {
 
     /// @notice Encode the calls that repay `amount` of `market.debt`.
     /// @dev Passing `amount == type(uint256).max`, or any `amount` at or above the reported debt,
-    ///      triggers a full repay resolved by the adapter in the venue's own terms: Morpho burns the
+    ///      triggers a full repay resolved in the venue's own terms. The Morpho adapter burns the
     ///      entire borrow-share balance (avoiding interest dust and the rounding underflow an
-    ///      asset-denominated exact repay would hit), Aave v3/v4 pass the venue's native repay-all
-    ///      sentinel, and Compound clamps to the outstanding base debt. When the account has no debt
-    ///      to repay, the adapter returns no calls and the account skips the step, so a generic
-    ///      "repay then withdraw" exit plan works against a debt-free position. The account approves
-    ///      `lendingProtocol()` for the repaid amount around the sequence and resets it afterward.
+    ///      asset-denominated exact repay would hit). The Aave v3 and v4 adapters forward the amount
+    ///      unchanged and the venue caps the payment at the debt: the Aave v3 Pool also treats
+    ///      `type(uint256).max` as its own repay-all value, and the v4 Spoke treats any amount at or
+    ///      above the drawn debt plus premium as a full repay. The Compound adapter clamps to the
+    ///      outstanding base debt in its encoder. When the account has no debt to repay, the adapter
+    ///      returns no calls and the account skips the step, so a generic "repay then withdraw" exit
+    ///      plan works against a debt-free position. The account approves `lendingProtocol()` for the
+    ///      repaid amount (its whole debt-token balance for `type(uint256).max`) around the sequence
+    ///      and resets it afterward.
     /// @param account The MarginAccount repaying the debt; used as `onBehalf`.
     /// @param market The market key identifying the target lending market.
     /// @param amount The amount of debt to repay in native decimals, or `type(uint256).max` to repay
@@ -147,7 +151,10 @@ interface ILendingAdapter {
     /// @dev This is the value `MarginRouter`'s post-action health check consumes. On venues with
     ///      account-level reads (Aave v3/v4 on both sides; Compound's base debt) it is an
     ///      account-level value, so it equals the position's LTV only under the
-    ///      one-position-per-`subId` usage requirement documented on each adapter.
+    ///      one-position-per-`subId` usage requirement documented on each adapter. Where a venue
+    ///      liquidates on a threshold-weighted collateral sum (Aave v3), the value is on the market
+    ///      collateral's own threshold scale, so a reserve anyone can supply on the account's behalf
+    ///      cannot pull it under a caller's bound.
     /// @param account The MarginAccount to query.
     /// @param market The market key identifying the target lending market.
     /// @return The current LTV as an `Ltv` (WAD, 1e18 == 100%).

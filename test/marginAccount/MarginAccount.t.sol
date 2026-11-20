@@ -203,6 +203,33 @@ contract MarginAccountTest is Test {
         assertEq(uint256(vm.load(address(account), 0)), 0);
     }
 
+    /// @dev `execute` grants no allowance, and a venue repay pulls the debt token with `transferFrom`,
+    ///      so a raw repay forwarded through `execute` reverts at the venue and leaves the debt alone.
+    function test_execute_rawRepay_revertsAtZeroAllowance() public {
+        protocol.setDebt(address(account), 7e18);
+        assertEq(debtToken.allowance(address(account), address(protocol)), 0, "no allowance to start");
+
+        vm.prank(owner);
+        vm.expectRevert();
+        account.execute(adapter, abi.encodeWithSignature("repay(address,uint256)", address(account), 7e18));
+
+        assertEq(protocol.debtOf(address(account)), 7e18, "debt untouched");
+    }
+
+    /// @dev The same venue call goes through `repay` with an adapter whose encoder returns it: the
+    ///      adapter argument is caller-chosen, so the owner can run any repay shape with the account
+    ///      approving the venue around it and clearing the allowance afterward.
+    function test_repay_withCallerChosenAdapter_clearsDebtThatRawExecuteCannot() public {
+        protocol.setDebt(address(account), 7e18);
+
+        vm.prank(owner);
+        uint256 repaid = account.repay(adapter, market, 7e18);
+
+        assertEq(repaid, 7e18, "the repay went through");
+        assertEq(protocol.debtOf(address(account)), 0, "debt cleared");
+        assertEq(debtToken.allowance(address(account), address(protocol)), 0, "allowance cleared afterward");
+    }
+
     function test_execute_revertsForManager() public {
         StorageProbe probe = new StorageProbe();
         MockLendingAdapter probeAdapter = new MockLendingAdapter(address(probe));

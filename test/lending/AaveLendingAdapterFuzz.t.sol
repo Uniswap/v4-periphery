@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {Test} from "forge-std/Test.sol";
+import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
@@ -204,7 +205,7 @@ contract AaveLendingAdapterFuzzTest is Test {
     // currentLtvWad formula
     // -------------------------------------------------------------------------
 
-    /// currentLtvWad == totalDebtBase * WAD / totalCollateralBase (Aave USD-base values).
+    /// currentLtvWad == ceil(totalDebtBase * WAD / totalCollateralBase) (Aave USD-base values).
     /// The mock pool computes totals from seeded aToken / vDebt balances and their prices.
     /// We read back the mock's own computed totals and compare against the adapter result.
     function testFuzz_currentLtvWad_matchesFormula(uint64 collAmt, uint64 debtAmt) public {
@@ -226,7 +227,7 @@ contract AaveLendingAdapterFuzzTest is Test {
         } else if (totalCollBase == 0) {
             assertEq(Ltv.unwrap(ltv), type(uint256).max, "USD-debt with no collateral => max ltv");
         } else {
-            uint256 expected = totalDebtBase * WAD / totalCollBase;
+            uint256 expected = Math.mulDiv(totalDebtBase, WAD, totalCollBase, Math.Rounding.Ceil);
             assertEq(Ltv.unwrap(ltv), expected, "ltv formula mismatch");
         }
     }

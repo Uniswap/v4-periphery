@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
+import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -49,6 +50,13 @@ import {PositionData} from "./types/PositionData.sol";
 ///           Co-locating two of this Pool's markets under one `subId` blends the reads and can make a
 ///           close/decrease revert or withdraw collateral still backing another debt. Use a distinct
 ///           `subId` per Aave position.
+///         - Anyone can `supply` any reserve on the account's behalf, and Aave enables a non-isolated
+///           first supply as collateral, so a third party can add a collateral reserve the owner never
+///           chose. `currentLtvWad` therefore reports the account's debt against its collateral ON THE
+///           MARKET COLLATERAL'S LIQUIDATION-THRESHOLD SCALE (`collateralThreshold / healthFactor`),
+///           never below the plain value ratio, so a reserve with a lower threshold counts only for
+///           what Aave's own health factor gives it and cannot pull the read under a caller's bound.
+///           A position reads at `maxLtvWad` exactly when Aave would liquidate it.
 ///         - Market selection is permissionless but venue-validated: every `encode*` and read reverts
 ///           `MarketNotSupported` for a pair whose collateral or debt is not a live Aave reserve, and
 ///           `InvalidMarketData` for non-empty `data`, never returning a silent default market.
@@ -175,10 +183,11 @@ contract AaveLendingAdapter is ILendingAdapter, PositionAmountResolver {
     }
 
     /// @inheritdoc ILendingAdapter
-    /// @dev Encodes `IPool.repay` in variable-rate mode with `onBehalfOf = account`. Passing
-    ///      `amount == type(uint256).max` repays the account's full variable debt natively,
-    ///      including accrued interest, leaving no dust. When the account holds no variable debt,
-    ///      encodes no calls instead: Aave's `repay` reverts `NoDebtOfSelectedType` on a debt-free
+    /// @dev Encodes `IPool.repay` in variable-rate mode with `onBehalfOf = account`, forwarding
+    ///      `amount` unchanged: the Pool caps a payment above the debt at the debt, and treats
+    ///      `amount == type(uint256).max` as its own repay-all value, so either repays the account's
+    ///      full variable debt including accrued interest, leaving no dust. When the account holds no
+    ///      variable debt, encodes no calls instead: Aave's `repay` reverts `NoDebtOfSelectedType` on a debt-free
     ///      account, and the no-op keeps a generic repay-then-withdraw exit plan runnable against a
     ///      debt-free position.
     function encodeRepay(address account, Market calldata market, uint256 amount)
@@ -216,50 +225,61 @@ contract AaveLendingAdapter is ILendingAdapter, PositionAmountResolver {
     ///      threshold, not the `ltv` (max-borrow) field.
     function maxLtvWad(Market calldata market) external view returns (Ltv) {
         _resolve(market);
-        (,, uint256 liquidationThreshold,,,,,,,) =
-            dataProvider().getReserveConfigurationData(Currency.unwrap(market.collateral));
-        return _thresholdToLtv(liquidationThreshold);
+        return _thresholdToLtv(_collateralThresholdBps(market.collateral));
     }
 
     /// @inheritdoc ILendingAdapter
-    /// @dev Computes the current LTV as `totalDebtBase * WAD / totalCollateralBase` from Aave's
-    ///      account-level `getUserAccountData`, whose totals are denominated in the protocol's USD
-    ///      base currency, so the collateral/debt decimal difference of a short needs no special
-    ///      handling. Returns `type(uint256).max` (as an `Ltv`) when there is debt but zero
-    ///      collateral, and 0 when there is no debt. This is ACCOUNT-LEVEL: it equals the position LTV
-    ///      only when the account holds a single Aave position on this Pool. Co-locating multiple Aave
-    ///      markets under one `(owner, subId)`, or supplying/borrowing extra reserves via the owner
-    ///      escape hatch, blends every reserve into these totals. The router does NOT enforce one
-    ///      position per account; callers must use a distinct `subId` per Aave position.
+    /// @dev Computes the current LTV from Aave's account-level `getUserAccountData`, whose totals are
+    ///      denominated in the protocol's USD base currency, so the collateral/debt decimal difference
+    ///      of a short needs no special handling. The ratio is `totalDebtBase / totalCollateralBase`
+    ///      (rounded up) placed on the market collateral's liquidation-threshold scale: when the
+    ///      account's collateral-weighted threshold is below the collateral reserve's, the ratio is
+    ///      scaled by `collateralThreshold / accountThreshold`, which equals
+    ///      `collateralThreshold / healthFactor`; see `_currentLtv`. Returns `type(uint256).max` (as
+    ///      an `Ltv`) when there is debt but zero collateral, and 0 when the account has no variable
+    ///      debt in this market's debt reserve, checked before `getUserAccountData` so no price is
+    ///      consulted (Aave needs none to exit a debt-free position). This is ACCOUNT-LEVEL: it equals
+    ///      the position LTV only when the account holds a single Aave position on this Pool.
+    ///      Co-locating multiple Aave markets under one `(owner, subId)`, or supplying/borrowing extra
+    ///      reserves via the owner escape hatch, blends every reserve into these totals. The router
+    ///      does NOT enforce one position per account; callers must use a distinct `subId` per Aave
+    ///      position.
     /// @param market Must name two live reserves (only the key is validated; the account's full Aave
     ///        position determines the totals).
     function currentLtvWad(address account, Market calldata market) external view returns (Ltv) {
-        _resolve(market);
-        (uint256 totalCollateralBase, uint256 totalDebtBase,,,,) = pool.getUserAccountData(account);
-        return _currentLtv(totalDebtBase, totalCollateralBase);
+        (, address vDebt) = _resolve(market);
+        if (IERC20(vDebt).balanceOf(account) == 0) return toLtv(0);
+        (uint256 totalCollateralBase, uint256 totalDebtBase,, uint256 accountThresholdBps,,) =
+            pool.getUserAccountData(account);
+        return _currentLtv(
+            totalDebtBase, totalCollateralBase, accountThresholdBps, _collateralThresholdBps(market.collateral)
+        );
     }
 
     /// @inheritdoc ILendingAdapter
     /// @dev Composes the aToken/variable-debt balances with a single account-level
     ///      `getUserAccountData` read, so the health factor is Aave's own (liquidation-threshold
-    ///      weighted) value rather than a re-derivation. `maxLtv` and `currentLtv` are account-level:
-    ///      they equal the position's values only when the account holds a single Aave position on
-    ///      this Pool (one position per `subId`); see the contract-level notes.
+    ///      weighted) value rather than a re-derivation. `maxLtv` is the market collateral's own
+    ///      liquidation threshold (what `maxLtvWad` returns) and `currentLtv` is on that same scale
+    ///      (what `currentLtvWad` returns), so the pair agrees with the router's health check and
+    ///      `maxLtv / currentLtv` equals Aave's health factor whenever a lower-threshold reserve is
+    ///      present. Both are account-level: they equal the position's values only when the account
+    ///      holds a single Aave position on this Pool (one position per `subId`); see the
+    ///      contract-level notes.
     function describePosition(address account, Market calldata market)
         external
         view
         returns (PositionData memory data)
     {
         (address aCollateral, address vDebt) = _resolve(market);
-        (uint256 totalCollateralBase, uint256 totalDebtBase,, uint256 liquidationThreshold,, uint256 healthFactor) =
+        uint256 collateralThresholdBps = _collateralThresholdBps(market.collateral);
+        (uint256 totalCollateralBase, uint256 totalDebtBase,, uint256 accountThresholdBps,, uint256 healthFactor) =
             pool.getUserAccountData(account);
         data = PositionData({
             collateralAmount: IERC20(aCollateral).balanceOf(account),
             debtAmount: IERC20(vDebt).balanceOf(account),
-            // account-weighted liquidation threshold as the max LTV, matching the health factor Aave
-            // returns; equals the reserve's threshold for a single-position account
-            maxLtv: _thresholdToLtv(liquidationThreshold),
-            currentLtv: _currentLtv(totalDebtBase, totalCollateralBase),
+            maxLtv: _thresholdToLtv(collateralThresholdBps),
+            currentLtv: _currentLtv(totalDebtBase, totalCollateralBase, accountThresholdBps, collateralThresholdBps),
             healthFactorWad: healthFactor
         });
     }
@@ -290,14 +310,57 @@ contract AaveLendingAdapter is ILendingAdapter, PositionAmountResolver {
         (,, vDebt) = dp.getReserveTokensAddresses(Currency.unwrap(market.debt));
     }
 
-    /// @notice Current LTV from Aave's account-level base-currency totals. `type(uint256).max` when
-    ///         there is debt against zero collateral; zero when there is no debt.
+    /// @notice The market collateral reserve's liquidation threshold, in basis points, from the live
+    ///         reserve configuration.
+    /// @param collateral The market's collateral asset.
+    /// @return thresholdBps The reserve's liquidation threshold (1e4 == 100%).
+    function _collateralThresholdBps(Currency collateral) internal view returns (uint256 thresholdBps) {
+        (,, thresholdBps,,,,,,,) = dataProvider().getReserveConfigurationData(Currency.unwrap(collateral));
+    }
+
+    /// @notice Current LTV from Aave's account-level base-currency totals, on the market collateral's
+    ///         liquidation-threshold scale. `type(uint256).max` when there is debt against zero
+    ///         collateral (or against collateral Aave weights at zero); zero when there is no debt.
+    /// @dev Aave liquidates on the threshold-weighted collateral sum, not on the full-value total
+    ///      that `totalCollateralBase` reports, and anyone can supply a reserve on the account's
+    ///      behalf. A reserve with a lower threshold than the market collateral's adds its whole value
+    ///      to the total while barely moving the health factor, so the plain ratio would understate
+    ///      the distance to liquidation and a third party could pull it under a caller's bound. When
+    ///      the account's weighted threshold is below the collateral's, the ratio is rescaled by
+    ///      `collateralThreshold / accountThreshold`, which equals `collateralThreshold / healthFactor`
+    ///      and puts the read on the same scale as `maxLtvWad`. The result is never below the plain
+    ///      ratio: a single-collateral account, or one whose extra reserves carry a higher threshold
+    ///      (an eMode category included), keeps the plain ratio, which is the conservative value
+    ///      there. Aave floors the weighted threshold to a basis point, which only rounds this up.
     /// @param totalDebtBase The account's total debt in Aave's base currency.
     /// @param totalCollateralBase The account's total collateral in Aave's base currency.
+    /// @param accountThresholdBps The account's collateral-weighted liquidation threshold (1e4 == 100%).
+    /// @param collateralThresholdBps The market collateral reserve's liquidation threshold (1e4 == 100%).
     /// @return The current LTV as an `Ltv` (WAD, 1e18 == 100%).
-    function _currentLtv(uint256 totalDebtBase, uint256 totalCollateralBase) internal pure returns (Ltv) {
-        if (totalCollateralBase == 0) return toLtv(totalDebtBase == 0 ? 0 : type(uint256).max);
-        return toLtv(totalDebtBase * Units.WAD / totalCollateralBase);
+    function _currentLtv(
+        uint256 totalDebtBase,
+        uint256 totalCollateralBase,
+        uint256 accountThresholdBps,
+        uint256 collateralThresholdBps
+    ) internal pure returns (Ltv) {
+        if (totalDebtBase == 0) return toLtv(0);
+        if (totalCollateralBase == 0) return toLtv(type(uint256).max);
+        // every division rounds up so a position at the bound is never certified by a floored ratio
+        if (accountThresholdBps >= collateralThresholdBps) {
+            return toLtv(Math.mulDiv(totalDebtBase, Units.WAD, totalCollateralBase, Math.Rounding.Ceil));
+        }
+        // collateral that Aave weights at zero backs nothing: the account is liquidatable
+        if (accountThresholdBps == 0) return toLtv(type(uint256).max);
+        // base-currency totals are 8-decimal USD and thresholds are at most 1e4, so neither product
+        // can overflow before mulDiv's full-precision path
+        return toLtv(
+            Math.mulDiv(
+                totalDebtBase * collateralThresholdBps,
+                Units.WAD,
+                totalCollateralBase * accountThresholdBps,
+                Math.Rounding.Ceil
+            )
+        );
     }
 
     /// @notice Converts an Aave liquidation threshold (basis points) to a WAD-scaled `Ltv`.

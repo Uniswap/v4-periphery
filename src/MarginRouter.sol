@@ -4,6 +4,7 @@ pragma solidity 0.8.26;
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -47,9 +48,14 @@ import {PositionData} from "./types/PositionData.sol";
 ///         reaches only the caller's own account (see `MarginAccount`). The supported venues list
 ///         standard ERC-20 markets (no fee-on-transfer or rebasing tokens), under which every curated
 ///         flow (the fixed plan behind `increasePosition`, `decreasePosition`, or `addCollateral`, as
-///         opposed to a plan the caller builds for `execute`) nets to zero with no router residual by
-///         construction; a non-standard token fails the flows' fill and settle assertions rather than
-///         leaving a residual.
+///         opposed to a plan the caller builds for `execute`) nets its own token movements to zero on
+///         the router; a non-standard token fails the flows' fill and settle assertions rather than
+///         leaving a residual. That covers what the flow itself moves. Anything a third party sends
+///         to the router, or a hook or route pays to the router as the swapper (a curated route runs
+///         under the router's own address, so a payout addressed to the swapper lands here), is not
+///         part of the flow and stays on the router until someone sweeps it: `SWEEP` is permissionless,
+///         and a caller whose route earns such a payout collects it with a trailing `execute`
+///         `SWEEP` in the same `multicall`.
 ///
 ///         The `execute` entry point runs an arbitrary caller-supplied plan of the same actions.
 ///         It does not guarantee zero residual: a plan MUST net the router itself (terminate with
@@ -70,6 +76,12 @@ contract MarginRouter is
     using SafeCast for uint256;
     using CurrencyLibrary for Currency;
     using SafeERC20 for IERC20;
+    using TransientStateLibrary for IPoolManager;
+
+    /// @inheritdoc IMarginRouter
+    uint256 public constant POSITION_READ_GAS = 250_000;
+    /// @inheritdoc IMarginRouter
+    uint256 public constant POSITION_EVENT_GAS = 25_000;
 
     /// @dev Reverts `DeadlinePassed` if `block.timestamp` has passed `deadline`.
     modifier checkDeadline(uint256 deadline) {
@@ -100,12 +112,14 @@ contract MarginRouter is
         returns (address account)
     {
         uint256 debtBefore;
-        (account, debtBefore) = _increase(params);
+        uint256 collateralBought;
+        (account, debtBefore, collateralBought) = _increase(params);
         // best-effort rich event: a venue read that reverts (oracle downtime) must not roll back the
         // completed increase, and the PositionUpdated snapshots emitted inside the unlock already
         // carry the resulting state. The debt delta saturates at zero because a permissionless
         // onBehalf repay landing inside the transaction can leave the debt below its start.
-        try params.adapter.describePosition(account, params.market) returns (PositionData memory position) {
+        (bool read, PositionData memory position) = _readPosition(params.adapter, params.market, account);
+        if (read) {
             emit PositionIncreased(
                 msgSender(),
                 account,
@@ -113,7 +127,7 @@ contract MarginRouter is
                 params.market.debt,
                 params.market.data,
                 msg.value > 0 ? msg.value : params.equity,
-                params.collateralToBuy,
+                collateralBought,
                 position.debtAmount > debtBefore ? position.debtAmount - debtBefore : 0,
                 position.collateralAmount,
                 position.debtAmount,
@@ -121,7 +135,7 @@ contract MarginRouter is
                 position.maxLtv,
                 position.healthFactorWad
             );
-        } catch {}
+        }
     }
 
     /// @inheritdoc IMarginRouter
@@ -142,7 +156,8 @@ contract MarginRouter is
     /// @notice Full close: repay all, withdraw all, and return the realized collateral plus any debt
     ///         the route over-bought to the caller. A debt-free position (funded only through
     ///         `addCollateral`, repaid out of band, or fully liquidated) needs no swap, so its
-    ///         collateral is withdrawn straight to the caller.
+    ///         collateral is withdrawn straight to the caller, deploying the account first if collateral
+    ///         was supplied to its address before it existed.
     /// @param params The decrease parameters.
     /// @param account The caller's MarginAccount.
     function _closePosition(DecreaseParams calldata params, address account) private {
@@ -150,6 +165,10 @@ contract MarginRouter is
 
         if (debt == 0) {
             if (collateralBefore > 0) {
+                // collateral can be supplied on the venue for the predicted address before the account
+                // exists; deploy it so the withdrawal has an account to call. An empty position needs
+                // no account, so it stays undeployed.
+                if (account.code.length == 0) createAccount(msgSender(), params.subId);
                 IMarginAccount(account).withdrawCollateral(params.adapter, params.market, collateralBefore, msgSender());
             }
             // no unlock ran, so no action handler emitted the snapshot; emit the terminal one here
@@ -226,7 +245,8 @@ contract MarginRouter is
         // completed decrease, and the PositionUpdated snapshots emitted inside the unlock already
         // carry the resulting state. The collateral delta saturates at zero because a permissionless
         // onBehalf supply landing inside the transaction can leave the collateral above its start.
-        try params.adapter.describePosition(account, params.market) returns (PositionData memory position) {
+        (bool read, PositionData memory position) = _readPosition(params.adapter, params.market, account);
+        if (read) {
             emit PositionDecreased(
                 msgSender(),
                 account,
@@ -241,7 +261,7 @@ contract MarginRouter is
                 position.currentLtv,
                 position.healthFactorWad
             );
-        } catch {}
+        }
     }
 
     /// @notice Builds the plan both decrease modes run: `ROUTE_SWAP` sells collateral for debt
@@ -344,8 +364,8 @@ contract MarginRouter is
         // the router is the account manager, so it can supply directly without an unlock
         IMarginAccount(account).supplyCollateral(params.adapter, params.market, amount);
         // best-effort events: no unlock ran, so the PositionUpdated snapshot and CollateralAdded both
-        // come from this one venue read, which can revert (oracle downtime, even on a debt-free Morpho
-        // position). The supply has already completed, so emit both on success and skip both on
+        // come from this one venue read, which can revert (oracle downtime on a position with debt).
+        // The supply has already completed, so emit both on success and skip both on
         // failure rather than roll it back.
         (bool read, PositionData memory position) = _readPosition(params.adapter, params.market, account);
         if (read) {
@@ -414,7 +434,13 @@ contract MarginRouter is
     /// @return account The caller's MarginAccount address.
     /// @return debtBefore The account's debt before the increase; the caller derives debtDrawn as the
     ///         post-increase debt minus this, correct for both a fresh open and an increase.
-    function _increase(IncreaseParams calldata params) private returns (address account, uint256 debtBefore) {
+    /// @return collateralBought The collateral the route delivered: what the plan's supply committed
+    ///         minus what the account held going into the unlock (equity and any idle balance). The
+    ///         fill floor makes it at least `collateralToBuy`; a route that over-delivers raises it.
+    function _increase(IncreaseParams calldata params)
+        private
+        returns (address account, uint256 debtBefore, uint256 collateralBought)
+    {
         // a zero buy would feed the exact-output swap a zero, which the PoolManager rejects
         if (params.collateralToBuy == 0) revert ZeroAmount();
         if (params.maxDebtIn == 0) revert SlippageBoundRequired();
@@ -482,7 +508,13 @@ contract MarginRouter is
         // A zero bound skips the check, so callers relying on maxDebtIn alone are unaffected.
         actionParams[5] = abi.encode(params.adapter, params.market, params.maxLtvAfter);
 
+        // fail-closed: the plan's ACCOUNT_SUPPLY_COLLATERAL overwrites this with what it supplied
+        TransientPlanState.setLastSupplied(0);
         _unlockAs(account, actions, actionParams);
+        // the supply committed the whole balance, so what the route delivered is the part above the
+        // equity and idle balance held going in; the fill floor makes it at least collateralToBuy
+        uint256 supplied = TransientPlanState.lastSupplied();
+        collateralBought = supplied > collateralHeldBefore ? supplied - collateralHeldBefore : 0;
     }
 
     /// @notice Runs a plan inside one PoolManager unlock with `account` bound as the active account
@@ -562,49 +594,90 @@ contract MarginRouter is
     }
 
     /// @notice Runs the `ROUTE_SWAP` action: route a swap through the Universal Router (v2/v3/v4)
-    ///         behind a flash-take of the input. Because UR self-settles its own swap, wrapping the
-    ///         call in a flash-take/settle envelope leaves the router owing exactly what UR spent, the
-    ///         same negative delta a native v4 exact-output swap would leave, which a downstream
-    ///         `ACCOUNT_BORROW`/`SETTLE` then nets via `OPEN_DELTA`. Operates only on the router; the
-    ///         caller's route delivers the output to the account bound by `SET_ACCOUNT`.
+    ///         behind a flash-take of the input. The router owes the pool exactly what the route
+    ///         spent, the same negative delta a native v4 exact-output swap would leave, which a
+    ///         downstream `ACCOUNT_BORROW`/`SETTLE` then nets via `OPEN_DELTA`. Operates only on the
+    ///         router; the caller's route delivers the output to the account bound by `SET_ACCOUNT`.
+    /// @dev Spend is what Permit2 actually pulled (`maxIn` minus the allowance left after the call),
+    ///      not an inference from the router's balance, so a pre-funded Universal Router or a route
+    ///      that sends its change elsewhere cannot skew the accounting. Input that came back to the
+    ///      router during the call (the route's change, or a sweep of the Universal Router's own
+    ///      balance) is credited against the spend, capped at the spend so the router's delta can
+    ///      never turn positive. When a plan has an active account, any rise in that account's input
+    ///      balance during the call is the route's change delivered to the account; it is swept back
+    ///      to the router and credited the same way, leaving the account's earlier balance untouched.
+    ///      A plan that runs `ROUTE_SWAP` before `SET_ACCOUNT` has no active account, so a route there
+    ///      must return its change to the router (`MSG_SENDER`).
     /// @param params ABI-encoded `(universalRouter, input, maxIn, commands, inputs)`. The Universal
     ///        Router is supplied per call (not a router immutable) so callers pick the UR deployment
     ///        their route targets; it must be non-zero and carry already-unlocked `V4_SWAP` support.
+    ///        `maxIn` must be below `type(uint160).max`, the one Permit2 allowance that is never
+    ///        decremented. The flash-take and the allowance are capped at the PoolManager's balance of
+    ///        the input, so a `maxIn` above that inventory bounds the route without blocking it.
     function _routeSwap(bytes calldata params) private {
         (address universalRouter, Currency input, uint256 maxIn, bytes memory commands, bytes[] memory inputs) =
             params.decodeRouteSwap();
         if (universalRouter == address(0)) revert UniversalRouterNotSet();
+        if (maxIn == type(uint160).max) revert UnboundedRouteAllowance();
         address token = Currency.unwrap(input);
 
-        // snapshot any balance the router already holds in the input currency, so step 4 settles only
-        // THIS call's unspent flash-take and never a pre-existing balance. Anyone can inflate that
-        // balance with a plain transfer to the router; folding it into the settle would flip the
-        // router's delta positive (reverting the curated flow) or silently subsidize the position. The
-        // pre-existing balance is left untouched, recoverable through the SWEEP action.
-        uint256 balanceBeforeTake = input.balanceOfSelf();
+        // the Universal Router runs inside this unlock, so a delta it already carries in the input
+        // currency (left by an earlier action or a v4 hook) would be paid by the route's own SETTLE out
+        // of the caller's maxIn allowance; start the route from a clean slate instead
+        int256 routerDelta = poolManager.currencyDelta(universalRouter, input);
+        if (routerDelta != 0) revert UniversalRouterDeltaNotZero(input, routerDelta);
 
-        // 1. flash-borrow up to `maxIn` of the input from the PoolManager; the router now owes it
-        _take(input, address(this), maxIn);
+        // 1. flash-borrow up to `maxIn` of the input from the PoolManager, but never more than it holds:
+        //    a route that needs less than the whole inventory should not fail because a generous
+        //    `maxIn` asked for more than exists. The router now owes what it took.
+        uint256 funded = input.balanceOf(address(poolManager));
+        if (maxIn < funded) funded = maxIn;
+        _take(input, address(this), funded);
 
         // 2. fund the Universal Router to pull exactly what it spends, via a Permit2 allowance scoped
         //    to this call (approve the token to Permit2 once, lazily)
-        if (IERC20(token).allowance(address(this), address(permit2)) < maxIn) {
+        if (IERC20(token).allowance(address(this), address(permit2)) < funded) {
             IERC20(token).forceApprove(address(permit2), type(uint256).max);
         }
-        permit2.approve(token, universalRouter, maxIn.toUint160(), uint48(block.timestamp));
+        permit2.approve(token, universalRouter, funded.toUint160(), uint48(block.timestamp));
+
+        // snapshots taken at the last moment before the route, so a balance that was already there
+        // (anyone can send tokens to the router or the account) is never mistaken for the route's own
+        // change; it stays where it is, recoverable through the SWEEP actions
+        address account = TransientPlanState.activeAccount();
+        uint256 accountBefore = account == address(0) ? 0 : input.balanceOf(account);
+        uint256 routerBefore = input.balanceOfSelf();
 
         // 3. run the caller-built route inside this existing unlock (already-unlocked V4_SWAP support);
         //    it delivers the output to the active account and self-settles its own swap
         IUniversalRouter(universalRouter).execute(commands, inputs, block.timestamp);
 
-        // 4. settle only the unspent portion of this call's flash-take (current balance minus what the
-        //    router held before the take), so its remaining input debt equals exactly what UR spent and
-        //    a donated/residual balance can neither flip the delta positive nor subsidize the position
-        uint256 balanceAfter = input.balanceOfSelf();
-        uint256 leftover = balanceAfter > balanceBeforeTake ? balanceAfter - balanceBeforeTake : 0;
-        if (leftover > 0) _settle(input, address(this), leftover);
+        // 4. Permit2 decrements every allowance below the maximum, so what is left says exactly how
+        //    much the route pulled from the router. The allowance expires on its own only after this
+        //    block, so it is read now and cleared below
+        (uint160 remaining,,) = permit2.allowance(address(this), token, universalRouter);
+        uint256 pulled = funded - remaining;
 
-        // 5. clear the scoped Permit2 allowance to the caller-supplied Universal Router. Permit2 spends
+        // a route that sent its change to the active account rather than back to the router leaves it
+        // idle there (and, unrepatriated, would leave the router owing the whole cap), so bring the
+        // in-route rise back; the account's own earlier balance is not touched
+        if (account != address(0)) {
+            uint256 accountAfter = input.balanceOf(account);
+            if (accountAfter > accountBefore) {
+                IMarginAccount(account).sweep(input, accountAfter - accountBefore, address(this));
+            }
+        }
+
+        // 5. settle the unspent flash-take plus whatever came back, capped at the spend: the router's
+        //    remaining debt is then what the route really cost, and a pre-funded Universal Router
+        //    swept back to the router cannot flip the delta positive; what it covers of the spend is
+        //    simply not borrowed (`_borrow`), and the rest stays on the router, sweepable
+        uint256 routerAfter = input.balanceOfSelf();
+        uint256 returned = routerAfter + pulled > routerBefore ? routerAfter + pulled - routerBefore : 0;
+        uint256 leftover = returned < pulled ? returned : pulled;
+        _settle(input, address(this), funded - pulled + leftover);
+
+        // 6. clear the scoped Permit2 allowance to the caller-supplied Universal Router. Permit2 spends
         //    while block.timestamp <= expiration, so a non-zero residual would stay live for the rest
         //    of the block; zeroing it leaves no spendable allowance to an unvalidated address past this
         //    call.
@@ -635,15 +708,27 @@ contract MarginRouter is
         (ILendingAdapter adapter, Market memory market, uint256 amount) = params.decodeAdapterMarketAmount();
         if (amount == ActionConstants.OPEN_DELTA) amount = market.collateral.balanceOf(account);
         IMarginAccount(account).supplyCollateral(adapter, market, amount);
+        // recorded for the increase, which reports what its route delivered as the supplied amount
+        // minus what the account held going in; execute plans never read it
+        TransientPlanState.setLastSupplied(amount);
         (bool read, PositionData memory position) = _readPosition(adapter, market, account);
         if (read) _emitPosition(market, account, position);
     }
 
     /// @notice Borrows debt to `to`. `OPEN_DELTA` borrows exactly the debt the swap owes the pool.
+    /// @dev An `OPEN_DELTA` that resolves to zero is skipped: the route cost nothing (a free fill, or
+    ///      a swap paid by input that already sat on the Universal Router and came back with the
+    ///      change), so there is nothing to fund and the position simply carries less debt than asked,
+    ///      still bounded by the plan's `ASSERT_HEALTH`. Forwarding the zero would revert on three of
+    ///      the four venues, which would let anyone who pre-funds a shared Universal Router revert
+    ///      every curated increase whose route sweeps that balance back.
     function _borrow(bytes calldata params, address account) private {
         (ILendingAdapter adapter, Market memory market, uint256 amount, address to) =
             params.decodeAdapterMarketAmountReceiver();
-        if (amount == ActionConstants.OPEN_DELTA) amount = _getFullDebt(market.debt);
+        if (amount == ActionConstants.OPEN_DELTA) {
+            amount = _getFullDebt(market.debt);
+            if (amount == 0) return;
+        }
         IMarginAccount(account).borrow(adapter, market, amount, to);
         (bool read, PositionData memory position) = _readPosition(adapter, market, account);
         if (read) _emitPosition(market, account, position);
@@ -651,10 +736,15 @@ contract MarginRouter is
 
     /// @notice Withdraws collateral to `to`. `OPEN_DELTA` withdraws exactly the collateral the swap
     ///         owes the pool (partial delever); a full close passes the explicit full collateral amount.
+    /// @dev An `OPEN_DELTA` that resolves to zero is skipped, for the same reason as in `_borrow`: the
+    ///      route cost nothing, so no collateral has to leave the venue.
     function _withdrawCollateral(bytes calldata params, address account) private {
         (ILendingAdapter adapter, Market memory market, uint256 amount, address to) =
             params.decodeAdapterMarketAmountReceiver();
-        if (amount == ActionConstants.OPEN_DELTA) amount = _getFullDebt(market.collateral);
+        if (amount == ActionConstants.OPEN_DELTA) {
+            amount = _getFullDebt(market.collateral);
+            if (amount == 0) return;
+        }
         IMarginAccount(account).withdrawCollateral(adapter, market, amount, to);
         (bool read, PositionData memory position) = _readPosition(adapter, market, account);
         if (read) _emitPosition(market, account, position);
@@ -662,8 +752,13 @@ contract MarginRouter is
 
     /// @notice Repays debt to the lending protocol. `type(uint256).max` repays the full debt,
     ///         resolved by the adapter in the venue's own terms (see `ILendingAdapter.encodeRepay`).
+    ///         `OPEN_DELTA` (zero) repays the account's whole balance of the debt token, mirroring the
+    ///         collateral supply, and reverts `ZeroAmount` when that balance is empty: a venue may
+    ///         accept a zero repay as a no-op (Comet does), so the router rejects it uniformly.
     function _repay(bytes calldata params, address account) private {
         (ILendingAdapter adapter, Market memory market, uint256 amount) = params.decodeAdapterMarketAmount();
+        if (amount == ActionConstants.OPEN_DELTA) amount = market.debt.balanceOf(account);
+        if (amount == 0) revert ZeroAmount();
         uint256 repaid = IMarginAccount(account).repay(adapter, market, amount);
         // recorded for the partial decrease, which checks after the unlock that a repay actually
         // happened; execute plans never read it
@@ -677,7 +772,13 @@ contract MarginRouter is
     ///      and repay are intentionally never market-gated (a position must always be exitable), so a
     ///      failing read is swallowed rather than reverting the action. `describePosition` is `view`, so
     ///      the call is a STATICCALL and a hostile adapter can neither reenter nor mutate state through
-    ///      it.
+    ///      it. The read is given a fixed gas budget, after a check that the budget and the gas of the
+    ///      events after it are available, so its outcome depends on the venue and not on the
+    ///      transaction's gas limit: without the check an out-of-gas inside the read would be
+    ///      swallowed too, the action would complete without events at a low limit, and a slightly
+    ///      higher limit would fail on the events after the read had just fit (a call keeps 1/64 of
+    ///      its gas under EIP-150). A limit that cannot fund both reverts `GasLimitTooLow` before the
+    ///      read, which also makes a node's gas estimate cover the read.
     /// @return read True if the venue read succeeded.
     /// @return position The snapshot read; zeroed when `read` is false.
     function _readPosition(ILendingAdapter adapter, Market memory market, address account)
@@ -685,7 +786,9 @@ contract MarginRouter is
         view
         returns (bool read, PositionData memory position)
     {
-        try adapter.describePosition(account, market) returns (PositionData memory current) {
+        // the callee receives at most 63/64 of what is left, so the full budget needs 64/63 of it
+        if (gasleft() < POSITION_READ_GAS * 64 / 63 + POSITION_EVENT_GAS) revert GasLimitTooLow();
+        try adapter.describePosition{gas: POSITION_READ_GAS}(account, market) returns (PositionData memory current) {
             return (true, current);
         } catch {}
     }
