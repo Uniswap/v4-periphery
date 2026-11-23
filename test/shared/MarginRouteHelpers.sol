@@ -23,7 +23,7 @@ import {Market} from "../../src/types/Market.sol";
 ///         Deploys a UR bound to a local PoolManager and builds the UR command plan for a single-pool
 ///         v4 exact-output swap, so the curated `increasePosition`/`decreasePosition` flows (which now
 ///         route through `ROUTE_SWAP`) can be driven over the tests' local v4 pools. Routing a v4 swap
-///         through UR inside the router's own unlock exercises UR's already-unlocked `V4_SWAP` path.
+///         through UR inside the router's own unlock exercises UR's `executeNested` path.
 abstract contract MarginRouteHelpers is Test {
     /// @dev The UR artifact the default build writes (pulled in by `script/URCompileAnchor.s.sol`).
     ///      Read by path rather than as `UniversalRouter.sol:UniversalRouter` so the `coverage`
