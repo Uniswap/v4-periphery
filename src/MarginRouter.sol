@@ -610,7 +610,8 @@ contract MarginRouter is
     ///      must return its change to the router (`MSG_SENDER`).
     /// @param params ABI-encoded `(universalRouter, input, maxIn, commands, inputs)`. The Universal
     ///        Router is supplied per call (not a router immutable) so callers pick the UR deployment
-    ///        their route targets; it must be non-zero and carry already-unlocked `V4_SWAP` support.
+    ///        their route targets; it must be non-zero and expose `executeNested` (Universal Router
+    ///        2.3.0 or later), since the route runs inside this router's own PoolManager unlock.
     ///        `maxIn` must be below `type(uint160).max`, the one Permit2 allowance that is never
     ///        decremented. The flash-take and the allowance are capped at the PoolManager's balance of
     ///        the input, so a `maxIn` above that inventory bounds the route without blocking it.
@@ -648,9 +649,13 @@ contract MarginRouter is
         uint256 accountBefore = account == address(0) ? 0 : input.balanceOf(account);
         uint256 routerBefore = input.balanceOfSelf();
 
-        // 3. run the caller-built route inside this existing unlock (already-unlocked V4_SWAP support);
-        //    it delivers the output to the active account and self-settles its own swap
-        IUniversalRouter(universalRouter).execute(commands, inputs, block.timestamp);
+        // 3. run the caller-built route inside this existing unlock; it delivers the output to the
+        //    active account and self-settles its own swap. `executeNested` is the Universal Router's
+        //    opt-in for a caller that opened the unlock itself (plain `execute` refuses a nested
+        //    V4_SWAP). The delta sharing it accepts stays within this caller's plan: only this unlock
+        //    can reach those deltas, the check above starts the route with no input-currency delta, and
+        //    the PoolManager reverts the unlock if the Universal Router still holds one when it closes.
+        IUniversalRouter(universalRouter).executeNested(commands, inputs, block.timestamp);
 
         // 4. Permit2 decrements every allowance below the maximum, so what is left says exactly how
         //    much the route pulled from the router. The allowance expires on its own only after this

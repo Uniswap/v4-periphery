@@ -311,7 +311,7 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///        within the debt token's flash-takeable PoolManager liquidity.
     /// @param universalRouter The Universal Router to route the debt->collateral swap through, supplied
     ///        per call so the caller picks the UR deployment their route targets rather than a fixed
-    ///        router immutable. Must be non-zero and carry already-unlocked `V4_SWAP` support (PR #491).
+    ///        router immutable. Must be non-zero and expose `executeNested` (Universal Router 2.3.0+).
     /// @param routeCommands The Universal Router command byte string for the debt->collateral swap. The
     ///        route MUST buy `collateralToBuy` collateral exact-output and deliver it to the caller's
     ///        MarginAccount, drawing the input from the router (the payer) via Permit2, and any input
@@ -374,8 +374,8 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///        a swap-free path and ignores it.
     /// @param universalRouter The Universal Router to route the collateral->debt swap through, supplied
     ///        per call so the caller picks the UR deployment their route targets rather than a fixed
-    ///        router immutable. Must be non-zero on the swap path and carry already-unlocked `V4_SWAP`
-    ///        support (PR #491). Ignored on a zero-debt full close (swap-free path).
+    ///        router immutable. Must be non-zero on the swap path and expose `executeNested` (Universal
+    ///        Router 2.3.0+). Ignored on a zero-debt full close (swap-free path).
     /// @param routeCommands The Universal Router command byte string for the collateral->debt swap. The
     ///        route MUST buy the target debt exact-output and deliver it to the caller's MarginAccount,
     ///        drawing the input from the router (the payer) via Permit2, and any input it does not

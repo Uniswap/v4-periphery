@@ -24,9 +24,9 @@ import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 /// @notice Regression coverage for two related fixes around v4 exact-output partial fills, exercised
 ///         through the real `MarginRouter.increasePosition` path against a thin local v4 pool:
 ///           - Fix A: the V4Router per-hop price guard prices the REALIZED output (not the requested
-///             amount), so a bound the true price violates reverts with `V4TooMuchRequestedPerHopSingle`.
-///           - Option C: `_open` takes EXACTLY `collateralToBuy`, so an exact-output swap that
-///             under-fills leaves an unsettled collateral debt and the open reverts (all-or-nothing)
+///             amount); on an under-filling pool the Universal Router's exact-output fill check
+///             (2.3.0+) now fires before it.
+///           - Option C: an exact-output swap that under-fills reverts the open (all-or-nothing)
 ///             rather than silently opening a smaller position.
 contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers, MarginRouteHelpers, DeployPermit2 {
     uint256 internal constant INITIAL_EQUITY = 1 ether;
@@ -71,32 +71,31 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers, MarginRoute
     }
 
     /// @notice With no price bound the UR-routed exact-output swap under-fills the thin pool, and the
-    ///         `ASSERT_ACCOUNT_BALANCE` guard reverts the margin-level `IncompleteFill` error rather than
-    ///         silently opening a smaller position. The open is all-or-nothing. No equity is pre-funded,
-    ///         so the account holds only the swap output; `maxDebtIn` (2 ether) sits far above the ~0.6
-    ///         ether the swap actually spends, so the swap partial-fills at the pool's price limit (it
-    ///         does not trip the input cap) and leaves the account below `collateralToBuy`.
+    ///         open reverts rather than silently opening a smaller position. The Universal Router's own
+    ///         v4 exact-output check (`V4ExactOutputUnfilled`, 2.3.0+) fires first; `ASSERT_ACCOUNT_BALANCE`
+    ///         stays the backstop for routes without it. No equity is pre-funded; `maxDebtIn` (2 ether)
+    ///         sits far above the ~0.6 ether the swap actually spends, so the swap partial-fills at the
+    ///         pool's price limit rather than tripping the input cap.
     function test_increasePosition_revertsOnPartialFill() public {
         (bytes memory cmds, bytes[] memory ins) = _openRoute(0);
-        vm.expectPartialRevert(IMarginRouter.IncompleteFill.selector);
+        vm.expectPartialRevert(IV4Router.V4ExactOutputUnfilled.selector);
         _open(cmds, ins);
     }
 
-    /// @notice Fix A: a per-hop bound the realized price cannot meet trips the price guard during the
-    ///         swap (a clear error), before the all-or-nothing take is reached. Before the fix the guard
-    ///         compared the requested output and let an under-filled trade through.
-    function test_increasePosition_priceGuardRevertsOnRealizedPrice() public {
+    /// @notice An unreachable per-hop bound on an under-filling pool reverts on the unfilled output,
+    ///         which the Universal Router checks before the per-hop price guard; the guard's
+    ///         realized-price behavior (Fix A) is covered directly in `V4Router.t.sol`.
+    function test_increasePosition_unfilledRevertsBeforePriceGuard() public {
         _fundEquity();
         // 2.0 collateral-per-debt is unreachable buying at ~1:1, so the realized price is far below it
         (bytes memory cmds, bytes[] memory ins) = _openRoute(2e36);
-        vm.expectPartialRevert(IV4Router.V4TooMuchRequestedPerHopSingle.selector);
+        vm.expectPartialRevert(IV4Router.V4ExactOutputUnfilled.selector);
         _open(cmds, ins);
     }
 
-    /// @notice A thin pool that cannot buy back the full debt makes the close revert atomically. The
-    ///         decrease path's fill assertion catches the exact-output under-fill and reverts with the
-    ///         explicit `IncompleteFill` error, before the take/repay would fail opaquely. Fail-safe:
-    ///         no partial close.
+    /// @notice A thin pool that cannot buy back the full debt makes the close revert atomically, on
+    ///         the Universal Router's exact-output fill check, before the take/repay would fail
+    ///         opaquely. Fail-safe: no partial close.
     function test_close_revertsWhenThinPoolCannotBuyAllDebt() public {
         address account = marginRouter.createAccount(address(this), 7);
 
@@ -107,7 +106,7 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers, MarginRoute
         (, uint256 curDebt) = adapter.positionOf(account, market);
         (bytes memory cmds, bytes[] memory ins) =
             buildV4ExactOutRoute(thinClosePoolKey, collateral, debt, uint128(curDebt), 2 ether, account);
-        vm.expectPartialRevert(IMarginRouter.IncompleteFill.selector);
+        vm.expectPartialRevert(IV4Router.V4ExactOutputUnfilled.selector);
         marginRouter.decreasePosition(
             IMarginRouter.DecreaseParams({
                 debtToRepay: type(uint256).max,

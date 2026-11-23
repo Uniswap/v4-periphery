@@ -217,24 +217,24 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
     }
 
     // -------------------------------------------------------------------------
-    // Property 2: Partial fill reverts with IncompleteFill on the thin pool (Fix C).
+    // Property 2: Partial fill reverts on the thin pool (Fix C).
     //
     // With a large enough collateralToBuy the single-band pool exhausts before delivering the full
-    // output.  The fill assertion detects the shortfall and reverts IncompleteFill, so
-    // no partial position is ever opened.
+    // output. The Universal Router's v4 exact-output check (2.3.0+) reverts V4ExactOutputUnfilled
+    // before ASSERT_ACCOUNT_BALANCE is reached, so no partial position is ever opened.
     // -------------------------------------------------------------------------
 
-    function testFuzz_increasePosition_thinPool_revertsIncompleteFill(uint128 collateralToBuy) public {
+    function testFuzz_increasePosition_thinPool_revertsOnPartialFill(uint128 collateralToBuy) public {
         // 1.1 ether is comfortably above the band capacity (regression confirms 1 ether overflows).
         collateralToBuy = uint128(bound(collateralToBuy, THIN_MIN_OVERFLOW_BUY, DEEP_MAX_BUY));
 
         // No equity pre-funded: the account holds only the swap output. The thin band delivers far less
-        // than collateralToBuy, so ASSERT_ACCOUNT_BALANCE reverts IncompleteFill. maxDebtIn is generous,
-        // so the swap partial-fills at the pool's price limit rather than tripping the input cap.
+        // than collateralToBuy. maxDebtIn is generous, so the swap partial-fills at the pool's price
+        // limit rather than tripping the input cap.
         address account = marginRouter.accountOf(address(this), 0);
         (bytes memory cmds, bytes[] memory ins) =
             buildV4ExactOutRoute(thinPoolKey, debt, collateral, collateralToBuy, DEEP_MAX_DEBT, account);
-        vm.expectPartialRevert(IMarginRouter.IncompleteFill.selector);
+        vm.expectPartialRevert(IV4Router.V4ExactOutputUnfilled.selector);
         marginRouter.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
@@ -253,28 +253,24 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
     }
 
     // -------------------------------------------------------------------------
-    // Property 3a: Price guard fires on a thin pool when minHopPriceX36 > achievable price (Fix A).
+    // Property 3a: An unreachable price bound on an under-filling thin pool still reverts.
     //
-    // After Fix A the guard compares against the REALIZED output (not the requested amount).  A
-    // bound set above the achievable realized price causes V4TooMuchRequestedPerHopSingle before
-    // the fill assertion, giving a clear error rather than a silent under-fill.
+    // The Universal Router (2.3.0+) checks the exact-output fill before the per-hop price guard, so
+    // on this exhausted pool V4ExactOutputUnfilled fires first. The guard's realized-price behavior
+    // (Fix A) is covered directly in V4Router.t.sol.
     // -------------------------------------------------------------------------
 
-    function testFuzz_increasePosition_thinPool_priceGuardRevertsWhenBoundTooHigh(uint128 collateralToBuy) public {
+    function testFuzz_increasePosition_thinPool_unfilledRevertsBeforePriceGuard(uint128 collateralToBuy) public {
         collateralToBuy = uint128(bound(collateralToBuy, THIN_MIN_OVERFLOW_BUY, DEEP_MAX_BUY));
 
-        // The UR-routed v4 exact-output swap prices the hop as requestedOutput/realizedInput. On this
-        // exhausted single-band pool the realized input is ~0.6 ether regardless of the requested amount,
-        // so the hop price is at most ~16.6 (DEEP_MAX_BUY / ~0.6 ether) across the fuzzed range. A 50e36
-        // bound sits above that for every collateralToBuy, so the swap trips V4TooMuchRequestedPerHopSingle
-        // before the ASSERT_ACCOUNT_BALANCE fill guard is reached.
+        // well above the ~16.6 best hop price this exhausted band can reach across the fuzzed range
         uint256 unreachableMinHopPrice = 50e36;
 
         address account = marginRouter.accountOf(address(this), 0);
         (bytes memory cmds, bytes[] memory ins) = buildV4ExactOutRoute(
             thinPoolKey, debt, collateral, collateralToBuy, DEEP_MAX_DEBT, account, unreachableMinHopPrice
         );
-        vm.expectPartialRevert(IV4Router.V4TooMuchRequestedPerHopSingle.selector);
+        vm.expectPartialRevert(IV4Router.V4ExactOutputUnfilled.selector);
         marginRouter.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
