@@ -143,9 +143,11 @@ contract MockAavePool is IPool {
 
     /// @inheritdoc IPool
     /// @dev Totals the user's aToken and variable debt receipt balances across every registered
-    ///      reserve, valuing each in the USD base as `balance * priceBase / 10**decimals`. Only
-    ///      `totalCollateralBase`, `totalDebtBase`, and `currentLiquidationThreshold` are populated;
-    ///      the adapter reads only the first two.
+    ///      reserve, valuing each in the USD base as `balance * priceBase / 10**decimals`. Every
+    ///      supplied reserve counts as collateral. `currentLiquidationThreshold` is the
+    ///      collateral-weighted average threshold floored to a basis point and `healthFactor` is
+    ///      derived from that floored average, both as Aave computes them; `availableBorrowsBase` and
+    ///      `ltv` are unused by the adapter and left zero.
     function getUserAccountData(address user)
         external
         view
@@ -158,6 +160,7 @@ contract MockAavePool is IPool {
             uint256 healthFactor
         )
     {
+        uint256 weightedThreshold;
         for (uint256 i = 0; i < _assets.length; i++) {
             Reserve storage r = _reserves[_assets[i]];
             uint256 scale = 10 ** r.decimals;
@@ -166,11 +169,14 @@ contract MockAavePool is IPool {
             if (aBalance != 0) {
                 uint256 collateralBase = aBalance * r.priceBase / scale;
                 totalCollateralBase += collateralBase;
-                currentLiquidationThreshold = r.liquidationThresholdBps;
+                weightedThreshold += collateralBase * r.liquidationThresholdBps;
             }
             totalDebtBase += dBalance * r.priceBase / scale;
         }
-        // availableBorrowsBase, ltv, and healthFactor are unused by the adapter.
+        if (totalCollateralBase != 0) currentLiquidationThreshold = weightedThreshold / totalCollateralBase;
+        healthFactor = totalDebtBase == 0
+            ? type(uint256).max
+            : (totalCollateralBase * currentLiquidationThreshold / 1e4) * 1e18 / totalDebtBase;
         return
             (totalCollateralBase, totalDebtBase, availableBorrowsBase, currentLiquidationThreshold, ltv, healthFactor);
     }

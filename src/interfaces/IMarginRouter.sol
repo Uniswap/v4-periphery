@@ -47,8 +47,9 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     error IneffectiveLtvBound(Ltv maxLtvAfter);
 
     /// @dev Thrown when a required non-zero amount is zero: `collateralToBuy`, an `addCollateral` or
-    ///      `PULL_TO_ACCOUNT` amount, or a partial `debtToRepay`. A zero amount is always a caller
-    ///      error, rejected rather than resolved to a full-balance sentinel.
+    ///      `PULL_TO_ACCOUNT` amount, a partial `debtToRepay`, or an `ACCOUNT_REPAY` whose zero amount
+    ///      resolves to an empty debt-token balance. A zero amount is a caller error there, rejected
+    ///      rather than silently doing nothing.
     error ZeroAmount();
 
     /// @dev Thrown by the post-action health check (`ASSERT_HEALTH`) when a position mutation leaves
@@ -104,15 +105,42 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///      be dispatched to the zero address.
     error UniversalRouterNotSet();
 
+    /// @dev Thrown when a `ROUTE_SWAP` starts while the Universal Router already holds a non-zero
+    ///      delta in the route's input currency, for example because an earlier action or a v4 hook
+    ///      left the Universal Router owing the pool. The route's own `SETTLE` (`OPEN_DELTA`) would
+    ///      pay that debt out of the caller's `maxIn` allowance, so the route is refused instead.
+    /// @param currency The route's input currency.
+    /// @param delta The Universal Router's non-zero delta in `currency`.
+    error UniversalRouterDeltaNotZero(Currency currency, int256 delta);
+
+    /// @dev Thrown when a `ROUTE_SWAP` sets `maxIn` to `type(uint160).max`. Permit2 never decrements
+    ///      an allowance of that value, so the router could not measure what the route spent. Use the
+    ///      actual cap instead.
+    error UnboundedRouteAllowance();
+
+    /// @dev Thrown when a position read (`ILendingAdapter.describePosition`, made after a venue action
+    ///      to fill the position events) cannot be funded: the gas left is under
+    ///      `POSITION_READ_GAS * 64 / 63 + POSITION_EVENT_GAS`. The read is best-effort, so without
+    ///      this check an out-of-gas inside it would be swallowed like a venue revert: the action would
+    ///      complete without its events at a low gas limit, and a slightly higher limit would fail on
+    ///      the events after the read had just fit (a call keeps 1/64 of its gas under EIP-150).
+    ///      Reverting before the read makes every limit either fund the read in full or fail here,
+    ///      which also makes a node's gas estimate cover the read.
+    error GasLimitTooLow();
+
     // -------------------------------------------------------------------------
     // Events
     // -------------------------------------------------------------------------
 
-    /// @notice Emitted when leverage is opened or added via `increasePosition`. The first increase
-    ///         for an account is paired with an `AccountCreated` event from the factory; subsequent
-    ///         increases into the same account add leverage to the existing position. The
-    ///         resulting-state fields let an indexer reconstruct the full position from this one log;
-    ///         the entry price is `debtDrawn / collateralBought` in the market's native decimals.
+    /// @notice Emitted when leverage is opened or added via `increasePosition`. The factory's
+    ///         `AccountCreated` accompanies an increase only when that transaction deploys the account:
+    ///         the public `createAccount`, `addCollateral`, and an `execute` plan's `SET_ACCOUNT` can all
+    ///         deploy it earlier, so an increase into an existing account emits no `AccountCreated`.
+    ///         Classify an open versus an add from the position's prior debt, which the resulting-state
+    ///         fields let an indexer derive (the prior debt is the resulting `debtTotal` minus
+    ///         `debtDrawn`), not from the factory event. The resulting-state fields let an indexer
+    ///         reconstruct the full position from this one log; the entry price is
+    ///         `debtDrawn / collateralBought` in the market's native decimals.
     /// @param owner The position owner (the authenticated caller at the time of the call).
     /// @param account The MarginAccount holding the position.
     /// @param collateral The collateral currency of the market.
@@ -123,8 +151,11 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///        (the wrapped native amount when funded with ETH). The increase supplies the account's
     ///        FULL collateral balance, so any idle balance the account already held is committed on
     ///        top of this amount; `collateralTotal` reflects the true resulting supply.
-    /// @param collateralBought The collateral purchased by the increase swap, in the collateral
-    ///        token's native decimals.
+    /// @param collateralBought The collateral the route delivered to the account, in the collateral
+    ///        token's native decimals: what the increase supplied minus what the account held going
+    ///        into the unlock (the equity and any idle balance). At least `collateralToBuy`, which the
+    ///        fill check enforces as a floor; more when the route over-delivers, as a hook that adds
+    ///        output or an exact-input route does, since the supply commits the whole delivery.
     /// @param debtDrawn The debt borrowed to fund the swap (the entry notional), in the debt token's
     ///        native decimals.
     /// @param collateralTotal The account's total collateral after the increase.
@@ -149,9 +180,12 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     );
 
     /// @notice Emitted when a position is reduced or fully closed via `decreasePosition`. A full close
-    ///         is indicated by `debtTotal == 0`, and the residual (realized PnL) returned to the caller
-    ///         is `collateralReturned`. The resulting-state fields let an indexer reconstruct the full
-    ///         position from this one log.
+    ///         (the `type(uint256).max` request) ends with `collateralTotal == 0` and `debtTotal == 0`,
+    ///         and the residual (realized PnL) returned to the caller is `collateralReturned`.
+    ///         `debtTotal` alone does not identify a close: a partial decrease that repays the whole
+    ///         debt also reports `debtTotal == 0` while `collateralTotal` stays positive and the
+    ///         position stays open, so classify a close from `collateralTotal == 0`. The
+    ///         resulting-state fields let an indexer reconstruct the full position from this one log.
     /// @param owner The position owner (the authenticated caller).
     /// @param account The MarginAccount holding the position.
     /// @param collateral The collateral currency of the market.
@@ -168,8 +202,10 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///        close).
     /// @param collateralReturned The collateral returned to the caller, in the collateral token's
     ///        native decimals: zero on a partial decrease, the realized PnL on a full close.
-    /// @param collateralTotal The account's total collateral after the operation (zero on a full close).
-    /// @param debtTotal The account's total debt after the operation (zero on a full close).
+    /// @param collateralTotal The account's total collateral after the operation: zero on a full close,
+    ///        which is what identifies one.
+    /// @param debtTotal The account's total debt after the operation: zero on a full close and also
+    ///        after a partial decrease that repaid the whole debt, so not a close indicator on its own.
     /// @param currentLtv The position's LTV after the operation (WAD, 1e18 == 100%).
     /// @param healthFactorWad The position health factor after the operation (WAD, 1e18 == 1.0).
     event PositionDecreased(
@@ -263,9 +299,11 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///        Market selection is permissionless, so the caller vets the market it names.
     /// @param equity The amount of collateral the caller contributes as equity, in the collateral
     ///        token's native decimals. Ignored when `msg.value > 0` (native ETH is used instead).
-    /// @param collateralToBuy The exact amount of collateral the route buys (its exact-output amount),
-    ///        in the collateral token's native decimals. The router asserts the account received it, so
-    ///        it must match the `amountOut` encoded in the route.
+    /// @param collateralToBuy The amount of collateral the route buys (its exact-output amount), in
+    ///        the collateral token's native decimals. The router asserts the account received at least
+    ///        this much, so it must match the `amountOut` encoded in the route; a route that delivers
+    ///        more is accepted, the whole delivery is supplied, and `PositionIncreased.collateralBought`
+    ///        reports the delivered amount.
     /// @param maxDebtIn The maximum debt the router flash-takes and lets the Universal Router spend, in
     ///        the debt token's native decimals. Must be non-zero. It is the binding slippage cap (the
     ///        router grants the Universal Router a Permit2 allowance of exactly this much), independent
@@ -273,18 +311,24 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///        within the debt token's flash-takeable PoolManager liquidity.
     /// @param universalRouter The Universal Router to route the debt->collateral swap through, supplied
     ///        per call so the caller picks the UR deployment their route targets rather than a fixed
-    ///        router immutable. Must be non-zero and carry already-unlocked `V4_SWAP` support (PR #491).
+    ///        router immutable. Must be non-zero and expose `executeNested` (Universal Router 2.3.0+).
     /// @param routeCommands The Universal Router command byte string for the debt->collateral swap. The
     ///        route MUST buy `collateralToBuy` collateral exact-output and deliver it to the caller's
-    ///        MarginAccount, drawing the input from the router (the payer) via Permit2. Built off-chain
-    ///        so the caller can source liquidity across v2/v3/v4.
+    ///        MarginAccount, drawing the input from the router (the payer) via Permit2, and any input
+    ///        it does not spend must return to the router in the input currency (change sent to the
+    ///        account is swept back and credited, but returning it to the router is the documented
+    ///        shape). A route that consumes no input (a free fill, or a swap paid by input that
+    ///        already sat on the Universal Router and came back with the change) leaves nothing owed,
+    ///        so the borrow is skipped and the position carries no new debt. Built off-chain so the
+    ///        caller can source liquidity across v2/v3/v4.
     /// @param routeInputs The per-command ABI-encoded inputs for `routeCommands`.
     /// @param maxLtvAfter The maximum LTV the position may have after the increase (WAD, 1e18 ==
     ///        100%). Because the open sizes on the pool while liquidation uses the venue oracle,
     ///        adverse inclusion can consume the full `maxDebtIn` budget and land the position near
     ///        LLTV; this asserts the resulting oracle-LTV so a caller can bound leverage by health,
-    ///        not just by swap input. Zero skips the check (back-compatible with `maxDebtIn`-only
-    ///        callers).
+    ///        not just by swap input. The cap stays the slippage bound: this rejects an unhealthy
+    ///        result, it does not refund what the cap let the route spend. Zero skips the check
+    ///        (back-compatible with `maxDebtIn`-only callers).
     /// @param subId A caller-chosen sub-account index allowing one address to hold multiple
     ///        independent positions. The (caller, subId) pair determines the MarginAccount address.
     /// @param deadline A Unix timestamp; the call reverts if `block.timestamp` exceeds this value.
@@ -330,12 +374,15 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///        a swap-free path and ignores it.
     /// @param universalRouter The Universal Router to route the collateral->debt swap through, supplied
     ///        per call so the caller picks the UR deployment their route targets rather than a fixed
-    ///        router immutable. Must be non-zero on the swap path and carry already-unlocked `V4_SWAP`
-    ///        support (PR #491). Ignored on a zero-debt full close (swap-free path).
+    ///        router immutable. Must be non-zero on the swap path and expose `executeNested` (Universal
+    ///        Router 2.3.0+). Ignored on a zero-debt full close (swap-free path).
     /// @param routeCommands The Universal Router command byte string for the collateral->debt swap. The
     ///        route MUST buy the target debt exact-output and deliver it to the caller's MarginAccount,
-    ///        drawing the input from the router (the payer) via Permit2. Built off-chain so the caller
-    ///        can source liquidity across v2/v3/v4. Ignored on a zero-debt full close.
+    ///        drawing the input from the router (the payer) via Permit2, and any input it does not
+    ///        spend must return to the router in the input currency (change sent to the account is
+    ///        swept back and credited, but returning it to the router is the documented shape). A
+    ///        partial decrease whose route consumes no input withdraws nothing. Built off-chain so the
+    ///        caller can source liquidity across v2/v3/v4. Ignored on a zero-debt full close.
     /// @param routeInputs The per-command ABI-encoded inputs for `routeCommands`.
     /// @param maxLtvAfter The maximum LTV the position may have after a partial decrease (WAD, 1e18 ==
     ///        100%). Must be non-zero for a partial decrease; ignored on a full close. Zero is the
@@ -392,9 +439,12 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///         or fully closes it when `debtToRepay == type(uint256).max` (repay all, withdraw all,
     ///         and return the residual realized PnL to the caller). A partial decrease keeps the
     ///         position open and enforces `params.maxLtvAfter`; a full close ignores it.
-    /// @dev The adapter is caller-chosen, as on every flow. This is safe because the flow operates
-    ///      only on the caller's own account, and the MarginAccount constrains the receiver of every
-    ///      withdrawal and borrow regardless of the adapter.
+    /// @dev The adapter is caller-chosen, as on every flow. This is safe for everyone else because
+    ///      the flow operates only on the caller's own account: the MarginAccount calls only the
+    ///      adapter's declared `lendingProtocol()`, acts as its own `onBehalf`, and validates the
+    ///      receiver it is handed, but it trusts the recipient the adapter encodes into the venue
+    ///      call (see `ILendingAdapter`), so a hostile adapter can move the collateral of the caller
+    ///      who named it, and nothing else. Vet the adapter as you vet the market.
     /// @param params See `DecreaseParams`.
     /// @return account The caller's MarginAccount.
     function decreasePosition(DecreaseParams calldata params) external returns (address account);
@@ -413,6 +463,23 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     /// @param subId The sub-account index.
     /// @return The predicted MarginAccount clone address.
     function accountOf(address owner, uint256 subId) external view returns (address);
+
+    /// @notice The gas every position read (`ILendingAdapter.describePosition`, made after a venue
+    ///         action to fill the position events) is given, whatever the transaction's gas limit. A
+    ///         read that needs more is skipped and the action completes without its events; a limit
+    ///         that cannot fund it reverts `GasLimitTooLow` before the read.
+    /// @dev Twice the dearest single-position read measured on mainnet with the venue state warm and
+    ///      the oracle feeds cold, as a curated action leaves them (Aave v3, about 106k gas), rounded
+    ///      up to 50k. That also covers the same read with nothing warm (about 161k) and one more
+    ///      ordinary Aave reserve on the account. A reserve with a pathological price source (one
+    ///      whose adapter converts through a vault) can cost more than the whole budget on its own.
+    function POSITION_READ_GAS() external view returns (uint256);
+
+    /// @notice The gas kept back for the events emitted after a position read, so that a read which
+    ///         fits always leaves enough for them.
+    /// @dev Twice the dearest post-read path (`addCollateral`'s `PositionUpdated` and
+    ///      `CollateralAdded` with a 96-byte market key, about 10.3k gas), rounded up to 5k.
+    function POSITION_EVENT_GAS() external view returns (uint256);
 
     /// @notice Executes an arbitrary plan of v4 routing and margin actions atomically in one
     ///         PoolManager unlock. The general-purpose counterpart to the curated entry points:
@@ -442,11 +509,21 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///         5. Adapter trust: every account action takes a caller-chosen adapter, with no
     ///            allowlist. A hostile adapter reaches only the caller's own account, which item 7
     ///            already makes the plan builder's responsibility.
-    ///         6. `PULL_TO_ACCOUNT`: an encoded `0` amount reverts (it is not an `OPEN_DELTA`
-    ///            full-balance sentinel here, unlike every other opcode); `CONTRACT_BALANCE` is
-    ///            honored only on the router-balance path. Native currency is unsupported: wrap to
-    ///            WETH first (on a deployment without WETH9, `WRAP` and `UNWRAP` revert
-    ///            `NativeNotSupported`).
+    ///         6. Zero amounts: an encoded `0` (`OPEN_DELTA`) means something different per opcode.
+    ///            `ACCOUNT_SUPPLY_COLLATERAL` resolves it to the account's whole collateral balance,
+    ///            `ACCOUNT_BORROW` and `ACCOUNT_WITHDRAW_COLLATERAL` to the router's current delta
+    ///            with the pool (what the swap owes), and `ACCOUNT_REPAY` to the account's whole
+    ///            debt-token balance, reverting `ZeroAmount` when that is empty. `ACCOUNT_SWEEP` and
+    ///            `ASSERT_ACCOUNT_BALANCE` take `0` literally (a zero sweep moves nothing; a zero
+    ///            floor always passes), `ASSERT_HEALTH` treats a zero bound as "skip the check", and
+    ///            `PULL_TO_ACCOUNT` reverts `ZeroAmount` on `0`. `CONTRACT_BALANCE` is honored only
+    ///            on the router-balance path of `PULL_TO_ACCOUNT`. That opcode does not inspect the
+    ///            currency: `address(0)` on the router-balance path forwards native value to the
+    ///            account, which holds it until the owner sweeps it (no adapter takes native
+    ///            collateral), and a currency with no code on the Permit2 path moves nothing while
+    ///            the pull succeeds, because Permit2 does not check for code. Wrap native value to
+    ///            WETH before anything a venue will use (on a deployment without WETH9, `WRAP` and
+    ///            `UNWRAP` revert `NativeNotSupported`).
     ///         7. Signing an `execute` plan is equivalent to handing over the sub-account: a
     ///            malicious plan can borrow to the market maximum, withdraw all collateral, and
     ///            direct everything to an arbitrary address, with no token approval required (the

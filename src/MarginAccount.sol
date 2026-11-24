@@ -69,11 +69,14 @@ contract MarginAccount is IMarginAccount {
 
     /// @inheritdoc IMarginAccount
     /// @dev Forwards the withdrawn collateral to the validated receiver, mirroring `borrow`. Lending
-    ///      protocols differ on whether `withdraw` exposes a recipient: some deliver straight to `to`
-    ///      (the account's measured delta is then zero and nothing is forwarded), others deliver to the
-    ///      caller (the account), which forwards the measured delta here. Either way the recipient stays
-    ///      under the account's control. `withdrawn` is measured as the account's collateral-token
-    ///      balance increase across the call, so it is zero when the protocol delivered directly to `to`.
+    ///      protocols differ on whether `withdraw` exposes a recipient: some pay the recipient the
+    ///      adapter encoded directly (the account's measured delta is then zero and nothing is
+    ///      forwarded), others deliver to the caller (the account), which forwards the measured delta
+    ///      here. If the account receives the funds, it forwards them to the validated `to`. If the
+    ///      venue pays directly, the account trusts the adapter to have encoded `to` as the recipient:
+    ///      the adapter is caller-chosen and TRUSTED (see `ILendingAdapter`), and a hostile one reaches
+    ///      only the account of the caller who named it. `withdrawn` is measured as the account's
+    ///      collateral-token balance increase across the call, so it is zero when the venue paid directly.
     function withdrawCollateral(ILendingAdapter adapter, Market calldata market, uint256 amount, address to)
         external
         returns (uint256 withdrawn)

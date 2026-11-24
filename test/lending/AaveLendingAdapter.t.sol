@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {Test} from "forge-std/Test.sol";
+import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
@@ -12,7 +13,8 @@ import {IPoolAddressesProvider} from "../../src/interfaces/external/aave/IPoolAd
 import {PositionAmountResolver} from "../../src/base/PositionAmountResolver.sol";
 import {Call} from "../../src/types/Call.sol";
 import {Market} from "../../src/types/Market.sol";
-import {Ltv} from "../../src/types/Ltv.sol";
+import {Ltv, toLtv} from "../../src/types/Ltv.sol";
+import {PositionData} from "../../src/types/PositionData.sol";
 import {MockAavePool, MockAaveAddressesProvider, MockAaveDataProvider} from "../mocks/MockAavePool.sol";
 
 contract AaveLendingAdapterTest is Test {
@@ -24,6 +26,9 @@ contract AaveLendingAdapterTest is Test {
     uint256 internal constant USDC_LIQ_THRESHOLD_BPS = 7_800;
     // WETH liquidation threshold in basis points (distinct from USDC's so a mixup would surface).
     uint256 internal constant WETH_LIQ_THRESHOLD_BPS = 8_000;
+    // A reserve Aave lists with a near-zero liquidation threshold (syrupUSDT on mainnet: 10 bps).
+    // Anyone can supply it on an account's behalf, and Aave enables it as collateral.
+    uint256 internal constant LOW_LIQ_THRESHOLD_BPS = 10;
 
     MockAavePool internal pool;
     MockAaveAddressesProvider internal provider;
@@ -31,9 +36,13 @@ contract AaveLendingAdapterTest is Test {
     AaveLendingAdapter internal adapter;
 
     address internal account = makeAddr("account");
+    address internal thirdParty = makeAddr("thirdParty");
 
     MockERC20 internal usdc;
     MockERC20 internal weth;
+    // Reserves with a near-zero and a zero liquidation threshold.
+    MockERC20 internal lowThreshold;
+    MockERC20 internal zeroThreshold;
     // A token that is never registered as an Aave reserve.
     MockERC20 internal unlisted;
 
@@ -50,6 +59,8 @@ contract AaveLendingAdapterTest is Test {
     function setUp() public {
         usdc = new MockERC20("USD Coin", "USDC", 6);
         weth = new MockERC20("Wrapped Ether", "WETH", 18);
+        lowThreshold = new MockERC20("Low Threshold", "LOW", 6);
+        zeroThreshold = new MockERC20("Zero Threshold", "ZERO", 18);
         unlisted = new MockERC20("Unlisted", "UNL", 18);
 
         // Deploy in dependency order: the pool first, then the data provider and provider over it.
@@ -59,6 +70,8 @@ contract AaveLendingAdapterTest is Test {
 
         _registerReserve(usdc, 1 * USD_BASE, USDC_LIQ_THRESHOLD_BPS);
         _registerReserve(weth, 2_000 * USD_BASE, WETH_LIQ_THRESHOLD_BPS);
+        _registerReserve(lowThreshold, 1 * USD_BASE, LOW_LIQ_THRESHOLD_BPS);
+        _registerReserve(zeroThreshold, 1 * USD_BASE, 0);
 
         adapter = new AaveLendingAdapter(IPoolAddressesProvider(address(provider)));
 
@@ -88,6 +101,16 @@ contract AaveLendingAdapterTest is Test {
     function _seedPosition(uint256 collateralAmount, uint256 debtAmount) internal {
         if (collateralAmount != 0) pool.aToken(address(usdc)).mint(account, collateralAmount);
         if (debtAmount != 0) pool.variableDebtToken(address(weth)).mint(account, debtAmount);
+    }
+
+    /// @dev A third party supplies `amount` of `asset` on the account's behalf through the pool's own
+    ///      permissionless `supply`, the way Aave accepts it from anyone.
+    function _thirdPartySupplies(MockERC20 asset, uint256 amount) internal {
+        asset.mint(thirdParty, amount);
+        vm.startPrank(thirdParty);
+        asset.approve(address(pool), amount);
+        pool.supply(address(asset), amount, account, 0);
+        vm.stopPrank();
     }
 
     /// @dev The `resolveAmount` context asking for the debt side of `account`'s position in `m`.
@@ -283,6 +306,40 @@ contract AaveLendingAdapterTest is Test {
         assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0.6e18);
     }
 
+    /// @dev The LTV rounds up, so a position whose unrounded ratio sits a fraction above a bound is over
+    ///      it: with a floored ratio the router's `ASSERT_HEALTH` (`currentLtv > bound`) would pass it.
+    function test_currentLtvWad_roundsUp() public {
+        // $3 of USDC collateral and $1 of WETH debt (5e14 wei at $2000): the exact ratio is 1/3
+        _seedPosition(3e6, 5e14);
+        uint256 debtValue = 1e8;
+        uint256 collateralValue = 3e8;
+        uint256 floored = debtValue * 1e18 / collateralValue;
+        assertGt(debtValue * 1e18 % collateralValue, 0, "sanity: the exact ratio is fractional");
+
+        Ltv ltv = adapter.currentLtvWad(account, market);
+        assertEq(Ltv.unwrap(ltv), floored + 1, "one wad unit above the floored ratio");
+        assertTrue(ltv.gt(toLtv(floored)), "a bound at the floored ratio is exceeded");
+        assertEq(Ltv.unwrap(adapter.describePosition(account, market).currentLtv), Ltv.unwrap(ltv));
+    }
+
+    /// @dev A market with no variable debt needs no price: the debt balance is checked before Aave's
+    ///      account-level read, so an oracle outage cannot block it.
+    function test_currentLtvWad_zeroDebt_doesNotPriceTheAccount() public {
+        _seedPosition(1_000e6, 0);
+        vm.mockCallRevert(address(pool), abi.encodeWithSelector(IPool.getUserAccountData.selector), "oracle down");
+
+        assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0);
+    }
+
+    /// @dev With variable debt outstanding Aave's pricing is still needed, so an outage still surfaces.
+    function test_currentLtvWad_withDebt_pricesTheAccount() public {
+        _seedPosition(1_000e6, 0.3e18);
+        vm.mockCallRevert(address(pool), abi.encodeWithSelector(IPool.getUserAccountData.selector), "oracle down");
+
+        vm.expectRevert("oracle down");
+        adapter.currentLtvWad(account, market);
+    }
+
     function test_currentLtvWad_zeroWhenNoDebt() public {
         _seedPosition(1_000e6, 0);
         assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0);
@@ -290,6 +347,91 @@ contract AaveLendingAdapterTest is Test {
 
     function test_currentLtvWad_maxWhenDebtWithoutCollateral() public {
         _seedPosition(0, 0.3e18);
+        assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), type(uint256).max);
+    }
+
+    // -------------------------------------------------------------------------
+    // threshold-scale read: a third party's low-threshold supply cannot lower it
+    // -------------------------------------------------------------------------
+
+    /// @dev Aave liquidates on the threshold-weighted collateral sum. A reserve with a near-zero
+    ///      threshold supplied on the account's behalf adds its full value to Aave's collateral total
+    ///      but almost nothing to the health factor, so the plain ratio would read lower than the
+    ///      position's distance to liquidation. The read is rescaled onto the market collateral's
+    ///      threshold, which equals `collateralThreshold / healthFactor`.
+    function test_currentLtvWad_thirdPartyLowThresholdSupply_readsOnCollateralThresholdScale() public {
+        // $1000 of USDC collateral against $600 of WETH debt: ratio 0.6
+        _seedPosition(1_000e6, 0.3e18);
+        _thirdPartySupplies(lowThreshold, 100e6); // $100 at a 10 bps threshold
+
+        (uint256 totalCollateralBase, uint256 totalDebtBase,, uint256 accountThresholdBps,, uint256 healthFactor) =
+            pool.getUserAccountData(account);
+        uint256 plainRatio = Math.ceilDiv(totalDebtBase * WAD, totalCollateralBase);
+        assertLt(plainRatio, 0.55e18, "sanity: the injected value pulls the plain ratio well under 0.6");
+        assertLt(accountThresholdBps, USDC_LIQ_THRESHOLD_BPS, "sanity: the weighted threshold fell");
+
+        uint256 ltv = Ltv.unwrap(adapter.currentLtvWad(account, market));
+        assertEq(
+            ltv,
+            Math.ceilDiv(totalDebtBase * USDC_LIQ_THRESHOLD_BPS * WAD, totalCollateralBase * accountThresholdBps),
+            "ratio rescaled by collateralThreshold / accountThreshold"
+        );
+        assertGt(ltv, plainRatio, "never below the plain ratio");
+        // the $100 backs $0.10 of debt at a 10 bps threshold, so the read sits just under 0.6
+        assertLt(ltv, 0.6e18, "the injected reserve counts for what its threshold gives it");
+        assertApproxEqRel(ltv, 0.6e18, 0.001e18, "within 0.1% of the single-collateral value");
+        assertApproxEqRel(ltv, 0.78e18 * WAD / healthFactor, 0.0001e18, "== collateral threshold / health factor");
+
+        PositionData memory snapshot = adapter.describePosition(account, market);
+        assertEq(Ltv.unwrap(snapshot.currentLtv), ltv, "describe: currentLtv on the same scale");
+        assertEq(Ltv.unwrap(snapshot.maxLtv), 0.78e18, "describe: maxLtv is the collateral's own threshold");
+        assertEq(snapshot.healthFactorWad, healthFactor, "describe: Aave's own health factor");
+    }
+
+    /// @dev The case a face-value account ratio gets wrong: a position at Aave's liquidation threshold
+    ///      (health factor 1) with a small low-threshold supply injected would read under a bound set
+    ///      a point below the threshold. On the threshold scale it reads at the threshold, so the
+    ///      router's `ASSERT_HEALTH` keeps rejecting the bound.
+    function test_currentLtvWad_injectedLowThresholdReserve_cannotPullTheReadUnderABound() public {
+        // $1000 of USDC at a 78% threshold against $780 of WETH debt: exactly liquidatable
+        _seedPosition(1_000e6, 0.39e18);
+        Ltv bound = toLtv(0.77e18);
+        assertTrue(adapter.currentLtvWad(account, market).gt(bound), "before: 0.78 is over a 0.77 bound");
+
+        _thirdPartySupplies(lowThreshold, 20e6); // $20 at a 10 bps threshold
+
+        (uint256 totalCollateralBase, uint256 totalDebtBase,,,, uint256 healthFactor) = pool.getUserAccountData(account);
+        uint256 plainRatio = Math.ceilDiv(totalDebtBase * WAD, totalCollateralBase);
+        assertLe(plainRatio, Ltv.unwrap(bound), "the plain ratio would certify the bound");
+        assertLe(healthFactor, 1e18, "while Aave can liquidate the account");
+
+        Ltv ltv = adapter.currentLtvWad(account, market);
+        assertTrue(ltv.gt(bound), "the rescaled read still rejects the bound");
+        assertGe(Ltv.unwrap(ltv), 0.78e18, "at the threshold, where Aave's health factor is 1");
+    }
+
+    /// @dev A reserve with a HIGHER threshold than the market collateral's (WETH at 80% next to USDC at
+    ///      78%) makes the plain ratio the conservative value, so it is kept: the read is the larger of
+    ///      the plain ratio and the threshold-scaled one.
+    function test_currentLtvWad_higherThresholdReserve_keepsThePlainRatio() public {
+        _seedPosition(1_000e6, 0.3e18); // $1000 of USDC against $600 of WETH debt
+        pool.aToken(address(weth)).mint(account, 0.1e18); // $200 of WETH collateral at an 80% threshold
+
+        (,,,,, uint256 healthFactor) = pool.getUserAccountData(account);
+        uint256 ltv = Ltv.unwrap(adapter.currentLtvWad(account, market));
+        assertEq(ltv, 0.5e18, "plain ratio: $600 over $1200");
+        assertGt(ltv, 0.78e18 * WAD / healthFactor, "which is above collateral threshold / health factor here");
+    }
+
+    /// @dev Collateral Aave weights at zero backs nothing: debt against only such collateral reads as
+    ///      the maximal LTV, as it does against no collateral at all.
+    function test_currentLtvWad_onlyZeroThresholdCollateral_isMax() public {
+        _seedPosition(0, 0.3e18);
+        pool.aToken(address(zeroThreshold)).mint(account, 1_000e18);
+
+        (uint256 totalCollateralBase,,, uint256 accountThresholdBps,,) = pool.getUserAccountData(account);
+        assertGt(totalCollateralBase, 0, "sanity: Aave reports the collateral at full value");
+        assertEq(accountThresholdBps, 0, "sanity: and weights it at zero");
         assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), type(uint256).max);
     }
 

@@ -15,6 +15,7 @@ import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
+import {MarginAccountFactory} from "../../src/MarginAccountFactory.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Ltv, toLtv} from "../../src/types/Ltv.sol";
 import {PositionData} from "../../src/types/PositionData.sol";
@@ -585,6 +586,61 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
         assertEq(IERC20(Currency.unwrap(collateral)).balanceOf(address(marginRouter)), 0, "router holds no collateral");
     }
 
+    function _closeZeroDebt() internal {
+        marginRouter.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                debtToRepay: type(uint256).max,
+                maxLtvAfter: Ltv.wrap(0),
+                adapter: adapter,
+                market: market,
+                maxCollateralIn: 0,
+                universalRouter: ur,
+                routeCommands: "",
+                routeInputs: new bytes[](0),
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+    }
+
+    /// @dev Collateral supplied on the venue for the predicted address before the account exists leaves
+    ///      a debt-free position with nothing deployed to withdraw it. The close deploys the account
+    ///      (emitting `AccountCreated`) and returns the collateral.
+    function test_close_zeroDebt_deploysPreFundedUndeployedAccount() public {
+        address account = marginRouter.accountOf(address(this), 0);
+        assertEq(account.code.length, 0, "account not deployed yet");
+
+        MockERC20(Currency.unwrap(collateral)).approve(address(protocol), 3 ether);
+        protocol.supplyCollateral(account, 3 ether);
+        uint256 callerBefore = IERC20(Currency.unwrap(collateral)).balanceOf(address(this));
+
+        vm.expectEmit(true, true, false, true, address(marginRouter));
+        emit MarginAccountFactory.AccountCreated(address(this), account, 0);
+        _closeZeroDebt();
+
+        assertGt(account.code.length, 0, "account deployed by the close");
+        assertEq(
+            IERC20(Currency.unwrap(collateral)).balanceOf(address(this)) - callerBefore,
+            3 ether,
+            "collateral returned to caller"
+        );
+        assertEq(protocol.collateralOf(account), 0, "collateral fully withdrawn");
+    }
+
+    /// @dev An empty position needs no account, so the zero-debt close leaves it undeployed.
+    function test_close_zeroDebt_emptyUndeployedAccount_staysUndeployed() public {
+        address account = marginRouter.accountOf(address(this), 0);
+
+        vm.recordLogs();
+        _closeZeroDebt();
+
+        assertEq(account.code.length, 0, "empty account is not deployed");
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 i; i < logs.length; i++) {
+            assertTrue(logs[i].topics[0] != MarginAccountFactory.AccountCreated.selector, "no AccountCreated");
+        }
+    }
+
     /// @dev The zero-debt full close bypasses the unlock interpreter, so the entry point must emit
     ///      the terminal PositionUpdated itself; without it a snapshot-only indexer never sees the
     ///      position close.
@@ -728,6 +784,56 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
             assertEq(od.currentLtv, expectedLtv, "currentLtv (mock reports the ledger ratio)");
             assertEq(od.maxLtv, 0.86e18, "maxLtv (mock)");
             assertEq(od.healthFactorWad, 0.86e18 * 1e18 / expectedLtv, "healthFactor == maxLtv / currentLtv");
+        }
+        assertTrue(found, "PositionIncreased emitted");
+    }
+
+    /// @dev The fill check treats `collateralToBuy` as a floor and the supply commits the whole
+    ///      delivery, so the event must report what the route delivered, not what was requested. The
+    ///      route here buys 2.1 of a 2.0 request, and the account also holds idle collateral going in,
+    ///      which the supply commits but the delivery figure must leave out.
+    function test_openLong_routeOverDelivers_reportsDeliveredCollateralBought() public {
+        address account = marginRouter.accountOf(address(this), 0);
+        // 1 ether of equity plus 0.5 ether idle, both pre-funded (equity = 0 in the params)
+        MockERC20(Currency.unwrap(collateral)).transfer(account, 1.5 ether);
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, debt, collateral, 2.1 ether, 5 ether, account);
+
+        vm.recordLogs();
+        marginRouter.increasePosition(
+            IMarginRouter.IncreaseParams({
+                adapter: adapter,
+                market: market,
+                equity: 0,
+                collateralToBuy: 2 ether,
+                maxDebtIn: 5 ether,
+                universalRouter: ur,
+                routeCommands: cmds,
+                routeInputs: ins,
+                maxLtvAfter: Ltv.wrap(0),
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+
+        assertEq(
+            protocol.collateralOf(account), 3.6 ether, "the supply committed equity, idle balance and the delivery"
+        );
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bool found;
+        for (uint256 i; i < logs.length; i++) {
+            if (
+                logs[i].emitter != address(marginRouter)
+                    || logs[i].topics[0] != IMarginRouter.PositionIncreased.selector
+            ) {
+                continue;
+            }
+            found = true;
+            OpenedData memory od = _decodeIncreased(logs[i].data);
+            assertEq(od.collateralBought, 2.1 ether, "collateralBought is the delivered amount, not the request");
+            assertEq(od.equity, 0, "equity is what the router pulled");
+            assertEq(od.collateralTotal, 3.6 ether, "collateralTotal");
+            assertEq(od.debtDrawn, protocol.debtOf(account), "debtDrawn");
         }
         assertTrue(found, "PositionIncreased emitted");
     }

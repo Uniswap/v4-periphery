@@ -17,23 +17,32 @@ pragma solidity 0.8.26;
 ///         market currency and assert the bought output landed in the account (via
 ///         `ASSERT_ACCOUNT_BALANCE`), so a pool/market mismatch cannot reach the lending legs.
 library MarginActions {
-    /// @notice Instructs the account to supply collateral to the lending protocol.
+    /// @notice Instructs the account to supply collateral to the lending protocol. An amount of
+    ///         `0` (`OPEN_DELTA`) supplies the account's whole collateral balance.
     ///         Decoded with `MarginCalldataDecoder.decodeAdapterMarketAmount`.
     uint256 internal constant ACCOUNT_SUPPLY_COLLATERAL = 0x30;
 
-    /// @notice Instructs the account to withdraw collateral from the lending protocol.
+    /// @notice Instructs the account to withdraw collateral from the lending protocol. An amount of
+    ///         `0` (`OPEN_DELTA`) withdraws exactly the router's current collateral delta with the
+    ///         pool, i.e. what the swap owes.
     ///         Decoded with `MarginCalldataDecoder.decodeAdapterMarketAmountReceiver`.
     uint256 internal constant ACCOUNT_WITHDRAW_COLLATERAL = 0x31;
 
-    /// @notice Instructs the account to borrow debt from the lending protocol.
+    /// @notice Instructs the account to borrow debt from the lending protocol. An amount of `0`
+    ///         (`OPEN_DELTA`) borrows exactly the router's current debt-token delta with the pool,
+    ///         i.e. what the swap owes.
     ///         Decoded with `MarginCalldataDecoder.decodeAdapterMarketAmountReceiver`.
     uint256 internal constant ACCOUNT_BORROW = 0x32;
 
-    /// @notice Instructs the account to repay debt to the lending protocol.
+    /// @notice Instructs the account to repay debt to the lending protocol. An amount of `0`
+    ///         (`OPEN_DELTA`) repays the account's whole balance of the debt token and reverts
+    ///         `ZeroAmount` when that balance is empty; `type(uint256).max` repays the full debt,
+    ///         resolved by the adapter in the venue's own terms.
     ///         Decoded with `MarginCalldataDecoder.decodeAdapterMarketAmount`.
     uint256 internal constant ACCOUNT_REPAY = 0x33;
 
-    /// @notice Instructs the account to sweep a token balance to a recipient.
+    /// @notice Instructs the account to sweep a token balance to a recipient. The amount is literal:
+    ///         `0` sweeps nothing.
     ///         Decoded with `MarginCalldataDecoder.decodeSweep`.
     uint256 internal constant ACCOUNT_SWEEP = 0x34;
 
@@ -56,9 +65,13 @@ library MarginActions {
 
     /// @notice Transfers a token into the active account: pulled from the caller via Permit2 when
     ///         `payerIsUser` is true, or moved from the router's own balance when false. Enables
-    ///         repay-from-wallet and native-equity flows. Unlike other opcodes, an encoded `0`
-    ///         amount reverts rather than resolving to a full-balance sentinel (`OPEN_DELTA`);
-    ///         `CONTRACT_BALANCE` is honored only on the router-balance path. Decoded with
+    ///         repay-from-wallet and native-equity flows (native value wrapped by a preceding `WRAP`,
+    ///         then moved from the router's balance). An encoded `0` amount reverts `ZeroAmount`
+    ///         (the account-scoped opcodes above resolve `0` per opcode instead);
+    ///         `CONTRACT_BALANCE` is honored only on the router-balance path. The currency is not
+    ///         inspected: `address(0)` on the router-balance path forwards native value to the
+    ///         account, and a currency with no code on the Permit2 path moves nothing while the pull
+    ///         succeeds, as Permit2 does not check for code. Decoded with
     ///         `MarginCalldataDecoder.decodePull`.
     uint256 internal constant PULL_TO_ACCOUNT = 0x38;
 
@@ -67,13 +80,19 @@ library MarginActions {
     ///         input currency from the PoolManager, funds the Universal Router to pull exactly what it
     ///         spends (via a scoped Permit2 allowance), runs the caller-built UR command plan (which
     ///         must deliver the output to the active account), then settles the unspent flash-take
-    ///         back. The router's remaining debt in the input currency then equals exactly what UR
-    ///         spent, so a downstream borrow/settle nets via `OPEN_DELTA` exactly as a native v4 swap
-    ///         would. Decoded with `MarginCalldataDecoder.decodeRouteSwap`.
+    ///         back. What the route spent is what Permit2 pulled from the router; input returned to the
+    ///         router during the call (or, when the plan has an active account, delivered to that
+    ///         account and swept back) is credited against it. The router's remaining debt in the
+    ///         input currency then equals exactly what the route cost, so a downstream borrow/settle
+    ///         nets via `OPEN_DELTA` exactly as a native v4 swap would. A route should return its
+    ///         unspent input to the router (`MSG_SENDER`); in a plan that has no active account yet
+    ///         (before `SET_ACCOUNT`) it must. `maxIn` of `type(uint160).max` is rejected. Decoded
+    ///         with `MarginCalldataDecoder.decodeRouteSwap`.
     uint256 internal constant ROUTE_SWAP = 0x39;
 
     /// @notice Asserts that the active account's ABSOLUTE balance of a currency is at least a
-    ///         minimum, reverting `IncompleteFill` otherwise. A floor, not a fill delta: any balance
+    ///         minimum, reverting `IncompleteFill` otherwise. A `0` minimum always passes. A floor,
+    ///         not a fill delta: any balance
     ///         the account already holds counts toward the minimum. The router's fixed flows turn it into a
     ///         swap-delta guarantee by setting the minimum to the account's pre-unlock balance plus
     ///         the amount the route must deliver; a hand-built plan gets a delta guarantee only from

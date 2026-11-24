@@ -3,6 +3,7 @@ pragma solidity 0.8.26;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
+import {Commands} from "universal-router/contracts/libraries/Commands.sol";
 
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -20,6 +21,9 @@ import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
+import {IV4Router} from "../../src/interfaces/IV4Router.sol";
+import {Actions} from "../../src/libraries/Actions.sol";
+import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {AaveV4LendingAdapter} from "../../src/AaveV4LendingAdapter.sol";
 import {ISpoke} from "../../src/interfaces/external/aave-v4/ISpoke.sol";
@@ -80,10 +84,14 @@ contract AaveV4LendingAdapterForkTest is Test, MarginRouteHelpers {
 
     Market internal market;
     PoolKey internal poolKey;
+    PoolKey internal nativePoolKey;
 
     // live Aave v4 oracle prices (USD base, 8 decimals), read in setUp.
     uint256 internal usdcPriceBase;
     uint256 internal wethPriceBase;
+
+    /// @dev Receives the native refund `PoolModifyLiquidityTest` returns after seeding a native pool.
+    receive() external payable {}
 
     function setUp() public {
         string memory rpc = vm.envOr("MAINNET_RPC_URL", string(""));
@@ -127,6 +135,98 @@ contract AaveV4LendingAdapterForkTest is Test, MarginRouteHelpers {
         _stageAccrueInterest(account);
         _stageDecrease(account);
         _stageClose(account);
+    }
+
+    /// @notice A WETH-denominated increase whose v4 pool is native: the route pulls the whole cap as
+    ///         WETH, unwraps it, settles the native swap from the Universal Router's balance, and wraps
+    ///         the unspent change back to WETH for the account (the universal-router-sdk's default
+    ///         recipient). The router sweeps that change back and settles it, so the short borrows the
+    ///         real WETH cost of the swap rather than the whole cap, and no WETH stays idle in the
+    ///         account.
+    function test_fork_shortEth_nativeWethRoute_changeToAccount_borrowsOnlyActualCost() public {
+        _initAndSeedNativePool();
+        address account = router.accountOf(address(this), 0);
+        uint128 maxDebtIn = _maxDebtForUsdc(2000e6);
+
+        _openViaNativeRoute(0, account, account);
+
+        _assertBorrowedActualCost(account, maxDebtIn);
+    }
+
+    /// @notice The documented shape, wrapping the change to `MSG_SENDER` so it returns to the margin
+    ///         router, accounts for the same actual cost.
+    function test_fork_shortEth_nativeWethRoute_changeToRouter_borrowsOnlyActualCost() public {
+        _initAndSeedNativePool();
+        address account = router.accountOf(address(this), 0);
+        uint128 maxDebtIn = _maxDebtForUsdc(2000e6);
+
+        _openViaNativeRoute(0, account, ActionConstants.MSG_SENDER);
+
+        _assertBorrowedActualCost(account, maxDebtIn);
+    }
+
+    /// @notice A full close does not depend on the Spoke's oracle. The Spoke's `withdraw` prices every
+    ///         reserve still flagged as collateral, so with the oracle reverting the close only
+    ///         succeeds because the adapter clears the collateral flag, after the close's repay has
+    ///         cleared the borrow, before it withdraws.
+    function test_fork_shortEth_fullClose_succeedsDuringOracleOutage() public {
+        address account = router.accountOf(address(this), 0);
+        _stageOpen(account);
+
+        // the oracle now reverts for every call
+        vm.etch(EXPECTED_ORACLE, hex"60006000fd");
+        vm.expectRevert();
+        ISpoke(MAIN_SPOKE).getUserAccountData(account);
+
+        _stageClose(account);
+    }
+
+    /// @notice `ACCOUNT_REPAY` with a zero amount repays the account's whole balance of the debt token
+    ///         on the live venue, and reverts `ZeroAmount` when that balance is empty instead of
+    ///         completing as a no-op.
+    function test_fork_shortEth_accountRepayZero_repaysDebtTokenBalance() public {
+        address account = router.accountOf(address(this), 0);
+        _stageOpen(account);
+        (, uint256 debtBefore) = adapter.positionOf(account, market);
+
+        uint256 funds = debtBefore / 2;
+        deal(WETH, account, funds);
+        router.execute(buildRepayZeroPlan(adapter, market, 0), block.timestamp + 1 hours);
+
+        (, uint256 debtAfter) = adapter.positionOf(account, market);
+        assertApproxEqAbs(debtBefore - debtAfter, funds, 1e3, "debt fell by the account's balance");
+        assertEq(IERC20(WETH).balanceOf(account), 0, "the whole balance was repaid");
+
+        // nothing left to repay: the plan fails loudly on every venue
+        bytes memory plan = buildRepayZeroPlan(adapter, market, 0);
+        vm.expectRevert(IMarginRouter.ZeroAmount.selector);
+        router.execute(plan, block.timestamp + 1 hours);
+    }
+
+    /// @notice With no debt in the market the adapter reports a zero LTV without calling the Spoke's
+    ///         account-level read, so the mandatory health assertion of a debt-clearing partial
+    ///         decrease does not consult the oracle. Checked on the live Spoke with the oracle
+    ///         reverting. A partial decrease as a whole still needs the oracle on Aave v4, because the
+    ///         Spoke's own partial `withdraw` prices every reserve flagged as collateral; the full
+    ///         close, which clears the flag first, is the oracle-independent exit.
+    function test_fork_shortEth_currentLtv_zeroDebt_doesNotPriceDuringOracleOutage() public {
+        address account = router.accountOf(address(this), 0);
+        _stageOpen(account);
+
+        // clear the debt out of band: the owner repays it directly through the account
+        (, uint256 debt) = adapter.positionOf(account, market);
+        deal(WETH, account, debt + 1 ether);
+        MarginAccount(payable(account)).repay(adapter, market, type(uint256).max);
+        (uint256 collateral, uint256 debtAfter) = adapter.positionOf(account, market);
+        assertEq(debtAfter, 0, "debt cleared");
+        assertGt(collateral, 0, "collateral still supplied");
+
+        vm.etch(EXPECTED_ORACLE, hex"60006000fd");
+        ISpoke spoke = ISpoke(MAIN_SPOKE);
+        vm.expectRevert();
+        spoke.getUserAccountData(account);
+
+        assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0, "zero LTV without pricing");
     }
 
     // -------------------------------------------------------------------------
@@ -290,9 +390,104 @@ contract AaveV4LendingAdapterForkTest is Test, MarginRouteHelpers {
         );
     }
 
+    /// @notice Funds the account with 2000 USDC of equity and opens the short through the native-pool
+    ///         WETH route, sending the wrapped change to `changeTo`.
+    function _openViaNativeRoute(uint256 subId, address account, address changeTo) internal {
+        deal(USDC, account, 2000e6);
+        uint128 maxDebtIn = _maxDebtForUsdc(2000e6);
+        (bytes memory cmds, bytes[] memory ins) = _nativeWethRoute(2000e6, maxDebtIn, account, changeTo);
+        router.increasePosition(
+            IMarginRouter.IncreaseParams({
+                adapter: adapter,
+                market: market,
+                equity: 0,
+                collateralToBuy: 2000e6,
+                maxDebtIn: maxDebtIn,
+                universalRouter: ur,
+                routeCommands: cmds,
+                routeInputs: ins,
+                maxLtvAfter: Ltv.wrap(0),
+                subId: subId,
+                deadline: block.timestamp + 1 hours
+            })
+        );
+    }
+
+    /// @notice Universal Router commands for a WETH-denominated exact-output buy through the native
+    ///         pool: pull the cap as WETH into the Universal Router, unwrap it, settle the native swap
+    ///         from the Universal Router's balance and take the USDC to `outputTo`, then wrap the
+    ///         remaining ETH back to WETH for `changeTo`.
+    function _nativeWethRoute(uint128 amountOut, uint128 maxIn, address outputTo, address changeTo)
+        internal
+        view
+        returns (bytes memory commands, bytes[] memory inputs)
+    {
+        bytes memory v4Actions =
+            abi.encodePacked(uint8(Actions.SWAP_EXACT_OUT_SINGLE), uint8(Actions.SETTLE), uint8(Actions.TAKE));
+        bytes[] memory v4Params = new bytes[](3);
+        v4Params[0] = abi.encode(
+            IV4Router.ExactOutputSingleParams({
+                poolKey: nativePoolKey,
+                zeroForOne: true,
+                amountOut: amountOut,
+                amountInMaximum: maxIn,
+                minHopPriceX36: 0,
+                hookData: ""
+            })
+        );
+        v4Params[1] = abi.encode(Currency.wrap(address(0)), uint256(ActionConstants.OPEN_DELTA), false);
+        v4Params[2] = abi.encode(Currency.wrap(USDC), outputTo, uint256(ActionConstants.OPEN_DELTA));
+
+        commands = abi.encodePacked(
+            uint8(Commands.PERMIT2_TRANSFER_FROM),
+            uint8(Commands.UNWRAP_WETH),
+            uint8(Commands.V4_SWAP),
+            uint8(Commands.WRAP_ETH)
+        );
+        inputs = new bytes[](4);
+        inputs[0] = abi.encode(WETH, ActionConstants.ADDRESS_THIS, uint160(maxIn));
+        inputs[1] = abi.encode(ActionConstants.ADDRESS_THIS, uint256(0));
+        inputs[2] = abi.encode(v4Actions, v4Params);
+        inputs[3] = abi.encode(changeTo, ActionConstants.CONTRACT_BALANCE);
+    }
+
+    /// @notice The position borrowed roughly the oracle WETH cost of 2000 USDC (not the cap), and
+    ///         neither the account, the router, nor the Universal Router holds loose WETH or ETH.
+    function _assertBorrowedActualCost(address account, uint128 maxDebtIn) internal view {
+        uint256 debt = ISpoke(MAIN_SPOKE).getUserTotalDebt(WETH_RESERVE_ID, account);
+        uint256 oracleCost = FullMath.mulDiv(2000e6 * 1e12, usdcPriceBase, wethPriceBase);
+        assertLt(debt, maxDebtIn, "borrowed less than the cap");
+        assertApproxEqRel(debt, oracleCost, 0.02e18, "borrowed the real cost of the swap");
+        _assertNoDust(account);
+        assertEq(IERC20(WETH).balanceOf(ur), 0, "Universal Router holds no WETH");
+        assertEq(ur.balance, 0, "Universal Router holds no ETH");
+    }
+
     // -------------------------------------------------------------------------
     // Setup + verification helpers
     // -------------------------------------------------------------------------
+
+    /// @notice Initializes a native ETH/USDC pool at the live Aave oracle price with deep full-range
+    ///         liquidity, so a WETH-denominated route can swap natively.
+    function _initAndSeedNativePool() internal {
+        nativePoolKey = PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(USDC),
+            fee: POOL_FEE,
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(address(0))
+        });
+        // price = USDC_raw per wei = (wethPrice / 1e18) / (usdcPrice / 1e6)
+        uint256 priceX192 = FullMath.mulDiv(wethPriceBase, uint256(1) << 192, usdcPriceBase * 1e12);
+        manager.initialize(nativePoolKey, uint160(FixedPointMathLib.sqrt(priceX192)));
+
+        vm.deal(address(this), 200_000 ether);
+        lpRouter.modifyLiquidity{value: 100_000 ether}(
+            nativePoolKey,
+            ModifyLiquidityParams({tickLower: MIN_TICK, tickUpper: MAX_TICK, liquidityDelta: 1e18, salt: 0}),
+            ""
+        );
+    }
 
     /// @notice Deploys the adapter against the live Main Spoke and verifies on-chain that the WETH and
     ///         USDC reserves resolve to the expected underlyings on the Core Hub, the oracle matches,

@@ -164,7 +164,7 @@ contract OpenMorphoLongEth is Script {
         }
 
         // the Universal Router is now supplied per call rather than baked into the router, so the
-        // operator points this open at the UR the route targets (must carry already-unlocked V4_SWAP)
+        // operator points this open at the UR the route targets (must expose executeNested, Universal Router 2.3.0+)
         address universalRouter = _envAddress("UNIVERSAL_ROUTER", address(0));
         require(universalRouter != address(0), "set UNIVERSAL_ROUTER env to the Universal Router");
 

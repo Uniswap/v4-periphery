@@ -7,11 +7,19 @@ import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
+import {Commands} from "universal-router/contracts/libraries/Commands.sol";
+
+import {Plan, Planner} from "../shared/Planner.sol";
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
+import {IV4Router} from "../../src/interfaces/IV4Router.sol";
+import {Actions} from "../../src/libraries/Actions.sol";
+import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
+import {MarginActions} from "../../src/libraries/MarginActions.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Ltv, toLtv} from "../../src/types/Ltv.sol";
@@ -33,6 +41,8 @@ import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 ///         (recoverable via SWEEP). These tests assert the curated flows now COMPLETE despite a
 ///         donation, and that the donation stays put on the router.
 contract MarginRouterRouteSwapResidualTest is RoutingTestHelpers, MarginRouteHelpers, DeployPermit2 {
+    using Planner for Plan;
+
     IMarginRouter internal marginRouter;
     address internal ur;
     MockLendingAdapter internal adapter;
@@ -164,5 +174,65 @@ contract MarginRouterRouteSwapResidualTest is RoutingTestHelpers, MarginRouteHel
         assertEq(
             IERC20(Currency.unwrap(debt)).balanceOf(address(marginRouter)), 5 ether, "debt donation preserved intact"
         );
+    }
+
+    // ─────────────────────────────── Universal Router delta pre-check ───────────────────────────
+
+    /// @dev A `V4_SWAP` that sells `amountIn` of `input` for `output` (taken to `recipient`) and never
+    ///      settles the input, so the Universal Router ends the route owing the pool `amountIn`.
+    function _unsettledSwapRoute(uint128 amountIn, address recipient)
+        internal
+        view
+        returns (bytes memory commands, bytes[] memory inputs)
+    {
+        bytes memory v4Actions = abi.encodePacked(uint8(Actions.SWAP_EXACT_IN_SINGLE), uint8(Actions.TAKE));
+        bytes[] memory v4Params = new bytes[](2);
+        v4Params[0] = abi.encode(
+            IV4Router.ExactInputSingleParams({
+                poolKey: poolKey,
+                zeroForOne: Currency.unwrap(debt) == Currency.unwrap(poolKey.currency0),
+                amountIn: amountIn,
+                amountOutMinimum: 0,
+                minHopPriceX36: 0,
+                hookData: ""
+            })
+        );
+        v4Params[1] = abi.encode(collateral, recipient, uint256(ActionConstants.OPEN_DELTA));
+        commands = abi.encodePacked(uint8(Commands.V4_SWAP));
+        inputs = new bytes[](1);
+        inputs[0] = abi.encode(v4Actions, v4Params);
+    }
+
+    /// @notice A route that starts while the Universal Router already owes the pool in the input
+    ///         currency is refused: the route's own `SETTLE` would otherwise pay that debt out of the
+    ///         caller's `maxIn` allowance.
+    function test_routeSwap_revertsWhenUniversalRouterHoldsInputDelta() public {
+        address account = marginRouter.accountOf(address(this), 0);
+        (bytes memory cmds, bytes[] memory ins) = _unsettledSwapRoute(1 ether, account);
+        // the first route leaves the Universal Router owing 1 ether of `debt`
+        Plan memory plan = Planner.init();
+        plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
+        plan = plan.add(MarginActions.ROUTE_SWAP, abi.encode(ur, debt, uint256(5 ether), cmds, ins));
+        plan = plan.add(MarginActions.ROUTE_SWAP, abi.encode(ur, debt, uint256(5 ether), cmds, ins));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IMarginRouter.UniversalRouterDeltaNotZero.selector, debt, int256(-1 ether))
+        );
+        marginRouter.execute(plan.encode(), block.timestamp + 1);
+    }
+
+    /// @notice The same first route on its own gets past the pre-check (the Universal Router's delta is
+    ///         zero when the route starts) and fails only at the end of the unlock, where the unsettled
+    ///         debt is still owed.
+    function test_routeSwap_cleanUniversalRouterDelta_passesPreCheck() public {
+        address account = marginRouter.accountOf(address(this), 0);
+        (bytes memory cmds, bytes[] memory ins) = _unsettledSwapRoute(1 ether, account);
+        Plan memory plan = Planner.init();
+        plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
+        plan = plan.add(MarginActions.ROUTE_SWAP, abi.encode(ur, debt, uint256(5 ether), cmds, ins));
+
+        // not UniversalRouterDeltaNotZero: the unlock closes with the Universal Router still in debt
+        vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
+        marginRouter.execute(plan.encode(), block.timestamp + 1);
     }
 }

@@ -11,7 +11,7 @@ import {ISpoke} from "../../src/interfaces/external/aave-v4/ISpoke.sol";
 import {PositionAmountResolver} from "../../src/base/PositionAmountResolver.sol";
 import {Call} from "../../src/types/Call.sol";
 import {Market} from "../../src/types/Market.sol";
-import {Ltv} from "../../src/types/Ltv.sol";
+import {Ltv, toLtv} from "../../src/types/Ltv.sol";
 import {MockAaveV4Spoke} from "../mocks/MockAaveV4Spoke.sol";
 
 contract AaveV4LendingAdapterTest is Test {
@@ -191,6 +191,8 @@ contract AaveV4LendingAdapterTest is Test {
     }
 
     function test_encodeWithdrawCollateral_targetSelectorAndArgs() public {
+        // a partial withdrawal of a supplied balance: the single withdraw, whatever the debt
+        spoke.seedSupplied(USDC_RESERVE_ID, account, 1_000e6);
         vm.prank(account);
         Call[] memory calls = adapter.encodeWithdrawCollateral(account, market, 500e6, makeAddr("receiver"));
         assertEq(calls.length, 1);
@@ -202,6 +204,52 @@ contract AaveV4LendingAdapterTest is Test {
         assertEq(reserveId, USDC_RESERVE_ID);
         assertEq(amount, 500e6);
         assertEq(onBehalfOf, account);
+    }
+
+    /// @dev With debt outstanding a full withdrawal is the single `withdraw`: the collateral flag must
+    ///      stay on to back the borrow.
+    function test_encodeWithdrawCollateral_debtOutstanding_fullAmountIsSingleWithdraw() public {
+        spoke.seedSupplied(USDC_RESERVE_ID, account, 1_000e6);
+        spoke.seedDebt(WETH_RESERVE_ID, account, 0.1e18);
+        vm.prank(account);
+        Call[] memory calls = adapter.encodeWithdrawCollateral(account, market, 1_000e6, account);
+        assertEq(calls.length, 1, "one call");
+        assertEq(bytes4(calls[0].data), ISpoke.withdraw.selector);
+    }
+
+    /// @dev With no debt a partial withdrawal leaves collateral supplied, so the flag stays on.
+    function test_encodeWithdrawCollateral_zeroDebt_partialAmountIsSingleWithdraw() public {
+        spoke.seedSupplied(USDC_RESERVE_ID, account, 1_000e6);
+        vm.prank(account);
+        Call[] memory calls = adapter.encodeWithdrawCollateral(account, market, 999e6, account);
+        assertEq(calls.length, 1, "one call");
+        assertEq(bytes4(calls[0].data), ISpoke.withdraw.selector);
+    }
+
+    /// @dev With no debt a withdrawal that empties the reserve first clears the collateral flag, so the
+    ///      Spoke has no flagged reserve to price and the full close is oracle-independent. Covers the
+    ///      exact balance and the `type(uint256).max` form.
+    function test_encodeWithdrawCollateral_zeroDebt_fullAmountDisablesCollateralFirst() public {
+        spoke.seedSupplied(USDC_RESERVE_ID, account, 1_000e6);
+        uint256[2] memory amounts = [uint256(1_000e6), type(uint256).max];
+        for (uint256 i; i < amounts.length; i++) {
+            vm.prank(account);
+            Call[] memory calls = adapter.encodeWithdrawCollateral(account, market, amounts[i], account);
+            assertEq(calls.length, 2, "disable then withdraw");
+            assertEq(calls[0].value, 0);
+            assertEq(bytes4(calls[0].data), ISpoke.setUsingAsCollateral.selector, "disable first");
+            (uint256 flagReserveId, bool usingAsCollateral, address flagOnBehalfOf) =
+                this.decodeSetCollateral(calls[0].data);
+            assertEq(flagReserveId, USDC_RESERVE_ID, "the collateral reserve");
+            assertFalse(usingAsCollateral, "cleared");
+            assertEq(flagOnBehalfOf, account);
+            assertEq(calls[1].value, 0);
+            assertEq(bytes4(calls[1].data), ISpoke.withdraw.selector, "then withdraw");
+            (uint256 reserveId, uint256 amount, address onBehalfOf) = this.decodeWithdraw(calls[1].data);
+            assertEq(reserveId, USDC_RESERVE_ID);
+            assertEq(amount, amounts[i]);
+            assertEq(onBehalfOf, account);
+        }
     }
 
     function test_encodeWithdrawCollateral_revertsWhenAccountNotCaller() public {
@@ -291,6 +339,42 @@ contract AaveV4LendingAdapterTest is Test {
         spoke.seedSupplied(USDC_RESERVE_ID, account, 10_000e6);
         spoke.seedDebt(WETH_RESERVE_ID, account, 2.5e18);
         assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0.5e18);
+    }
+
+    /// @dev The LTV rounds up, so a position whose unrounded ratio sits a fraction above a bound is over
+    ///      it: with a floored ratio the router's `ASSERT_HEALTH` (`currentLtv > bound`) would pass it.
+    function test_currentLtvWad_roundsUp() public {
+        // $3 of USDC collateral and $1 of WETH debt (5e14 wei at $2000): the exact ratio is 1/3
+        spoke.seedSupplied(USDC_RESERVE_ID, account, 3e6);
+        spoke.seedDebt(WETH_RESERVE_ID, account, 5e14);
+        uint256 debtValue = 1e8;
+        uint256 collateralValue = 3e8;
+        uint256 floored = debtValue * 1e18 / collateralValue;
+        assertGt(debtValue * 1e18 % collateralValue, 0, "sanity: the exact ratio is fractional");
+
+        Ltv ltv = adapter.currentLtvWad(account, market);
+        assertEq(Ltv.unwrap(ltv), floored + 1, "one wad unit above the floored ratio");
+        assertTrue(ltv.gt(toLtv(floored)), "a bound at the floored ratio is exceeded");
+        assertEq(Ltv.unwrap(adapter.describePosition(account, market).currentLtv), Ltv.unwrap(ltv));
+    }
+
+    /// @dev A market with no debt needs no price: the debt is checked before the Spoke's account-level
+    ///      read, so an oracle outage cannot block it.
+    function test_currentLtvWad_zeroDebt_doesNotPriceTheAccount() public {
+        spoke.seedSupplied(USDC_RESERVE_ID, account, 1_000e6);
+        vm.mockCallRevert(address(spoke), abi.encodeWithSelector(ISpoke.getUserAccountData.selector), "oracle down");
+
+        assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0);
+    }
+
+    /// @dev With debt outstanding the Spoke's pricing is still needed, so an outage still surfaces.
+    function test_currentLtvWad_withDebt_pricesTheAccount() public {
+        spoke.seedSupplied(USDC_RESERVE_ID, account, 1_000e6);
+        spoke.seedDebt(WETH_RESERVE_ID, account, 0.3e18);
+        vm.mockCallRevert(address(spoke), abi.encodeWithSelector(ISpoke.getUserAccountData.selector), "oracle down");
+
+        vm.expectRevert("oracle down");
+        adapter.currentLtvWad(account, market);
     }
 
     function test_currentLtvWad_zeroWhenNoDebt() public {

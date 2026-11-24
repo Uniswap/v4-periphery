@@ -11,6 +11,11 @@ import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/Safe
 contract MockLendingProtocol {
     using SafeERC20 for IERC20;
 
+    /// @notice A zero-amount borrow or collateral withdrawal is rejected, as the real venues reject it:
+    ///         Morpho reverts `inconsistent input` / `zero assets`, Aave v3 and the Aave v4 Spoke revert
+    ///         `InvalidAmount()`. (Compound v3 alone treats it as a no-op.)
+    error ZeroAmount();
+
     IERC20 public immutable collateralToken;
     IERC20 public immutable debtToken;
 
@@ -54,6 +59,7 @@ contract MockLendingProtocol {
     }
 
     function withdrawCollateral(address account, uint256 amount, address receiver) external {
+        if (amount == 0) revert ZeroAmount();
         lastAccount = account;
         lastReceiver = receiver;
         collateralOf[account] -= amount;
@@ -63,6 +69,7 @@ contract MockLendingProtocol {
     }
 
     function borrow(address account, uint256 amount, address receiver) external {
+        if (amount == 0) revert ZeroAmount();
         lastAccount = account;
         lastReceiver = receiver;
         debtOf[account] += amount;

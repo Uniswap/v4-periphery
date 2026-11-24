@@ -202,6 +202,64 @@ contract MarginRouterE2EForkTest is Test, MarginRouteHelpers {
         _assertNoDustRouter();
     }
 
+    /// @notice `ACCOUNT_REPAY` with a zero amount repays the account's whole balance of the debt token
+    ///         on the live venue, and reverts `ZeroAmount` when that balance is empty instead of
+    ///         completing as a no-op.
+    function test_fork_e2e_accountRepayZero_repaysDebtTokenBalance() public {
+        address account = router.accountOf(address(this), 0);
+        _stageOpen(account);
+        (, uint256 debtBefore) = adapter.positionOf(account, market);
+
+        uint256 funds = debtBefore / 2;
+        deal(USDC, account, funds);
+        router.execute(buildRepayZeroPlan(adapter, market, 0), block.timestamp + 1 hours);
+
+        (, uint256 debtAfter) = adapter.positionOf(account, market);
+        assertApproxEqAbs(debtBefore - debtAfter, funds, 10, "debt fell by the account's balance");
+        assertEq(IERC20(USDC).balanceOf(account), 0, "the whole balance was repaid");
+
+        // nothing left to repay: the plan fails loudly on every venue
+        bytes memory plan = buildRepayZeroPlan(adapter, market, 0);
+        vm.expectRevert(IMarginRouter.ZeroAmount.selector);
+        router.execute(plan, block.timestamp + 1 hours);
+    }
+
+    /// @notice A partial decrease that repays the whole debt does not need the market oracle. Morpho
+    ///         itself treats a position with no borrow as healthy before reading the oracle, and the
+    ///         adapter reports a zero LTV for it without pricing, so with the oracle reverting the
+    ///         mandatory health assertion still passes and the collateral that was not sold stays put.
+    function test_fork_e2e_partialDecreaseClearingAllDebt_succeedsDuringOracleOutage() public {
+        address account = router.accountOf(address(this), 0);
+        _stageOpen(account);
+        (uint256 collBefore, uint256 debtBefore) = adapter.positionOf(account, market);
+
+        vm.etch(ORACLE, hex"60006000fd");
+        vm.expectRevert();
+        IOracle(ORACLE).price();
+
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.collateral, market.debt, uint128(debtBefore), 2 ether, account);
+        router.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                adapter: adapter,
+                market: market,
+                debtToRepay: debtBefore,
+                maxCollateralIn: 2 ether,
+                universalRouter: ur,
+                routeCommands: cmds,
+                routeInputs: ins,
+                maxLtvAfter: toLtv(0.7e18),
+                subId: 0,
+                deadline: block.timestamp + 1 hours
+            })
+        );
+
+        (uint256 collAfter, uint256 debtAfter) = adapter.positionOf(account, market);
+        assertEq(debtAfter, 0, "decrease: all debt repaid");
+        assertLt(collAfter, collBefore, "decrease: collateral sold to fund the repay");
+        assertGt(collAfter, 0, "decrease: unsold collateral remains");
+    }
+
     // -------------------------------------------------------------------------
     // Lifecycle stages (split to keep locals-per-frame low: tests compile without via_ir)
     // -------------------------------------------------------------------------

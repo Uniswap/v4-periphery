@@ -38,6 +38,24 @@ fuzz.runs = 100_000
 [profile.gas]
 gas_limit=50_000_000
 
+# `forge coverage` compiles without the optimizer or via_ir so that hits map back to source. The
+# per-file profiles above would still pin MarginRouter and the UR compile anchor to via_ir builds
+# that coverage cannot attribute, so this profile drops them. It skips the anchor (UniversalRouter
+# cannot compile without via_ir; tests read its default-profile artifact by path, so run
+# `forge build` first), raises the code size limit for the unoptimized router, leaves the committed
+# gas snapshots alone, and uses its own out/cache directories so a stray build under this profile
+# cannot churn the default one.
+#   forge build
+#   FOUNDRY_PROFILE=coverage forge coverage --no-match-coverage '(test|lib|script)/' --report summary
+[profile.coverage]
+out = 'foundry-out-coverage'
+cache_path = 'cache/coverage'
+additional_compiler_profiles = []
+compilation_restrictions = []
+skip = ['script/**']
+code_size_limit = 1_000_000
+gas_snapshot_emit = false
+
 [invariant]
 runs = 256
 depth = 128
