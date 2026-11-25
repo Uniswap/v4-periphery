@@ -31,7 +31,7 @@ contract SwapAndAddForkSepoliaTest is Test {
     using PoolIdLibrary for PoolKey;
 
     // live Sepolia deployment (chore(SwapAndAdd): deploy zap + patched UR to Sepolia)
-    address constant ZAP = 0x6f923892d6A45f7e77DB36f48F055C045F93E979;
+    address constant ZAP = 0x8A5C30D72ea6d883C522d232b49371438cc96586;
     address constant UR = 0x44518461733Fd7f5DC5996facB405CF659108Ea2;
     // canonical Sepolia protocol addresses, verified in script/DeploySwapAndAdd.s.sol
     address constant POOL_MANAGER = 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543;
