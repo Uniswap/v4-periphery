@@ -119,7 +119,15 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         payable
         isNotLocked
         checkDeadline(params.deadline)
-        returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
+        returns (
+            uint256 tokenId,
+            uint128 liquidity,
+            uint256 amount0,
+            uint256 amount1,
+            uint160 sqrtPriceAtSizingX96,
+            uint256 dust0,
+            uint256 dust1
+        )
     {
         _validateRecipient(params.recipient);
         _pull(params.poolKey, params.amount0In, params.amount1In, params.routeFunding, params.route);
@@ -139,7 +147,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             recipient: params.recipient,
             hookData: params.hookData
         });
-        (tokenId, liquidity, amount0, amount1) = _run(cp);
+        (tokenId, liquidity, amount0, amount1, sqrtPriceAtSizingX96, dust0, dust1) = _run(cp);
         emit Added(params.recipient, tokenId, msg.sender, liquidity, amount0, amount1);
 
         // the position was minted to this contract so the trim step could burn from it
@@ -153,7 +161,15 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         payable
         isNotLocked
         checkDeadline(params.deadline)
-        returns (uint256 newTokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
+        returns (
+            uint256 newTokenId,
+            uint128 liquidity,
+            uint256 amount0,
+            uint256 amount1,
+            uint160 sqrtPriceAtSizingX96,
+            uint256 dust0,
+            uint256 dust1
+        )
     {
         (PoolKey memory key,) = positionManager.getPoolAndPositionInfo(params.tokenId);
         address recipient = _authAndResolveRecipient(params.tokenId, params.recipient);
@@ -189,7 +205,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             recipient: recipient,
             hookData: params.hookData
         });
-        (newTokenId, liquidity, amount0, amount1) = _run(cp);
+        (newTokenId, liquidity, amount0, amount1, sqrtPriceAtSizingX96, dust0, dust1) = _run(cp);
         emit Rebalanced(recipient, params.tokenId, newTokenId, msg.sender, liquidity, amount0, amount1);
 
         ERC721(address(positionManager)).transferFrom(address(this), recipient, newTokenId);
@@ -202,7 +218,14 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         payable
         isNotLocked
         checkDeadline(params.deadline)
-        returns (uint128 liquidityAdded, uint256 amount0, uint256 amount1)
+        returns (
+            uint128 liquidityAdded,
+            uint256 amount0,
+            uint256 amount1,
+            uint160 sqrtPriceAtSizingX96,
+            uint256 dust0,
+            uint256 dust1
+        )
     {
         address recipient = _authAndResolveRecipient(params.tokenId, params.recipient);
         _validateRecipient(recipient);
@@ -223,7 +246,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         if (_authAndResolveRecipient(params.tokenId, params.recipient) != recipient) {
             revert NotAuthorizedForToken(params.tokenId);
         }
-        (, liquidityAdded, amount0, amount1) = _run(cp);
+        (, liquidityAdded, amount0, amount1, sqrtPriceAtSizingX96, dust0, dust1) = _run(cp);
         emit Increased(recipient, params.tokenId, msg.sender, liquidityAdded, amount0, amount1);
 
         _sweepFunding(params.routeFunding, recipient);
@@ -234,7 +257,14 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         external
         isNotLocked
         checkDeadline(params.deadline)
-        returns (uint128 liquidityAdded, uint256 amount0, uint256 amount1)
+        returns (
+            uint128 liquidityAdded,
+            uint256 amount0,
+            uint256 amount1,
+            uint160 sqrtPriceAtSizingX96,
+            uint256 dust0,
+            uint256 dust1
+        )
     {
         address recipient = _authAndResolveRecipient(params.tokenId, params.recipient);
         _validateRecipient(recipient);
@@ -249,7 +279,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             recipient,
             params.hookData
         );
-        (, liquidityAdded, amount0, amount1) = _run(cp);
+        (, liquidityAdded, amount0, amount1, sqrtPriceAtSizingX96, dust0, dust1) = _run(cp);
         emit Compounded(recipient, params.tokenId, msg.sender, liquidityAdded, amount0, amount1);
     }
 
@@ -296,10 +326,18 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     /// @dev Executes the core logic inside a PoolManager unlock.
     function _run(CoreParams memory cp)
         internal
-        returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
+        returns (
+            uint256 tokenId,
+            uint128 liquidity,
+            uint256 amount0,
+            uint256 amount1,
+            uint160 sqrtPriceAtSizingX96,
+            uint256 dust0,
+            uint256 dust1
+        )
     {
         bytes memory result = poolManager.unlock(abi.encode(cp));
-        return abi.decode(result, (uint256, uint128, uint256, uint256));
+        return abi.decode(result, (uint256, uint128, uint256, uint256, uint160, uint256, uint256));
     }
 
     /// @dev Collects fees for grow operations, then executes the shared core flow.
@@ -318,8 +356,16 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             if (cp.budget0 == 0 && cp.budget1 == 0 && cp.route.length == 0) revert NoFeesToCompound();
         }
 
-        (uint256 tokenId, uint128 liquidity, uint256 a0, uint256 a1) = _swapAndAdd(cp);
-        return abi.encode(tokenId, liquidity, a0, a1);
+        (
+            uint256 tokenId,
+            uint128 liquidity,
+            uint256 a0,
+            uint256 a1,
+            uint160 sizingPrice,
+            uint256 dust0,
+            uint256 dust1
+        ) = _swapAndAdd(cp);
+        return abi.encode(tokenId, liquidity, a0, a1, sizingPrice, dust0, dust1);
     }
 
     /// @dev Resolves the redeploy budget from the signed delta. Negative deltas pay out cash-out
@@ -338,7 +384,15 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     /// @dev Shared execution core.
     function _swapAndAdd(CoreParams memory cp)
         internal
-        returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
+        returns (
+            uint256 tokenId,
+            uint128 liquidity,
+            uint256 amount0,
+            uint256 amount1,
+            uint160 sqrtPriceAtSizingX96,
+            uint256 dust0,
+            uint256 dust1
+        )
     {
         // pure bitmask check, the capability is rejected regardless of observed behavior
         if (cp.key.hooks.hasPermission(UNSUPPORTED_HOOK_FLAGS)) revert UnsupportedHookPermissions(cp.key.hooks);
@@ -358,8 +412,9 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // constant, the price is re-read at each use because swaps and hooks move it.
         uint160 sqrtLower = TickMath.getSqrtPriceAtTick(cp.tickLower);
         uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(cp.tickUpper);
-        (uint128 liquidityOptimistic, uint256 amount0optimistic, uint256 amount1optimistic) =
+        (uint128 liquidityOptimistic, uint256 amount0optimistic, uint256 amount1optimistic, uint160 sizingPrice) =
             _planLiquidity(cp, sqrtLower, sqrtUpper);
+        sqrtPriceAtSizingX96 = sizingPrice;
         // nothing to deploy, and an empty position would surface POSM's opaque CannotUpdateEmptyPosition
         if (liquidityOptimistic == 0) revert InsufficientLiquidity(cp.minLiquidity, 0);
         _flashTakeDeficit(cp, amount0optimistic, amount1optimistic);
@@ -382,17 +437,18 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(cp.key.toId());
         (amount0, amount1) =
             SwapAndAddMath.getAmountsForLiquidityRoundingUp(sqrtPriceX96, sqrtLower, sqrtUpper, liquidity);
-        _sweep(cp.key.currency0, cp.recipient);
-        _sweep(cp.key.currency1, cp.recipient);
+        dust0 = _sweep(cp.key.currency0, cp.recipient);
+        dust1 = _sweep(cp.key.currency1, cp.recipient);
     }
 
     /// @dev Computes the fee-aware liquidity and required amounts from the budgets and pool price.
     function _planLiquidity(CoreParams memory cp, uint160 sqrtLower, uint160 sqrtUpper)
         internal
         view
-        returns (uint128 liquidity, uint256 amount0, uint256 amount1)
+        returns (uint128 liquidity, uint256 amount0, uint256 amount1, uint160 sqrtPriceAtSizingX96)
     {
         (uint160 sqrtPriceX96,, uint24 protocolFee, uint24 lpFee) = poolManager.getSlot0(cp.key.toId());
+        sqrtPriceAtSizingX96 = sqrtPriceX96;
         if (sqrtPriceX96 == 0) revert IPoolManager.PoolNotInitialized();
         if (sqrtPriceX96 < cp.sqrtPriceMinX96 || sqrtPriceX96 > cp.sqrtPriceMaxX96) {
             revert PriceOutOfBand(sqrtPriceX96, cp.sqrtPriceMinX96, cp.sqrtPriceMaxX96);
@@ -683,8 +739,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     }
 
     /// @dev Sweeps the full contract's balance of a given currency to the recipient.
-    function _sweep(Currency currency, address to) internal {
-        uint256 bal = currency.balanceOfSelf();
+    function _sweep(Currency currency, address to) internal returns (uint256 bal) {
+        bal = currency.balanceOfSelf();
         if (bal > 0) currency.transfer(to, bal);
     }
 

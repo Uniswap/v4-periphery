@@ -56,7 +56,7 @@ contract SwapAndAddIncreaseOutOfRangeTest is PosmTestSetup {
     }
 
     function _mintAndAccrue() internal returns (uint256 tokenId) {
-        (tokenId,,,) = zap.add(
+        (tokenId,,,,,,) = zap.add(
             ISwapAndAdd.AddParams({
                 poolKey: key,
                 tickLower: TL,
@@ -81,7 +81,7 @@ contract SwapAndAddIncreaseOutOfRangeTest is PosmTestSetup {
     }
 
     function _inc(uint256 tokenId, uint256 a0, uint256 a1) internal returns (uint128 added) {
-        (added,,) = zap.increase(
+        (added,,,,,) = zap.increase(
             ISwapAndAdd.IncreaseParams({
                 tokenId: tokenId,
                 amount0In: a0,

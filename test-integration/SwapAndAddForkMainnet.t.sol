@@ -154,7 +154,7 @@ contract SwapAndAddForkMainnetTest is Test {
         (int24 lo, int24 hi) = _ticks();
         _fundUsdc(50_000e6);
 
-        (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
+        (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
 
         assertEq(IERC721(POSM).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "liquidity minted");
@@ -168,7 +168,7 @@ contract SwapAndAddForkMainnetTest is Test {
         (int24 lo, int24 hi) = _ticks();
         vm.deal(address(this), 100 ether);
 
-        (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1) = zap.add{value: 5 ether}(_addParams(5 ether, 0, "", lo, hi));
+        (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1,,,) = zap.add{value: 5 ether}(_addParams(5 ether, 0, "", lo, hi));
 
         assertEq(IERC721(POSM).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "liquidity minted");
@@ -187,7 +187,7 @@ contract SwapAndAddForkMainnetTest is Test {
         // Sell 4_000 USDC for ETH through the real UR inside the zap's unlock.
         bytes memory route = _v4SwapRoute(key, false, 4_000e6, key.currency1, key.currency0);
 
-        (uint256 tokenId, uint128 liq,,) = zap.add(_addParams(0, 10_000e6, route, lo, hi));
+        (uint256 tokenId, uint128 liq,,,,,) = zap.add(_addParams(0, 10_000e6, route, lo, hi));
 
         assertEq(IERC721(POSM).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "liquidity minted");
@@ -205,7 +205,7 @@ contract SwapAndAddForkMainnetTest is Test {
 
         // Route about half the budget USDC -> ETH.
         bytes memory route = _v4SwapRoute(key, false, 5_000e6, key.currency1, key.currency0);
-        (uint256 tokenId, uint128 liq,,) = zap.add(_addParams(0, 10_000e6, route, lo, hi));
+        (uint256 tokenId, uint128 liq,,,,,) = zap.add(_addParams(0, 10_000e6, route, lo, hi));
 
         uint256 usdcReturned = IERC20(USDC).balanceOf(address(this)) + 10_000e6 - usdcBefore; // budget pulled was 10_000
         assertEq(IERC721(POSM).ownerOf(tokenId), address(this), "user owns NFT");
@@ -243,11 +243,11 @@ contract SwapAndAddForkMainnetTest is Test {
     function test_fork_rebalance_full() public {
         (int24 lo, int24 hi) = _ticks();
         _fundUsdc(50_000e6);
-        (uint256 tokenId,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
+        (uint256 tokenId,,,,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
         IERC721(POSM).setApprovalForAll(address(zap), true);
 
         int24 ts = key.tickSpacing;
-        (uint256 newTokenId, uint128 newLiq,,) =
+        (uint256 newTokenId, uint128 newLiq,,,,,) =
             zap.rebalance(_rebalanceParams(tokenId, 0, 0, lo - 10 * ts, hi + 10 * ts));
 
         assertEq(IERC721(POSM).ownerOf(newTokenId), address(this), "user owns new NFT");
@@ -261,12 +261,12 @@ contract SwapAndAddForkMainnetTest is Test {
     function test_fork_rebalance_cashOut() public {
         (int24 lo, int24 hi) = _ticks();
         _fundUsdc(50_000e6);
-        (uint256 tokenId,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
+        (uint256 tokenId,,,,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
         IERC721(POSM).setApprovalForAll(address(zap), true);
         int24 ts = key.tickSpacing;
 
         uint256 usdcBefore = IERC20(USDC).balanceOf(address(this));
-        (uint256 newTokenId, uint128 newLiq,,) =
+        (uint256 newTokenId, uint128 newLiq,,,,,) =
             zap.rebalance(_rebalanceParams(tokenId, 0, -2_000e6, lo - 10 * ts, hi + 10 * ts)); // return 2k USDC
 
         assertEq(IERC721(POSM).ownerOf(newTokenId), address(this), "user owns new NFT");
@@ -281,17 +281,17 @@ contract SwapAndAddForkMainnetTest is Test {
     function test_fork_rebalance_addMore() public {
         (int24 lo, int24 hi) = _ticks();
         _fundUsdc(50_000e6);
-        (uint256 tokenId,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
+        (uint256 tokenId,,,,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
         IERC721(POSM).setApprovalForAll(address(zap), true);
         int24 ts = key.tickSpacing;
         int24 nlo = lo - 10 * ts;
         int24 nhi = hi + 10 * ts;
 
         uint256 snap = vm.snapshotState();
-        (, uint128 liqBase,,) = zap.rebalance(_rebalanceParams(tokenId, 0, 0, nlo, nhi));
+        (, uint128 liqBase,,,,,) = zap.rebalance(_rebalanceParams(tokenId, 0, 0, nlo, nhi));
         vm.revertToState(snap);
 
-        (, uint128 liqMore,,) = zap.rebalance(_rebalanceParams(tokenId, 0, 5_000e6, nlo, nhi)); // add 5k USDC
+        (, uint128 liqMore,,,,,) = zap.rebalance(_rebalanceParams(tokenId, 0, 5_000e6, nlo, nhi)); // add 5k USDC
 
         assertGt(liqMore, liqBase, "adding USDC deploys more than a full redeploy");
         assertEq(address(zap).balance, 0, "zap eth == 0");
@@ -302,18 +302,18 @@ contract SwapAndAddForkMainnetTest is Test {
     function test_fork_rebalance_native_addMore() public {
         (int24 lo, int24 hi) = _ticks();
         vm.deal(address(this), 100 ether);
-        (uint256 tokenId,,,) = zap.add{value: 1 ether}(_addParams(1 ether, 0, "", lo, hi));
+        (uint256 tokenId,,,,,,) = zap.add{value: 1 ether}(_addParams(1 ether, 0, "", lo, hi));
         IERC721(POSM).setApprovalForAll(address(zap), true);
         int24 ts = key.tickSpacing;
         int24 nlo = lo - 10 * ts;
         int24 nhi = hi + 10 * ts;
 
         uint256 snap = vm.snapshotState();
-        (, uint128 liqBase,,) = zap.rebalance(_rebalanceParams(tokenId, 0, 0, nlo, nhi));
+        (, uint128 liqBase,,,,,) = zap.rebalance(_rebalanceParams(tokenId, 0, 0, nlo, nhi));
         vm.revertToState(snap);
 
         int128 addNative = 0.5 ether;
-        (, uint128 liqMore,,) =
+        (, uint128 liqMore,,,,,) =
             zap.rebalance{value: uint256(uint128(addNative))}(_rebalanceParams(tokenId, addNative, 0, nlo, nhi));
 
         assertGt(liqMore, liqBase, "adding native ETH deploys more than a full redeploy");
@@ -325,7 +325,7 @@ contract SwapAndAddForkMainnetTest is Test {
     function test_fork_rebalance_sameRange_full() public {
         (int24 lo, int24 hi) = _ticks();
         _fundUsdc(50_000e6);
-        (uint256 tokenId,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
+        (uint256 tokenId,,,,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
         IERC721(POSM).setApprovalForAll(address(zap), true);
 
         zap.rebalance(_rebalanceParams(tokenId, 0, 0, lo, hi)); // new range == old range
@@ -335,7 +335,7 @@ contract SwapAndAddForkMainnetTest is Test {
     function test_fork_rebalance_sameRange_full_halfEth() public {
         (int24 lo, int24 hi) = _ticks();
         vm.deal(address(this), 100 ether);
-        (uint256 tokenId,,,) = zap.add{value: 0.5 ether}(_addParams(0.5 ether, 0, "", lo, hi));
+        (uint256 tokenId,,,,,,) = zap.add{value: 0.5 ether}(_addParams(0.5 ether, 0, "", lo, hi));
         IERC721(POSM).setApprovalForAll(address(zap), true);
         zap.rebalance(_rebalanceParams(tokenId, 0, 0, lo, hi));
     }
@@ -369,7 +369,7 @@ contract SwapAndAddForkMainnetTest is Test {
         _fundUsdc(5_000_000e6);
         vm.deal(address(this), 10_000 ether);
         // sizable position so it earns a meaningful share of the swap fees.
-        (uint256 tokenId,,,) = zap.add{value: 500 ether}(_addParams(500 ether, 2_000_000e6, "", lo, hi));
+        (uint256 tokenId,,,,,,) = zap.add{value: 500 ether}(_addParams(500 ether, 2_000_000e6, "", lo, hi));
         IERC721(POSM).setApprovalForAll(address(zap), true);
 
         PoolSwapTest swapRouter = new PoolSwapTest(manager);
@@ -391,7 +391,7 @@ contract SwapAndAddForkMainnetTest is Test {
         }
 
         uint128 liqBefore = posm.getPositionLiquidity(tokenId);
-        (uint128 added, uint256 a0, uint256 a1) = zap.compound(_compoundParams(tokenId, 0));
+        (uint128 added, uint256 a0, uint256 a1,,,) = zap.compound(_compoundParams(tokenId, 0));
 
         assertGt(added, 0, "fees reinvested as liquidity");
         assertGt(a0 + a1, 0, "amounts reinvested");
@@ -453,7 +453,7 @@ contract SwapAndAddForkMainnetTest is Test {
 
         (int24 lo, int24 hi) = _ticks();
         ISwapAndAdd.AddParams memory p = _addParams(0, 5_000e6, route, lo, hi);
-        (uint256 tokenId, uint128 liq,,) = ISwapAndAdd(TAPI_ZAP).add(p);
+        (uint256 tokenId, uint128 liq,,,,,) = ISwapAndAdd(TAPI_ZAP).add(p);
 
         assertEq(IERC721(POSM).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "TAPI v4 route deployed into the real pool");

@@ -182,12 +182,25 @@ contract SwapAndAddSamePoolRouteTest is PosmTestSetup {
         (uint160 beforePrice,,,) = manager.getSlot0(targetKey.toId());
         assertGt(beforePrice, p.sqrtPriceMaxX96, "initial price is outside the band");
 
-        (uint128 added,,) = zap.increase(p);
+        (uint128 added,,,,,) = zap.increase(p);
 
         assertGt(added, 0, "band accepts the post-route sizing price");
         assertEq(lpm.getPositionLiquidity(p.tokenId), L_POS + added);
         assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 swept");
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 swept");
+    }
+
+    /// @dev The sizing price is read after the route, so it reflects the route's price move.
+    function test_increase_returnsPostRouteSizingPrice() public {
+        (ISwapAndAdd.IncreaseParams memory p, uint160 routedPrice) = _priceBandRouteParams();
+        p.sqrtPriceMinX96 = 0;
+        p.sqrtPriceMaxX96 = type(uint160).max;
+        (uint160 spot,,,) = manager.getSlot0(targetKey.toId());
+
+        (,,, uint160 sizingPrice,,) = zap.increase(p);
+
+        assertEq(sizingPrice, routedPrice, "sized at the post-route price");
+        assertTrue(sizingPrice != spot, "the route moved the price before sizing");
     }
 
     /// @dev A same-pool route leg drives spot into the range of the position and accrues fees ~13x the
@@ -206,7 +219,7 @@ contract SwapAndAddSamePoolRouteTest is PosmTestSetup {
         uint256 c0Before = currency0.balanceOf(address(this));
         uint256 c1Before = currency1.balanceOf(address(this));
 
-        (uint128 added,,) = zap.increase(
+        (uint128 added,,,,,) = zap.increase(
             ISwapAndAdd.IncreaseParams({
                 tokenId: tokenId,
                 amount0In: routeIn,
@@ -248,7 +261,7 @@ contract SwapAndAddSamePoolRouteTest is PosmTestSetup {
         route.config(targetKey, true, routeIn);
         uint256 c1Before = currency1.balanceOf(address(this));
 
-        (uint128 added,,) = zap.increase(
+        (uint128 added,,,,,) = zap.increase(
             ISwapAndAdd.IncreaseParams({
                 tokenId: tokenId,
                 amount0In: routeIn,

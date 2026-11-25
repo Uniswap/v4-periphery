@@ -91,7 +91,9 @@ contract SwapAndAddFarEdgeTest is PosmTestSetup {
 
     /// @dev run one add. On success the post-op price must sit strictly inside both edges.
     function _probe(PoolKey memory k, int24 tl, int24 tu, uint256 b0, uint256 b1) internal {
-        try zap.add(_addP(k, tl, tu, b0, b1)) returns (uint256, uint128 liq, uint256, uint256) {
+        try zap.add(_addP(k, tl, tu, b0, b1)) returns (
+            uint256, uint128 liq, uint256, uint256, uint160, uint256, uint256
+        ) {
             assertGt(liq, 0);
             (uint160 sp,,,) = manager.getSlot0(k.toId());
             assertGt(sp, TickMath.getSqrtPriceAtTick(tl), "price reached/passed the LOWER edge");

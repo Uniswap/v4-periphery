@@ -52,7 +52,7 @@ contract SwapAndAddMathFuzzTest is PosmTestSetup {
             ""
         );
 
-        (, uint128 liq,,) = zap.add(
+        (, uint128 liq,,,,,) = zap.add(
             ISwapAndAdd.AddParams({
                 poolKey: k,
                 tickLower: -600,
@@ -97,7 +97,7 @@ contract SwapAndAddMathFuzzTest is PosmTestSetup {
         MockERC20(Currency.unwrap(currency1)).mint(address(this), b1);
 
         uint128 feasible = LiquidityAmounts.getLiquidityForAmount1(spl, spu, b1);
-        (, uint128 liq,,) = zap.add(
+        (, uint128 liq,,,,,) = zap.add(
             ISwapAndAdd.AddParams({
                 poolKey: k,
                 tickLower: tick - 60,

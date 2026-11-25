@@ -142,7 +142,7 @@ contract SwapAndAddSubscriberTest is PosmTestSetup {
         uint256 tokenId = _subscribedPosition(address(sub));
         uint128 before = lpm.getPositionLiquidity(tokenId);
 
-        (uint128 added,,) = zap.increase(_incParams(tokenId, 1e18, 1e18, 1));
+        (uint128 added,,,,,) = zap.increase(_incParams(tokenId, 1e18, 1e18, 1));
 
         assertGt(added, 0, "increase completed on a subscribed position");
         assertEq(lpm.getPositionLiquidity(tokenId), before + added, "position grew");
@@ -156,7 +156,7 @@ contract SwapAndAddSubscriberTest is PosmTestSetup {
         uint256 tokenId = _subscribedPosition(address(sub));
         uint128 before = lpm.getPositionLiquidity(tokenId);
 
-        (uint128 added,,) = zap.compound(
+        (uint128 added,,,,,) = zap.compound(
             ISwapAndAdd.CompoundParams({
                 tokenId: tokenId,
                 route: "",
@@ -177,7 +177,7 @@ contract SwapAndAddSubscriberTest is PosmTestSetup {
     function test_rebalance_subscribedPosition_notifiesBurn_newPositionClean() public {
         uint256 tokenId = _subscribedPosition(address(sub));
 
-        (uint256 newTokenId, uint128 liquidity,,) = zap.rebalance(
+        (uint256 newTokenId, uint128 liquidity,,,,,) = zap.rebalance(
             ISwapAndAdd.RebalanceParams({
                 tokenId: tokenId,
                 additional0: 0,
@@ -271,7 +271,7 @@ contract SwapAndAddSubscriberTest is PosmTestSetup {
         (, int24 tickBefore,,) = manager.getSlot0(key.toId());
         uint128 before = lpm.getPositionLiquidity(tokenId);
 
-        (uint128 added,,) = zap.increase(_incParams(tokenId, 1e18, 1e18, 1));
+        (uint128 added,,,,,) = zap.increase(_incParams(tokenId, 1e18, 1e18, 1));
 
         (, int24 tickAfter,,) = manager.getSlot0(key.toId());
         assertTrue(swapper.swapped(), "the subscriber traded mid-operation");

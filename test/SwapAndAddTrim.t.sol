@@ -89,7 +89,9 @@ contract SwapAndAddTrimTest is PosmTestSetup {
         internal
         returns (bool reverted, bytes4 sel, uint128 liq)
     {
-        try zap.add(_p(k, tl, tu, a0, a1, minLiq)) returns (uint256, uint128 l, uint256, uint256) {
+        try zap.add(_p(k, tl, tu, a0, a1, minLiq)) returns (
+            uint256, uint128 l, uint256, uint256, uint160, uint256, uint256
+        ) {
             liq = l;
         } catch (bytes memory data) {
             reverted = true;

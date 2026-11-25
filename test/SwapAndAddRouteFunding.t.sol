@@ -107,7 +107,7 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         _configXRoute(5e18);
         uint256 xBefore = tokenX.balanceOf(address(this));
 
-        (uint256 tokenId, uint128 liq,,) = zap.add(_addP(0, 0, ROUTE_PAYLOAD, _funding(address(tokenX), 5e18)));
+        (uint256 tokenId, uint128 liq,,,,,) = zap.add(_addP(0, 0, ROUTE_PAYLOAD, _funding(address(tokenX), 5e18)));
 
         assertEq(tokenX.balanceOf(address(this)), xBefore - 5e18, "X pulled from caller");
         assertGt(liq, 0, "position funded entirely by routed X");
@@ -131,7 +131,7 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         f[1] = ISwapAndAdd.TokenAmount({token: Currency.wrap(address(tokenX)), amount: 2e18});
         uint256 xBefore = tokenX.balanceOf(address(this));
 
-        (, uint128 liq,,) = zap.add(_addP(0, 0, ROUTE_PAYLOAD, f));
+        (, uint128 liq,,,,,) = zap.add(_addP(0, 0, ROUTE_PAYLOAD, f));
 
         assertEq(tokenX.balanceOf(address(this)), xBefore - 3e18, "both entries pulled");
         assertGt(liq, 0);
@@ -152,7 +152,7 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         // Keep the pool-token output small while exercising a large route input.
         route.config(address(tokenX), Currency.unwrap(currency1), 1, 10000, total, true);
 
-        (, uint128 liq,,) = zap.add(_addP(0, 0, ROUTE_PAYLOAD, funding));
+        (, uint128 liq,,,,,) = zap.add(_addP(0, 0, ROUTE_PAYLOAD, funding));
 
         assertGt(liq, 0);
         assertEq(tokenX.allowance(address(zap), address(permit2)), type(uint256).max);
@@ -196,7 +196,7 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
     function test_add_funding_zeroAmountEntry_claimsDonation() public {
         tokenX.transfer(address(zap), 5e18); // donation / stuck tokens
         _configXRoute(2e18); // the route consumes part of the donated balance
-        (, uint128 liq,,) = zap.add(_addP(0, 1e18, ROUTE_PAYLOAD, _funding(address(tokenX), 0)));
+        (, uint128 liq,,,,,) = zap.add(_addP(0, 1e18, ROUTE_PAYLOAD, _funding(address(tokenX), 0)));
         assertGt(liq, 0);
         assertEq(tokenX.balanceOf(recipient), 3e18, "unconsumed donation claimed to the recipient");
         assertEq(tokenX.balanceOf(address(zap)), 0, "no X at rest");
@@ -208,7 +208,7 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         // route: consume 0.6 ETH of the pushed value, pay out currency1 1:1
         route.config(address(0), Currency.unwrap(currency1), 1 << 96, 10000, 0.6 ether, true);
 
-        (, uint128 liq,,) = zap.add{value: 1 ether}(_addP(0, 0, ROUTE_PAYLOAD, _funding(address(0), 1 ether)));
+        (, uint128 liq,,,,,) = zap.add{value: 1 ether}(_addP(0, 0, ROUTE_PAYLOAD, _funding(address(0), 1 ether)));
 
         assertGt(liq, 0, "position funded by routed native");
         assertEq(recipient.balance, 0.4 ether, "unconsumed native reclaimed from the UR and swept");
@@ -261,14 +261,14 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         _configXRoute(0); // no-op
         ISwapAndAdd.AddParams memory p = _addP(10e18, 10e18, "", new ISwapAndAdd.TokenAmount[](0));
         p.recipient = address(this);
-        (tokenId,,,) = zap.add(p);
+        (tokenId,,,,,,) = zap.add(p);
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
     }
 
     function test_increase_funding_zeroBudgetZeroFees_worksViaRoute() public {
         uint256 tokenId = _mintViaZap(); // fresh position: zero accrued fees
         _configXRoute(5e18);
-        (uint128 added,,) = zap.increase(
+        (uint128 added,,,,,) = zap.increase(
             ISwapAndAdd.IncreaseParams({
                 tokenId: tokenId,
                 amount0In: 0,
@@ -327,7 +327,7 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
     function test_rebalance_funding_topsUpViaRoute() public {
         uint256 tokenId = _mintViaZap();
         _configXRoute(2e18);
-        (uint256 newTokenId, uint128 liq,,) = zap.rebalance(
+        (uint256 newTokenId, uint128 liq,,,,,) = zap.rebalance(
             ISwapAndAdd.RebalanceParams({
                 tokenId: tokenId,
                 additional0: 0,

@@ -165,7 +165,7 @@ contract SwapAndAddRouteTest is PosmTestSetup {
             deadline: block.timestamp + 1
         });
 
-        (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1) = zap.add(p);
+        (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1,,,) = zap.add(p);
 
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "liquidity minted");
@@ -220,7 +220,7 @@ contract SwapAndAddRouteTest is PosmTestSetup {
             hookData: "",
             deadline: block.timestamp + 1
         });
-        (uint256 tokenId, uint128 liq,,) = zap.add{value: 10 ether}(p);
+        (uint256 tokenId, uint128 liq,,,,,) = zap.add{value: 10 ether}(p);
 
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "liquidity minted");
@@ -272,7 +272,7 @@ contract SwapAndAddRouteTest is PosmTestSetup {
         uint256 c1Before = currency1.balanceOf(address(this));
         (uint160 routeSpBefore,,,) = manager.getSlot0(routeKey.toId());
 
-        (uint256 tokenId, uint128 liq,,) = zap.add(_bandedAddParams(newKey, amount1In, route));
+        (uint256 tokenId, uint128 liq,,,,,) = zap.add(_bandedAddParams(newKey, amount1In, route));
 
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
         assertEq(manager.getLiquidity(newKey.toId()), liq, "caller is the pool's only liquidity");
@@ -327,7 +327,7 @@ contract SwapAndAddRouteTest is PosmTestSetup {
             hookData: "",
             deadline: block.timestamp + 1
         });
-        (uint256 tokenId,,,) = zap.add(ap);
+        (uint256 tokenId,,,,,,) = zap.add(ap);
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
 
         (uint160 routeSpBefore,,,) = manager.getSlot0(routeKey.toId());
@@ -350,7 +350,7 @@ contract SwapAndAddRouteTest is PosmTestSetup {
             deadline: block.timestamp + 1
         });
 
-        (uint256 newTokenId, uint128 newLiq,,) = zap.rebalance(rp);
+        (uint256 newTokenId, uint128 newLiq,,,,,) = zap.rebalance(rp);
 
         assertEq(IERC721(address(lpm)).ownerOf(newTokenId), address(this), "user owns new NFT");
         assertGt(newLiq, 0, "new liquidity minted");
@@ -381,7 +381,7 @@ contract SwapAndAddRouteTest is PosmTestSetup {
             hookData: "",
             deadline: block.timestamp + 1
         });
-        (uint256 tokenId, uint128 liq0,,) = zap.add(ap);
+        (uint256 tokenId, uint128 liq0,,,,,) = zap.add(ap);
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
         // accrue fees on `key` with balanced round-trip swaps
         for (uint256 i = 0; i < 5; i++) {
@@ -401,13 +401,13 @@ contract SwapAndAddRouteTest is PosmTestSetup {
         });
         // dry-run to size the route input
         uint256 snap = vm.snapshotState();
-        (,, uint256 a1Base) = zap.compound(p);
+        (,, uint256 a1Base,,,) = zap.compound(p);
         vm.revertToState(snap);
 
         (uint160 routeSpBefore,,,) = manager.getSlot0(routeKey.toId());
         p.route = _v4SwapRoute(routeKey, false, uint128(a1Base / 2), currency1, currency0);
 
-        (uint128 added,,) = zap.compound(p);
+        (uint128 added,,,,,) = zap.compound(p);
 
         assertGt(added, 0, "fees compounded");
         assertEq(lpm.getPositionLiquidity(tokenId), liq0 + added, "same position grew by exactly added");
@@ -437,7 +437,7 @@ contract SwapAndAddRouteTest is PosmTestSetup {
             hookData: "",
             deadline: block.timestamp + 1
         });
-        (uint256 tokenId,,,) = zap.add(ap);
+        (uint256 tokenId,,,,,,) = zap.add(ap);
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
 
         // the subscriber takes token1 on the router's tab when the fees are collected
