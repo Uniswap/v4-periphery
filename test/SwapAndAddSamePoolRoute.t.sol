@@ -45,7 +45,7 @@ contract MockSamePoolRoute {
         inputAmount = amt;
     }
 
-    function execute(bytes calldata, bytes[] calldata) external payable {
+    function executeNested(bytes calldata, bytes[] calldata) external payable {
         Currency cIn = zeroForOne ? key.currency0 : key.currency1;
         Currency cOut = zeroForOne ? key.currency1 : key.currency0;
         permit2.transferFrom(msg.sender, address(this), uint160(inputAmount), Currency.unwrap(cIn));

@@ -30,6 +30,6 @@ contract MockRouterDebtSubscriber is ISubscriber {
         if (!armed) return;
         armed = false;
         (bytes memory commands, bytes[] memory inputs) = abi.decode(route, (bytes, bytes[]));
-        router.execute(commands, inputs);
+        router.executeNested(commands, inputs);
     }
 }

@@ -81,8 +81,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     }
 
     IPositionManager public immutable positionManager;
-    /// @dev Routes run inside this contract's PoolManager unlock, so the router must execute V4_SWAP
-    ///      within an existing unlock. Release routers open their own and revert with AlreadyUnlocked.
+    /// @dev Routes run inside this contract's PoolManager unlock, so they go through `executeNested`,
+    ///      which requires Universal Router 2.3.0 or later.
     IUniversalRouter public immutable universalRouter;
 
     modifier checkDeadline(uint256 deadline) {
@@ -592,7 +592,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
         // open deltas here would be settled by the route from this contract's funds
         if (poolManager.getNonzeroDeltaCount() != 0) revert UnsettledDeltas();
-        universalRouter.execute{value: value}(commands, inputs);
+        universalRouter.executeNested{value: value}(commands, inputs);
 
         // router balances are permissionlessly sweepable, reclaim before anyone else can
         if (address(universalRouter).balance > 0) {

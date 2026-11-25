@@ -898,7 +898,7 @@ contract SwapAndAddTest is PosmTestSetup {
     }
 
     /// @dev Route stand-in: credits the zap through PoolManager, as a route-pool incentive hook can.
-    function execute(bytes calldata, bytes[] calldata) external payable {
+    function executeNested(bytes calldata, bytes[] calldata) external payable {
         require(msg.sender == address(zap), "unexpected route caller");
         manager.sync(currency0);
         currency0.transfer(address(manager), 1e12);
@@ -1830,13 +1830,14 @@ contract MockAliasSellRoute {
         amountIn = _amountIn;
     }
 
+    /// @dev native SWEEP (0x04) returns the router's native balance to the caller
     function execute(bytes calldata commands, bytes[] calldata) external payable {
-        // native SWEEP (0x04) returns the router's native balance to the caller
-        if (commands.length == 1 && uint8(commands[0]) == 0x04) {
-            (bool ok,) = msg.sender.call{value: address(this).balance}("");
-            require(ok, "route: sweep failed");
-            return;
-        }
+        require(commands.length == 1 && uint8(commands[0]) == 0x04, "route: must use executeNested");
+        (bool ok,) = msg.sender.call{value: address(this).balance}("");
+        require(ok, "route: sweep failed");
+    }
+
+    function executeNested(bytes calldata, bytes[] calldata) external payable {
         permit2.transferFrom(msg.sender, sink, uint160(amountIn), sell);
         MockERC20(buy).transfer(msg.sender, amountIn);
     }
