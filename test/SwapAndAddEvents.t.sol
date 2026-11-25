@@ -87,7 +87,7 @@ contract SwapAndAddEventsTest is PosmTestSetup {
 
     function test_add_emitsAdded_mirroringReturns() public {
         vm.recordLogs();
-        (uint256 tokenId, uint128 liquidity, uint256 a0, uint256 a1) = zap.add(_addParams(1e18, 2e18));
+        (uint256 tokenId, uint128 liquidity, uint256 a0, uint256 a1,,,) = zap.add(_addParams(1e18, 2e18));
 
         Vm.Log memory log = _zapLog();
         assertEq(log.topics[0], ISwapAndAdd.Added.selector, "topic0");
@@ -105,7 +105,7 @@ contract SwapAndAddEventsTest is PosmTestSetup {
         uint256 oldId = _mintWithFees(address(this));
 
         vm.recordLogs();
-        (uint256 newId, uint128 liquidity, uint256 a0, uint256 a1) = zap.rebalance(
+        (uint256 newId, uint128 liquidity, uint256 a0, uint256 a1,,,) = zap.rebalance(
             ISwapAndAdd.RebalanceParams({
                 tokenId: oldId,
                 additional0: 0,
@@ -140,7 +140,7 @@ contract SwapAndAddEventsTest is PosmTestSetup {
         uint256 tokenId = _mintWithFees(address(this));
 
         vm.recordLogs();
-        (uint128 added, uint256 a0, uint256 a1) = zap.increase(
+        (uint128 added, uint256 a0, uint256 a1,,,) = zap.increase(
             ISwapAndAdd.IncreaseParams({
                 tokenId: tokenId,
                 amount0In: 1e18,
@@ -172,7 +172,7 @@ contract SwapAndAddEventsTest is PosmTestSetup {
         uint256 tokenId = _mintWithFees(address(this));
 
         vm.recordLogs();
-        (uint128 added, uint256 a0, uint256 a1) = zap.compound(
+        (uint128 added, uint256 a0, uint256 a1,,,) = zap.compound(
             ISwapAndAdd.CompoundParams({
                 tokenId: tokenId,
                 route: "",

@@ -31,7 +31,7 @@ contract SwapAndAddForkSepoliaTest is Test {
     using PoolIdLibrary for PoolKey;
 
     // live Sepolia deployment (chore(SwapAndAdd): deploy zap + patched UR to Sepolia)
-    address constant ZAP = 0x6f923892d6A45f7e77DB36f48F055C045F93E979;
+    address constant ZAP = 0x8A5C30D72ea6d883C522d232b49371438cc96586;
     address constant UR = 0x44518461733Fd7f5DC5996facB405CF659108Ea2;
     // canonical Sepolia protocol addresses, verified in script/DeploySwapAndAdd.s.sol
     address constant POOL_MANAGER = 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543;
@@ -116,7 +116,7 @@ contract SwapAndAddForkSepoliaTest is Test {
     /// @dev First LP through the live zap itself: a two-sided in-ratio add on the empty pool.
     function _seed(PoolKey memory k) internal returns (uint256 tokenId, uint128 liq) {
         uint256 v = Currency.unwrap(k.currency0) == address(0) ? 50e18 : 0;
-        (tokenId, liq,,) = zap.add{value: v}(_addParams(k, 50e18, 50e18, ""));
+        (tokenId, liq,,,,,) = zap.add{value: v}(_addParams(k, 50e18, 50e18, ""));
     }
 
     // live-bytecode behavior, no route
@@ -131,7 +131,7 @@ contract SwapAndAddForkSepoliaTest is Test {
 
     function test_forkSepolia_add_singleSided_reconciles() public {
         _seed(key);
-        (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1) = zap.add(_addParams(key, 0, 10e18, ""));
+        (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1,,,) = zap.add(_addParams(key, 0, 10e18, ""));
         assertEq(IERC721(POSM).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "liquidity minted");
         assertGt(a0, 0, "token0 side funded by the same-pool reconcile");
@@ -142,7 +142,7 @@ contract SwapAndAddForkSepoliaTest is Test {
 
     function test_forkSepolia_add_native_singleSided() public {
         _seed(nativeKey);
-        (uint256 tokenId, uint128 liq,,) = zap.add{value: 5 ether}(_addParams(nativeKey, 5 ether, 0, ""));
+        (uint256 tokenId, uint128 liq,,,,,) = zap.add{value: 5 ether}(_addParams(nativeKey, 5 ether, 0, ""));
         assertEq(IERC721(POSM).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "liquidity minted from native budget");
         assertEq(ZAP.balance, 0, "zap eth == 0");
@@ -155,7 +155,7 @@ contract SwapAndAddForkSepoliaTest is Test {
     function test_forkSepolia_add_viaLiveURRoute() public {
         _seed(key);
         bytes memory route = _v4SwapRoute(key, false, 4e18, key.currency1, key.currency0);
-        (uint256 tokenId, uint128 liq,,) = zap.add(_addParams(key, 0, 10e18, route));
+        (uint256 tokenId, uint128 liq,,,,,) = zap.add(_addParams(key, 0, 10e18, route));
         assertEq(IERC721(POSM).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "liquidity minted through the live UR route");
         assertEq(tokenA.balanceOf(ZAP), 0, "zap token0 == 0");
@@ -165,7 +165,7 @@ contract SwapAndAddForkSepoliaTest is Test {
     // rebalance + compound on live bytecode
 
     function test_forkSepolia_rebalance_full() public {
-        (uint256 tokenId,,,) = zap.add(_addParams(key, 50e18, 50e18, ""));
+        (uint256 tokenId,,,,,,) = zap.add(_addParams(key, 50e18, 50e18, ""));
         IERC721(POSM).setApprovalForAll(ZAP, true);
 
         ISwapAndAdd.RebalanceParams memory p = ISwapAndAdd.RebalanceParams({
@@ -183,7 +183,7 @@ contract SwapAndAddForkSepoliaTest is Test {
             hookData: "",
             deadline: block.timestamp + 1
         });
-        (uint256 newTokenId, uint128 newLiq,,) = zap.rebalance(p);
+        (uint256 newTokenId, uint128 newLiq,,,,,) = zap.rebalance(p);
 
         assertEq(IERC721(POSM).ownerOf(newTokenId), address(this), "user owns new NFT");
         assertGt(newLiq, 0, "new liquidity minted");
@@ -206,7 +206,7 @@ contract SwapAndAddForkSepoliaTest is Test {
             hookData: "",
             deadline: block.timestamp + 1
         });
-        (uint128 liqAdded,,) = zap.compound(p);
+        (uint128 liqAdded,,,,,) = zap.compound(p);
 
         assertGt(liqAdded, 0, "fees compounded into the live position");
         assertEq(tokenA.balanceOf(ZAP), 0, "zap token0 == 0");
@@ -286,7 +286,7 @@ contract SwapAndAddForkSepoliaTest is Test {
         ISwapAndAdd.AddParams memory p = _addParams(k, 100e6, 0, route);
         p.tickLower = lo;
         p.tickUpper = hi;
-        (uint256 tokenId, uint128 liq,,) = zap.add(p);
+        (uint256 tokenId, uint128 liq,,,,,) = zap.add(p);
 
         assertEq(IERC721(POSM).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "TAPI-routed budget deployed into the real v4 pool");

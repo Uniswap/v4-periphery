@@ -373,7 +373,7 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         vm.startPrank(signer);
         permit2.approve(Currency.unwrap(currency0), address(zap), type(uint160).max, type(uint48).max);
         permit2.approve(Currency.unwrap(currency1), address(zap), type(uint160).max, type(uint48).max);
-        (uint256 dId, uint128 dLiq, uint256 dA0, uint256 dA1) = zap.add(p);
+        (uint256 dId, uint128 dLiq, uint256 dA0, uint256 dA1,,,) = zap.add(p);
         vm.stopPrank();
         vm.revertToState(snapshot);
 

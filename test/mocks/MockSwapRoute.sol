@@ -42,15 +42,16 @@ contract MockSwapRoute {
         surplusIsToken0 = _surplusIsToken0;
     }
 
+    /// @dev Universal Router SWEEP (0x04) returns leftover native to the caller. Routes must run nested.
     function execute(bytes calldata commands, bytes[] calldata inputs) external payable {
-        // Universal Router SWEEP (0x04) returns leftover native to the caller.
-        if (commands.length == 1 && uint8(commands[0]) == 0x04) {
-            (address token,,) = abi.decode(inputs[0], (address, address, uint256));
-            require(token == address(0), "mock: only native sweep");
-            (bool ok,) = msg.sender.call{value: address(this).balance}("");
-            require(ok, "mock: sweep failed");
-            return;
-        }
+        require(commands.length == 1 && uint8(commands[0]) == 0x04, "mock: route must use executeNested");
+        (address token,,) = abi.decode(inputs[0], (address, address, uint256));
+        require(token == address(0), "mock: only native sweep");
+        (bool ok,) = msg.sender.call{value: address(this).balance}("");
+        require(ok, "mock: sweep failed");
+    }
+
+    function executeNested(bytes calldata, bytes[] calldata) external payable {
         // A native surplus consumes from msg.value. The rest stays here for the SWEEP reclaim.
         if (surplus == address(0)) {
             uint256 nativePull = inputAmount > msg.value ? msg.value : inputAmount;

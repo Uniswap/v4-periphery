@@ -12,14 +12,13 @@ import {SwapAndAdd} from "../src/SwapAndAdd.sol";
 import {IPositionManager} from "../src/interfaces/IPositionManager.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
 
-/// @notice Deploys SwapAndAdd with the patched Universal Router
-///         (feat/v4-swap-within-existing-unlock, submodule commit cf27fb66e5). The canonical router
-///         rejects V4_SWAP inside SwapAndAdd's already-open unlock (AlreadyUnlocked), so each
-///         deployment carries its own router.
+/// @notice Deploys SwapAndAdd. Routes run through `executeNested`, so the router must be Universal
+///         Router 2.3.0 or later. Earlier routers lack it and cannot be reused.
 ///
-///         Simulate:  FOUNDRY_PROFILE=integration forge script script/DeploySwapAndAdd.s.sol \
-///                      --rpc-url sepolia
-///         Broadcast: add --broadcast --account <keystore>
+///         Reuse a router: ROUTER=<address> forge script script/DeploySwapAndAdd.s.sol --rpc-url sepolia
+///         Fresh router:   FOUNDRY_PROFILE=integration forge script ... (deploys the pinned submodule build)
+///         Broadcast:      add --broadcast --account <keystore> --skip-simulation (Amsterdam chains charge
+///                         code-deposit state gas that the local simulation underestimates)
 ///
 ///         Sepolia parameters mirror universal-router DeploySepolia.s.sol, re-verified onchain
 ///         with cast code on 2026-07-13.
@@ -39,8 +38,7 @@ contract DeploySwapAndAdd is Script {
 
     function run() external {
         ChainParams memory c = _params(block.chainid);
-        // ROUTER=<address> reuses a deployed patched router (same submodule commit). Unset
-        // deploys a fresh one.
+        // ROUTER=<address> reuses a deployed 2.3.0+ router. Unset deploys a fresh one.
         address existingRouter = vm.envOr("ROUTER", address(0));
 
         vm.startBroadcast();

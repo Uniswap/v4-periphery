@@ -22,7 +22,7 @@ contract MockDebtPlantingRoute {
         armed = true;
     }
 
-    function execute(bytes calldata, bytes[] calldata) external payable {
+    function executeNested(bytes calldata, bytes[] calldata) external payable {
         if (!armed) return;
         armed = false;
         bytes[] memory params = new bytes[](1);

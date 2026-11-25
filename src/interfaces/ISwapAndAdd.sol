@@ -165,12 +165,23 @@ interface ISwapAndAdd is IMulticall_v4, IMsgSender {
     /// @param params The add parameters.
     /// @return tokenId The minted position ID.
     /// @return liquidity The final liquidity of the minted position.
-    /// @return amount0 Token0 deposited into the position.
-    /// @return amount1 Token1 deposited into the position.
+    /// @return amount0 Token0 the position holds at the final pool price.
+    /// @return amount1 Token1 the position holds at the final pool price.
+    /// @return sqrtPriceAtSizingX96 The pool price after the route, at which the liquidity was sized.
+    /// @return dust0 Leftover token0 refunded to the recipient.
+    /// @return dust1 Leftover token1 refunded to the recipient.
     function add(AddParams calldata params)
         external
         payable
-        returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
+        returns (
+            uint256 tokenId,
+            uint128 liquidity,
+            uint256 amount0,
+            uint256 amount1,
+            uint160 sqrtPriceAtSizingX96,
+            uint256 dust0,
+            uint256 dust1
+        );
 
     /// @notice Parameters for `increase`.
     /// @param tokenId Position ID to increase.
@@ -202,12 +213,22 @@ interface ISwapAndAdd is IMulticall_v4, IMsgSender {
     /// @dev Requires caller authorization and ERC-721 approval on the position in POSM.
     /// @param params The increase parameters.
     /// @return liquidityAdded The liquidity added.
-    /// @return amount0 Token0 added to the position.
-    /// @return amount1 Token1 added to the position.
+    /// @return amount0 Token0 the added liquidity is worth at the final pool price.
+    /// @return amount1 Token1 the added liquidity is worth at the final pool price.
+    /// @return sqrtPriceAtSizingX96 The pool price after the route, at which the liquidity was sized.
+    /// @return dust0 Leftover token0 refunded to the recipient.
+    /// @return dust1 Leftover token1 refunded to the recipient.
     function increase(IncreaseParams calldata params)
         external
         payable
-        returns (uint128 liquidityAdded, uint256 amount0, uint256 amount1);
+        returns (
+            uint128 liquidityAdded,
+            uint256 amount0,
+            uint256 amount1,
+            uint160 sqrtPriceAtSizingX96,
+            uint256 dust0,
+            uint256 dust1
+        );
 
     /// @notice Parameters for `rebalance`.
     /// @param tokenId Position ID to burn and redeploy.
@@ -246,12 +267,23 @@ interface ISwapAndAdd is IMulticall_v4, IMsgSender {
     /// @param params The rebalance parameters.
     /// @return newTokenId The minted position ID in the new range.
     /// @return liquidity The final liquidity of the new position.
-    /// @return amount0 Token0 deposited into the new position.
-    /// @return amount1 Token1 deposited into the new position.
+    /// @return amount0 Token0 the new position holds at the final pool price.
+    /// @return amount1 Token1 the new position holds at the final pool price.
+    /// @return sqrtPriceAtSizingX96 The pool price after the route, at which the liquidity was sized.
+    /// @return dust0 Leftover token0 refunded to the recipient, excluding cash-out.
+    /// @return dust1 Leftover token1 refunded to the recipient, excluding cash-out.
     function rebalance(RebalanceParams calldata params)
         external
         payable
-        returns (uint256 newTokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
+        returns (
+            uint256 newTokenId,
+            uint128 liquidity,
+            uint256 amount0,
+            uint256 amount1,
+            uint160 sqrtPriceAtSizingX96,
+            uint256 dust0,
+            uint256 dust1
+        );
 
     /// @notice Parameters for `compound`.
     /// @param tokenId Position ID whose fees are collected and reinvested.
@@ -277,11 +309,21 @@ interface ISwapAndAdd is IMulticall_v4, IMsgSender {
     /// @dev Requires caller authorization and ERC-721 approval on the position in POSM.
     /// @param params The compound parameters.
     /// @return liquidityAdded The liquidity added from reinvested fees.
-    /// @return amount0 Token0 reinvested into the position.
-    /// @return amount1 Token1 reinvested into the position.
+    /// @return amount0 Token0 the reinvested liquidity is worth at the final pool price.
+    /// @return amount1 Token1 the reinvested liquidity is worth at the final pool price.
+    /// @return sqrtPriceAtSizingX96 The pool price after the route, at which the liquidity was sized.
+    /// @return dust0 Leftover token0 refunded to the recipient.
+    /// @return dust1 Leftover token1 refunded to the recipient.
     function compound(CompoundParams calldata params)
         external
-        returns (uint128 liquidityAdded, uint256 amount0, uint256 amount1);
+        returns (
+            uint128 liquidityAdded,
+            uint256 amount0,
+            uint256 amount1,
+            uint160 sqrtPriceAtSizingX96,
+            uint256 dust0,
+            uint256 dust1
+        );
 
     /// @notice Permissionlessly sweep any token from the contract
     /// @dev Requires that no operations are ongoing

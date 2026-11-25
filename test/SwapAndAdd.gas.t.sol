@@ -153,14 +153,14 @@ contract SwapAndAddGasTest is PosmTestSetup {
 
     /// @dev No accrued fees, so the collect step returns nothing.
     function test_gas_increase_noFees() public {
-        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
+        (uint256 tokenId,,,,,,) = zap.add(_addParams(0, 10e18));
         zap.increase(_increaseParams(tokenId, 0, 10e18));
         vm.snapshotGasLastCall("SwapAndAdd_increase_noFees");
     }
 
     /// @dev Accrued fees join the pulled budget.
     function test_gas_increase_withAccruedFees() public {
-        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
+        (uint256 tokenId,,,,,,) = zap.add(_addParams(0, 10e18));
         _generateFees();
         zap.increase(_increaseParams(tokenId, 0, 10e18));
         vm.snapshotGasLastCall("SwapAndAdd_increase_withAccruedFees");
@@ -168,7 +168,7 @@ contract SwapAndAddGasTest is PosmTestSetup {
 
     /// @dev Collected fees fund the whole deploy.
     function test_gas_compound() public {
-        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
+        (uint256 tokenId,,,,,,) = zap.add(_addParams(0, 10e18));
         _generateFees();
         zap.compound(
             ISwapAndAdd.CompoundParams({
@@ -189,7 +189,7 @@ contract SwapAndAddGasTest is PosmTestSetup {
 
     /// @dev Burns the old position and mints into a wider range.
     function test_gas_rebalance() public {
-        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
+        (uint256 tokenId,,,,,,) = zap.add(_addParams(0, 10e18));
         zap.rebalance(
             ISwapAndAdd.RebalanceParams({
                 tokenId: tokenId,

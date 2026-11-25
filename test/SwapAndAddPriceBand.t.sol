@@ -125,13 +125,13 @@ contract SwapAndAddPriceBandTest is PosmTestSetup {
     /// @dev Why the floor is not enough: the displaced mint exceeds the honest liquidity.
     function test_add_floorAlone_cannotRejectDisplacedSizing() public {
         uint256 snap = vm.snapshotState();
-        (, uint128 honestLiq,,) = zap.add(_addParams(0, type(uint160).max));
+        (, uint128 honestLiq,,,,,) = zap.add(_addParams(0, type(uint160).max));
         vm.revertToState(snap);
 
         _pushTo(TU + 2000);
         ISwapAndAdd.AddParams memory p = _addParams(0, type(uint160).max);
         p.minLiquidity = honestLiq;
-        (, uint128 attackedLiq, uint256 amount0,) = zap.add(p);
+        (, uint128 attackedLiq, uint256 amount0,,,,) = zap.add(p);
 
         assertGt(attackedLiq, honestLiq, "displaced mint clears the honest floor");
         assertEq(amount0, 0, "no reconcile swap");
@@ -139,10 +139,10 @@ contract SwapAndAddPriceBandTest is PosmTestSetup {
 
     function test_add_priceBand_inertWithinBand() public {
         uint256 snap = vm.snapshotState();
-        (, uint128 liqNoBand, uint256 a0NoBand, uint256 a1NoBand) = zap.add(_addParams(0, type(uint160).max));
+        (, uint128 liqNoBand, uint256 a0NoBand, uint256 a1NoBand,,,) = zap.add(_addParams(0, type(uint160).max));
         vm.revertToState(snap);
 
-        (, uint128 liqBand, uint256 a0Band, uint256 a1Band) = zap.add(_addParams(BAND_LO, BAND_HI));
+        (, uint128 liqBand, uint256 a0Band, uint256 a1Band,,,) = zap.add(_addParams(BAND_LO, BAND_HI));
 
         assertEq(liqBand, liqNoBand);
         assertEq(a0Band, a0NoBand);
@@ -153,7 +153,7 @@ contract SwapAndAddPriceBandTest is PosmTestSetup {
         ISwapAndAdd.AddParams memory p = _addParams(0, type(uint160).max);
         (p.tickLower, p.tickUpper) = (-600, 600);
         (p.amount0In, p.amount1In) = (100e18, 100e18);
-        (tokenId,,,) = zap.add(p);
+        (tokenId,,,,,,) = zap.add(p);
         swap(key, true, -20e18, "");
         swap(key, false, -20e18, "");
     }
@@ -246,7 +246,7 @@ contract SwapAndAddPriceBandTest is PosmTestSetup {
         (p.amount0In, p.amount1In) = (BUDGET1, 0);
 
         uint256 snap = vm.snapshotState();
-        (, uint128 liq,,) = zap.add(p);
+        (, uint128 liq,,,,,) = zap.add(p);
         assertGt(liq, 0, "honest add passes the caps");
         vm.revertToState(snap);
 
@@ -269,7 +269,7 @@ contract SwapAndAddPriceBandTest is PosmTestSetup {
         assertEq(_selector(err), SlippageCheck.MaximumAmountExceeded.selector);
 
         hook.disarm();
-        (, uint128 liq,,) = zap.add(p);
+        (, uint128 liq,,,,,) = zap.add(p);
         assertGt(liq, 0, "inert hook passes the caps");
     }
 
@@ -288,7 +288,7 @@ contract SwapAndAddPriceBandTest is PosmTestSetup {
         p.poolKey = hk;
         (p.tickLower, p.tickUpper) = (-600, 600);
         (p.amount0In, p.amount1In) = (100e18, 100e18);
-        (tokenId,,,) = zap.add(p);
+        (tokenId,,,,,,) = zap.add(p);
         swap(hk, true, -20e18, "");
         swap(hk, false, -20e18, "");
     }
@@ -320,7 +320,7 @@ contract SwapAndAddPriceBandTest is PosmTestSetup {
         assertEq(currency0.balanceOf(address(this)), before0, "token0 pull rolled back");
         assertEq(currency1.balanceOf(address(this)), before1, "token1 pull rolled back");
         hook.disarm();
-        (uint128 added,,) = zap.increase(p);
+        (uint128 added,,,,,) = zap.increase(p);
         assertGt(added, 0, "inert hook allows increase with accrued fees");
         assertEq(lpm.getPositionLiquidity(tokenId), beforeLiquidity + added);
     }
@@ -349,7 +349,7 @@ contract SwapAndAddPriceBandTest is PosmTestSetup {
         assertEq(currency0.balanceOf(address(this)), before0, "token0 balance unchanged");
         assertEq(currency1.balanceOf(address(this)), before1, "token1 balance unchanged");
         hook.disarm();
-        (uint128 added,,) = zap.compound(p);
+        (uint128 added,,,,,) = zap.compound(p);
         assertGt(added, 0, "fees remain available after the reverted compound");
         assertEq(lpm.getPositionLiquidity(tokenId), beforeLiquidity + added);
     }

@@ -194,7 +194,9 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
         (uint256 a0, uint256 a1) = _capBudgets(c.centre, b0, b1);
         vm.assume(a0 + a1 > 0);
 
-        try zap.add(_addP(c, a0, a1)) returns (uint256 tokenId, uint128 liq, uint256, uint256) {
+        try zap.add(_addP(c, a0, a1)) returns (
+            uint256 tokenId, uint128 liq, uint256, uint256, uint160, uint256, uint256
+        ) {
             assertGe(liq, 1, "floor honored");
             assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
         } catch (bytes memory data) {
@@ -234,7 +236,7 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
 
         ISwapAndAdd.AddParams memory p = _addP(c, 0, a1);
         p.route = abi.encode(bytes(""), new bytes[](0));
-        try zap.add(p) returns (uint256, uint128 liq, uint256, uint256) {
+        try zap.add(p) returns (uint256, uint128 liq, uint256, uint256, uint160, uint256, uint256) {
             assertGe(liq, 1, "floor honored");
         } catch (bytes memory data) {
             bytes4 sel = _sel(data);
@@ -270,7 +272,7 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
         vm.assume(c0m + c1m > 0);
 
         uint256 tokenId;
-        try zap.add(_addP(c, c0m, c1m)) returns (uint256 id, uint128, uint256, uint256) {
+        try zap.add(_addP(c, c0m, c1m)) returns (uint256 id, uint128, uint256, uint256, uint160, uint256, uint256) {
             tokenId = id;
         } catch (bytes memory data) {
             assertTrue(_allowed(_sel(data)), "disallowed revert on mint");
@@ -302,7 +304,7 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
                 deadline: block.timestamp + 1
             })
         ) returns (
-            uint128 added, uint256, uint256
+            uint128 added, uint256, uint256, uint160, uint256, uint256
         ) {
             assertGe(added, 1, "floor honored");
         } catch (bytes memory data) {
@@ -330,7 +332,7 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
         (int24 ntl, int24 ntu) = _range(c.centre, c.key.tickSpacing, newLoMul, newHiMul);
 
         uint256 tokenId;
-        try zap.add(_addP(c, c0m, c1m)) returns (uint256 id, uint128, uint256, uint256) {
+        try zap.add(_addP(c, c0m, c1m)) returns (uint256 id, uint128, uint256, uint256, uint160, uint256, uint256) {
             tokenId = id;
         } catch (bytes memory data) {
             assertTrue(_allowed(_sel(data)), "disallowed revert on mint");
@@ -354,7 +356,7 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
                 deadline: block.timestamp + 1
             })
         ) returns (
-            uint256 newId, uint128 liq, uint256, uint256
+            uint256 newId, uint128 liq, uint256, uint256, uint160, uint256, uint256
         ) {
             assertGe(liq, 1, "floor honored");
             assertEq(IERC721(address(lpm)).ownerOf(newId), address(this), "user owns new NFT");
